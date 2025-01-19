@@ -1,0 +1,3 @@
+# git-ignore all .yaml files except for demo.yaml
+*.yaml
+!demo.yaml

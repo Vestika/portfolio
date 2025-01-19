@@ -1,0 +1,12 @@
+# dev; we can split it later
+black==24.10.0
+mypy==1.14.0
+types-PyYAML
+
+# prod
+uvicorn==0.34.0
+fastapi==0.115.6
+PyYAML==6.0.2
+yfinance==0.2.51
+pymaya==0.2.1
+redis==5.2.1
