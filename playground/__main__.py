@@ -5,6 +5,8 @@ import webbrowser
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+import os
+from dotenv import load_dotenv
 
 import uvicorn
 from fastapi import FastAPI, Query, Depends
@@ -16,6 +18,9 @@ from playground.models.portfolio import Portfolio
 from playground.models.security_type import SecurityType
 from playground.portfolio_calculator import PortfolioCalculator
 from playground.utils import filter_security, filter_account
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.Logger(__name__)
 
@@ -48,13 +53,14 @@ def display_aggregation(title: str, aggregation_data: dict[str, Any]) -> None:
         )
 
 
-portfolios["demo.yaml"] = Portfolio.from_yaml(Path("demo.yaml"))
-portfolio = portfolios["demo.yaml"]
+portfolios["michael_test.yaml"] = Portfolio.from_yaml(Path("michael_test.yaml"))
+portfolio = portfolios["michael_test.yaml"]
 
 calculator = PortfolioCalculator(
     base_currency=portfolio.base_currency,
     exchange_rates=portfolio.exchange_rates,
     unit_prices=portfolio.unit_prices,
+    alpha_vantage_api_key=os.getenv('ALPHA_VANTAGE_API_KEY'),
 )
 
 # Predefined charts with their aggregation keys
@@ -133,6 +139,7 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            alpha_vantage_api_key=os.getenv('ALPHA_VANTAGE_API_KEY'),
         )
 
         result = {
@@ -145,7 +152,7 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
                 {
                     "account_name": account.name,
                     "account_total": sum(
-                        calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["value"]
+                        calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units, portfolio)["value"]
                         for holding in account.holdings
                     ),
                     "account_properties": account.properties,
@@ -202,6 +209,7 @@ async def get_portfolio_aggregations(
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            alpha_vantage_api_key=os.getenv('ALPHA_VANTAGE_API_KEY'),
         )
 
         result = []
@@ -245,6 +253,7 @@ async def get_holdings_table(
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            alpha_vantage_api_key=os.getenv('ALPHA_VANTAGE_API_KEY'),
         )
 
         # Create a dictionary to aggregate holdings across selected accounts
@@ -264,13 +273,13 @@ async def get_holdings_table(
                         "name": security.name,
                         "tags": security.tags,
                         "total_units": 0,
-                        "value_per_unit": calculator.calc_holding_value(security, 1)["value"],
+                        "value_per_unit": calculator.calc_holding_value(security, 1, portfolio)["value"],
                         "currency": security.currency,
                         # Generate mock historical prices for the last 30 days
                         "historical_prices": [
                             {
                                 "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                                "price": calculator.calc_holding_value(security, 1)["value"]
+                                "price": calculator.calc_holding_value(security, 1, portfolio)["value"]
                                 * (1 + 0.1 * math.sin(i / 5)),  # Generate sine wave pattern
                             }
                             for i in range(30)

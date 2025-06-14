@@ -10,3 +10,9 @@ PyYAML==6.0.2
 yfinance==0.2.51
 pymaya==0.2.1
 redis==5.2.1
+alpha_vantage
+python-dotenv
+pydantic
+pydantic-settings
+colorama
+loguru
