@@ -1,3 +1,5 @@
 # git-ignore all .yaml files except for demo.yaml
-*.yaml
-!demo.yaml
+#*.yaml
+#!demo.yaml
+__pycache__/** 
+models/__pycache__/**

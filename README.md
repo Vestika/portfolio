@@ -7,10 +7,10 @@
 ```bash
 brew install pyenv pyenv-virtualenv
 
-pyenv install 3.13.1
-pyenv local 3.13.1
+pyenv install 3.13.3
+pyenv local 3.13.3
 
-pyenv virtualenv 3.13.1 portfolio
+pyenv virtualenv 3.13.3 portfolio
 pyenv activate portfolio
 pyenv local portfolio
 
