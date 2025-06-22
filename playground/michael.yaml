@@ -29,8 +29,9 @@ config:
     "5137641": 1.0461 # Yalin Kaspit
     "5118393": 1.1937 # TTF Bonds
     "5113428": 1.4233 # KSM Bonds
-    IBIT: 60.50      # iShares Bitcoin Trust
-    META: 580.00     # Meta Platforms Inc
+    "5137740": 10.714 #KSM Kaspit
+    IBIT: 60.50       # iShares Bitcoin Trust
+    META: 580.00      # Meta Platforms Inc
 
 
 securities:
@@ -150,6 +151,11 @@ securities:
     tags:
       geographical:
         usa: 1.0
+
+  "5137740":
+    name: KSM Kaspit
+    type: bond
+    currency: ILS
 
   "1159235":
     name: iShares MSCI
@@ -293,3 +299,23 @@ accounts:
         units: 33
       - symbol: AVUV
         units: 50
+
+  - name: Lihi
+    properties:
+      owners: ["wife"]
+      type: bank-account
+    holdings:
+      - symbol: VTI
+        units: 760
+      - symbol: "1159235"
+        units: 1166
+      - symbol: "5137740"
+        units: 34934
+      - symbol: QQQ
+        units: 138
+      - symbol: "1183441"
+        units: 52
+      - symbol: FSTA
+        units: 102
+      - symbol: ILS
+        units: 88000
