@@ -564,56 +564,80 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             </div>
 
             <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label>Holdings</Label>
-                <Button
-                  type="button"
-                  onClick={addHolding}
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Holding
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {newAccount.holdings.map((holding, index) => (
-                  <div key={index} className="flex items-center space-x-2 p-2 border rounded-md">
-                    <Input
-                      placeholder="Symbol (e.g., AAPL)"
-                      value={holding.symbol}
-                      onChange={(e) => updateHolding(index, 'symbol', e.target.value)}
-                      className="flex-1"
-                      onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
-                      ref={(el) => holdingRefs.current[`${index}-symbol`] = el}
-                    />
-                    <Input
-                      placeholder="Units"
-                      type="number"
-                      step="0.01"
-                      value={holding.units}
-                      onChange={(e) => updateHolding(index, 'units', e.target.value)}
-                      className="w-24"
-                      onKeyDown={(e) => handleKeyDown(e, index, 'units')}
-                      ref={(el) => holdingRefs.current[`${index}-units`] = el}
-                    />
-                    {newAccount.holdings.length > 1 && (
-                      <Button
-                        type="button"
-                        onClick={() => removeHolding(index)}
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+              <Label>Holdings</Label>
+              <div className="rounded-md border">
+                {/* Table Header */}
+                <div className="flex items-center border-b bg-muted/50 px-0">
+                  <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
+                  <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
+                  <div className="w-12 px-3 py-3"></div>
+                </div>
+                
+                {/* Table Body */}
+                <div className="max-h-40 overflow-y-auto">
+                  {newAccount.holdings.map((holding, index) => (
+                    <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
+                      <div className="flex-1 p-0">
+                        <Input
+                          placeholder="e.g., AAPL"
+                          value={holding.symbol}
+                          onChange={(e) => {
+                            updateHolding(index, 'symbol', e.target.value);
+                            // Only add new row when both symbol and units have content
+                            setTimeout(() => {
+                              if (index === newAccount.holdings.length - 1 && 
+                                  e.target.value.trim() && 
+                                  holding.units.trim()) {
+                                addHolding();
+                              }
+                            }, 0);
+                          }}
+                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                          onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
+                          ref={(el) => holdingRefs.current[`${index}-symbol`] = el}
+                        />
+                      </div>
+                      <div className="w-28 p-0">
+                        <Input
+                          placeholder="0"
+                          type="number"
+                          step="1"
+                          value={holding.units}
+                          onChange={(e) => {
+                            updateHolding(index, 'units', e.target.value);
+                            // Only add new row when both symbol and units have content
+                            setTimeout(() => {
+                              if (index === newAccount.holdings.length - 1 && 
+                                  e.target.value.trim() && 
+                                  holding.symbol.trim()) {
+                                addHolding();
+                              }
+                            }, 0);
+                          }}
+                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                          onKeyDown={(e) => handleKeyDown(e, index, 'units')}
+                          ref={(el) => holdingRefs.current[`${index}-units`] = el}
+                        />
+                      </div>
+                      <div className="w-12 flex justify-center py-2">
+                        {newAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
+                          <Button
+                            type="button"
+                            onClick={() => removeHolding(index)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 Press Enter or ↓ to move to next field, ↑ to move up. New rows are added automatically.
+                💡 New rows are added automatically as you type
               </p>
             </div>
           </div>
@@ -706,56 +730,80 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             </div>
 
             <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label>Holdings</Label>
-                <Button
-                  type="button"
-                  onClick={addEditHolding}
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Holding
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {editAccount.holdings.map((holding, index) => (
-                  <div key={index} className="flex items-center space-x-2 p-2 border rounded-md">
-                    <Input
-                      placeholder="Symbol (e.g., AAPL)"
-                      value={holding.symbol}
-                      onChange={(e) => updateEditHolding(index, 'symbol', e.target.value)}
-                      className="flex-1"
-                      onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
-                      ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
-                    />
-                    <Input
-                      placeholder="Units"
-                      type="number"
-                      step="0.01"
-                      value={holding.units}
-                      onChange={(e) => updateEditHolding(index, 'units', e.target.value)}
-                      className="w-24"
-                      onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
-                      ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
-                    />
-                    {editAccount.holdings.length > 1 && (
-                      <Button
-                        type="button"
-                        onClick={() => removeEditHolding(index)}
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+              <Label>Holdings</Label>
+              <div className="rounded-md border">
+                {/* Table Header */}
+                <div className="flex items-center border-b bg-muted/50 px-0">
+                  <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
+                  <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
+                  <div className="w-12 px-3 py-3"></div>
+                </div>
+                
+                {/* Table Body */}
+                <div className="max-h-40 overflow-y-auto">
+                  {editAccount.holdings.map((holding, index) => (
+                    <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
+                      <div className="flex-1 p-0">
+                        <Input
+                          placeholder="e.g., AAPL"
+                          value={holding.symbol}
+                          onChange={(e) => {
+                            updateEditHolding(index, 'symbol', e.target.value);
+                            // Only add new row when both symbol and units have content
+                            setTimeout(() => {
+                              if (index === editAccount.holdings.length - 1 && 
+                                  e.target.value.trim() && 
+                                  holding.units.trim()) {
+                                addEditHolding();
+                              }
+                            }, 0);
+                          }}
+                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                          onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
+                          ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
+                        />
+                      </div>
+                      <div className="w-28 p-0">
+                        <Input
+                          placeholder="0"
+                          type="number"
+                          step="1"
+                          value={holding.units}
+                          onChange={(e) => {
+                            updateEditHolding(index, 'units', e.target.value);
+                            // Only add new row when both symbol and units have content
+                            setTimeout(() => {
+                              if (index === editAccount.holdings.length - 1 && 
+                                  e.target.value.trim() && 
+                                  holding.symbol.trim()) {
+                                addEditHolding();
+                              }
+                            }, 0);
+                          }}
+                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                          onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
+                          ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
+                        />
+                      </div>
+                      <div className="w-12 flex justify-center py-2">
+                        {editAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
+                          <Button
+                            type="button"
+                            onClick={() => removeEditHolding(index)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 Press Enter or ↓ to move to next field, ↑ to move up. New rows are added automatically.
+                💡 New rows are added automatically as you type
               </p>
             </div>
           </div>
