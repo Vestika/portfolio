@@ -431,7 +431,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           }}
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 border border-transparent hover:bg-slate-200 hover:text-slate-800 hover:border-slate-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                          className="h-8 w-8 border border-transparent hover:text-blue-500 hover:border-blue-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
                           title="Edit account"
                         >
                           <Edit className="h-4 w-4" />
