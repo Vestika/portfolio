@@ -11,7 +11,8 @@ import {
   Circle,
   Plus,
   Trash2,
-  X
+  X,
+  Edit
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -390,7 +391,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         : newAccount.owners.filter(o => o !== 'me');
                       setNewAccount({ ...newAccount, owners });
                     }}
-                    className="rounded border-gray-300"
+                    className="rounded border-border bg-background"
                   />
                   <Label htmlFor="owner-me" className="text-sm font-normal">Me</Label>
                 </div>
@@ -405,7 +406,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         : newAccount.owners.filter(o => o !== 'wife');
                       setNewAccount({ ...newAccount, owners });
                     }}
-                    className="rounded border-gray-300"
+                    className="rounded border-border bg-background"
                   />
                   <Label htmlFor="owner-wife" className="text-sm font-normal">Wife</Label>
                 </div>
