@@ -145,7 +145,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                   }}
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors"
+                  className="h-8 w-8 border border-transparent hover:text-red-500 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
                   title="Delete portfolio"
                 >
                   <Trash2 className="h-4 w-4" />

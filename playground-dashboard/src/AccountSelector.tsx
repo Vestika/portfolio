@@ -67,8 +67,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   );
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [showEditAccountModal, setShowEditAccountModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<string>('');
+  const [accountToEdit, setAccountToEdit] = useState<string>('');
   const [hoveredAccount, setHoveredAccount] = useState<string | null>(null);
   const [newAccount, setNewAccount] = useState({
     account_name: '',
@@ -76,7 +78,14 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     owners: ['me'],
     holdings: [{ symbol: '', units: '' }]
   });
+  const [editAccount, setEditAccount] = useState({
+    account_name: '',
+    account_type: 'bank-account',
+    owners: ['me'],
+    holdings: [{ symbol: '', units: '' }]
+  });
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const toggleAccountSelection = (accountName: string) => {
     const updatedAccounts = accounts.map(account =>
@@ -233,6 +242,120 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     setHoveredAccount(null);
   };
 
+  const handleEditAccount = async () => {
+    try {
+      // Filter out empty holdings and convert units to numbers
+      const validHoldings = editAccount.holdings
+        .filter(holding => holding.symbol.trim() && holding.units.trim())
+        .map(holding => ({
+          symbol: holding.symbol.trim(),
+          units: parseFloat(holding.units)
+        }));
+
+      const accountData = {
+        ...editAccount,
+        holdings: validHoldings
+      };
+
+      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountData),
+      });
+
+      if (response.ok) {
+        setShowEditAccountModal(false);
+        setAccountToEdit('');
+        setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
+        editHoldingRefs.current = {}; // Clear refs
+        
+        // Trigger refresh to reload the portfolio with updated account
+        await onAccountAdded();
+      } else {
+        const error = await response.json();
+        alert(`Error updating account: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`Error updating account: ${error}`);
+    }
+  };
+
+  const confirmEditAccount = (accountName: string) => {
+    const account = portfolioMetadata.accounts.find(acc => acc.account_name === accountName);
+    if (account) {
+      setAccountToEdit(accountName);
+      setEditAccount({
+        account_name: account.account_name,
+        account_type: account.account_type,
+        owners: account.owners,
+        holdings: account.holdings.map(h => ({ symbol: h.symbol, units: h.units.toString() }))
+      });
+      setShowEditAccountModal(true);
+      setHoveredAccount(null);
+    }
+  };
+
+  const addEditHolding = () => {
+    setEditAccount({
+      ...editAccount,
+      holdings: [...editAccount.holdings, { symbol: '', units: '' }]
+    });
+  };
+
+  const removeEditHolding = (index: number) => {
+    if (editAccount.holdings.length > 1) {
+      setEditAccount({
+        ...editAccount,
+        holdings: editAccount.holdings.filter((_, i) => i !== index)
+      });
+    }
+  };
+
+  const updateEditHolding = (index: number, field: 'symbol' | 'units', value: string) => {
+    const updatedHoldings = editAccount.holdings.map((holding, i) => 
+      i === index ? { ...holding, [field]: value } : holding
+    );
+    setEditAccount({
+      ...editAccount,
+      holdings: updatedHoldings
+    });
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number, field: 'symbol' | 'units') => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      
+      // If we're on the last holding and it has content, add a new one
+      if (index === editAccount.holdings.length - 1 && 
+          editAccount.holdings[index].symbol.trim() && 
+          editAccount.holdings[index].units.trim()) {
+        addEditHolding();
+        
+        // Focus the next row after state update
+        setTimeout(() => {
+          const nextKey = field === 'symbol' ? `edit-${index + 1}-units` : `edit-${index + 1}-symbol`;
+          editHoldingRefs.current[nextKey]?.focus();
+        }, 0);
+      } else if (index < editAccount.holdings.length - 1) {
+        // Navigate to next row
+        const nextKey = field === 'symbol' ? `edit-${index + 1}-symbol` : `edit-${index + 1}-units`;
+        editHoldingRefs.current[nextKey]?.focus();
+      } else {
+        // Navigate to next field in same row
+        const nextKey = field === 'symbol' ? `edit-${index}-units` : `edit-${index + 1}-symbol`;
+        editHoldingRefs.current[nextKey]?.focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (index > 0) {
+        const prevKey = `edit-${index - 1}-${field}`;
+        editHoldingRefs.current[prevKey]?.focus();
+      }
+    }
+  };
+
   const selectedAccountsCount = accounts.filter(account => account.isSelected).length;
 
   return (
@@ -298,21 +421,35 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   </div>
 
                   {/* Action Icons - appear below on hover */}
-                  {hoveredAccount === account.account_name && accounts.length > 1 && (
+                  {hoveredAccount === account.account_name && (
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2 pt-1 z-10">
                       <div className="flex space-x-1">
                         <Button
                           onClick={(e) => {
                             e.stopPropagation();
-                            confirmDeleteAccount(account.account_name);
+                            confirmEditAccount(account.account_name);
                           }}
-                          variant="destructive"
+                          variant="ghost"
                           size="icon"
-                          className="w-8 h-8 rounded-full shadow-lg hover:shadow-xl border-2 border-white"
-                          title="Delete account"
+                          className="h-8 w-8 border border-transparent hover:bg-slate-200 hover:text-slate-800 hover:border-slate-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                          title="Edit account"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Edit className="h-4 w-4" />
                         </Button>
+                        {accounts.length > 1 && (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              confirmDeleteAccount(account.account_name);
+                            }}
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 border border-transparent hover:text-red-500 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                            title="Delete account"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -476,6 +613,148 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               disabled={!newAccount.account_name || newAccount.owners.length === 0}
             >
               Add Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Edit Account Modal */}
+      <Dialog open={showEditAccountModal} onOpenChange={setShowEditAccountModal}>
+        <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Edit className="mr-2 h-5 w-5 text-blue-500" />
+              Edit Account
+            </DialogTitle>
+            <DialogDescription>
+              Update the account details and holdings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-account-name">Account Name</Label>
+              <Input
+                id="edit-account-name"
+                value={editAccount.account_name}
+                onChange={(e) => setEditAccount({ ...editAccount, account_name: e.target.value })}
+                placeholder="Enter account name"
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="edit-account-type">Account Type</Label>
+              <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank-account">Bank Account</SelectItem>
+                  <SelectItem value="investment-account">Investment Account</SelectItem>
+                  <SelectItem value="education-fund">Education Fund</SelectItem>
+                  <SelectItem value="retirement-account">Retirement Account</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label>Owners</Label>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="edit-owner-me"
+                    checked={editAccount.owners.includes('me')}
+                    onChange={(e) => {
+                      const owners = e.target.checked 
+                        ? [...new Set([...editAccount.owners, 'me'])]
+                        : editAccount.owners.filter(o => o !== 'me');
+                      setEditAccount({ ...editAccount, owners });
+                    }}
+                    className="rounded border-border bg-background"
+                  />
+                  <Label htmlFor="edit-owner-me" className="text-sm font-normal">Me</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="edit-owner-wife"
+                    checked={editAccount.owners.includes('wife')}
+                    onChange={(e) => {
+                      const owners = e.target.checked 
+                        ? [...new Set([...editAccount.owners, 'wife'])]
+                        : editAccount.owners.filter(o => o !== 'wife');
+                      setEditAccount({ ...editAccount, owners });
+                    }}
+                    className="rounded border-border bg-background"
+                  />
+                  <Label htmlFor="edit-owner-wife" className="text-sm font-normal">Wife</Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Holdings</Label>
+                <Button
+                  type="button"
+                  onClick={addEditHolding}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Holding
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {editAccount.holdings.map((holding, index) => (
+                  <div key={index} className="flex items-center space-x-2 p-2 border rounded-md">
+                    <Input
+                      placeholder="Symbol (e.g., AAPL)"
+                      value={holding.symbol}
+                      onChange={(e) => updateEditHolding(index, 'symbol', e.target.value)}
+                      className="flex-1"
+                      onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
+                      ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
+                    />
+                    <Input
+                      placeholder="Units"
+                      type="number"
+                      step="0.01"
+                      value={holding.units}
+                      onChange={(e) => updateEditHolding(index, 'units', e.target.value)}
+                      className="w-24"
+                      onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
+                      ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
+                    />
+                    {editAccount.holdings.length > 1 && (
+                      <Button
+                        type="button"
+                        onClick={() => removeEditHolding(index)}
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                💡 Press Enter or ↓ to move to next field, ↑ to move up. New rows are added automatically.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditAccountModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleEditAccount}
+              disabled={!editAccount.account_name || editAccount.owners.length === 0}
+            >
+              Update Account
             </Button>
           </DialogFooter>
         </DialogContent>

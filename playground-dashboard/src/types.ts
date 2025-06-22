@@ -7,6 +7,12 @@ export interface PortfolioMetadata {
 export interface AccountInfo {
   account_name: string;
   account_total: number;
+  account_type: string;
+  owners: string[];
+  holdings: {
+    symbol: string;
+    units: number;
+  }[];
   account_properties?: {
     [currency: string]: number;
   };
