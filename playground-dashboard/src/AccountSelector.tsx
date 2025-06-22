@@ -242,56 +242,29 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     setHoveredAccount(null);
   };
 
-  const handleEditAccount = async () => {
-    try {
-      // Filter out empty holdings and convert units to numbers
-      const validHoldings = editAccount.holdings
-        .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
-
-      const accountData = {
-        ...editAccount,
-        holdings: validHoldings
-      };
-
-      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(accountData),
-      });
-
-      if (response.ok) {
-        setShowEditAccountModal(false);
-        setAccountToEdit('');
-        setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
-        editHoldingRefs.current = {}; // Clear refs
-        
-        // Trigger refresh to reload the portfolio with updated account
-        await onAccountAdded();
-      } else {
-        const error = await response.json();
-        alert(`Error updating account: ${error.detail}`);
-      }
-    } catch (error) {
-      alert(`Error updating account: ${error}`);
-    }
-  };
-
   const confirmEditAccount = (accountName: string) => {
     const account = portfolioMetadata.accounts.find(acc => acc.account_name === accountName);
+    
     if (account) {
       setAccountToEdit(accountName);
+      
+      // Handle different possible holdings structures
+      let mappedHoldings = [{ symbol: '', units: '' }]; // Default empty holding
+      
+      if (account.holdings && Array.isArray(account.holdings) && account.holdings.length > 0) {
+        mappedHoldings = account.holdings.map(h => ({
+          symbol: h.symbol || '',
+          units: (h.units || 0).toString()
+        }));
+      }
+      
       setEditAccount({
         account_name: account.account_name,
-        account_type: account.account_type,
-        owners: account.owners,
-        holdings: account.holdings.map(h => ({ symbol: h.symbol, units: h.units.toString() }))
+        account_type: account.account_type || 'bank-account',
+        owners: account.owners || ['me'],
+        holdings: mappedHoldings
       });
+      
       setShowEditAccountModal(true);
       setHoveredAccount(null);
     }
@@ -353,6 +326,46 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         const prevKey = `edit-${index - 1}-${field}`;
         editHoldingRefs.current[prevKey]?.focus();
       }
+    }
+  };
+
+  const handleEditAccount = async () => {
+    try {
+      // Filter out empty holdings and convert units to numbers
+      const validHoldings = editAccount.holdings
+        .filter(holding => holding.symbol.trim() && holding.units.trim())
+        .map(holding => ({
+          symbol: holding.symbol.trim(),
+          units: parseFloat(holding.units)
+        }));
+
+      const accountData = {
+        ...editAccount,
+        holdings: validHoldings
+      };
+
+      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(accountData),
+      });
+
+      if (response.ok) {
+        setShowEditAccountModal(false);
+        setAccountToEdit('');
+        setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
+        editHoldingRefs.current = {}; // Clear refs
+        
+        // Trigger refresh to reload the portfolio with updated account
+        await onAccountAdded();
+      } else {
+        const error = await response.json();
+        alert(`Error updating account: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`Error updating account: ${error}`);
     }
   };
 

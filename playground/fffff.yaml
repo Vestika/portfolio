@@ -27,12 +27,6 @@ securities:
     type: stock
     currency: USD
 accounts:
-- name: test
-  properties:
-    owners:
-    - me
-    type: bank-account
-  holdings: []
 - name: test1234
   properties:
     owners:
@@ -40,6 +34,6 @@ accounts:
     type: bank-account
   holdings:
   - symbol: nvda
-    units: 5
+    units: 10
   - symbol: vti
     units: 10

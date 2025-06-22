@@ -143,20 +143,32 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
             "accounts": [],
         }
         for account in portfolio.accounts:
-            result["accounts"].append(
-                {
-                    "account_name": account.name,
-                    "account_total": sum(
-                        calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["value"]
-                        for holding in account.holdings
-                    ),
-                    "account_properties": account.properties,
-                    "account_cash": {},
-                }
-            )
+            account_data = {
+                "account_name": account.name,
+                "account_total": sum(
+                    calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["value"]
+                    for holding in account.holdings
+                ),
+                "account_properties": account.properties,
+                "account_cash": {},
+                # Add missing fields needed for editing
+                "account_type": account.properties.get("type", "bank-account"),
+                "owners": account.properties.get("owners", ["me"]),
+                "holdings": [
+                    {
+                        "symbol": holding.symbol,
+                        "units": holding.units
+                    }
+                    for holding in account.holdings
+                ]
+            }
+            
+            # Calculate cash holdings
             for holding in account.holdings:
                 if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
-                    result["accounts"][-1]["account_cash"][holding.symbol] = holding.units
+                    account_data["account_cash"][holding.symbol] = holding.units
+            
+            result["accounts"].append(account_data)
 
         return result
     except FileNotFoundError:
@@ -506,6 +518,86 @@ async def delete_account_from_portfolio(file: str, account_name: str) -> dict[st
             del portfolios[file]
             
         return {"message": f"Account '{account_name}' deleted from {file} successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fast_api_app.put("/portfolio/{file}/accounts/{account_name}")
+async def update_account_in_portfolio(file: str, account_name: str, request: CreateAccountRequest) -> dict[str, str]:
+    """
+    Update an existing account in a portfolio file.
+    """
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
+        
+        # Load existing portfolio data
+        with open(file_path, 'r') as f:
+            portfolio_data = yaml.safe_load(f)
+        
+        # Check if account exists
+        accounts = portfolio_data.get('accounts', [])
+        account_index = None
+        for i, acc in enumerate(accounts):
+            if acc['name'] == account_name:
+                account_index = i
+                break
+        
+        if account_index is None:
+            raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+        
+        # Check if new account name conflicts with existing accounts (unless it's the same account)
+        if request.account_name != account_name:
+            existing_accounts = [acc['name'] for acc in accounts]
+            if request.account_name in existing_accounts:
+                raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
+        
+        # Auto-create securities for new symbols
+        if 'securities' not in portfolio_data:
+            portfolio_data['securities'] = {}
+        
+        for holding in request.holdings:
+            symbol = holding.get('symbol')
+            if symbol and symbol not in portfolio_data['securities']:
+                # Create a basic security entry
+                portfolio_data['securities'][symbol] = {
+                    'name': symbol,
+                    'type': 'stock',  # Default type
+                    'currency': 'USD'  # Default currency
+                }
+                
+                # Add to unit_prices with default value
+                if 'config' not in portfolio_data:
+                    portfolio_data['config'] = {}
+                if 'unit_prices' not in portfolio_data['config']:
+                    portfolio_data['config']['unit_prices'] = {}
+                portfolio_data['config']['unit_prices'][symbol] = 100.0  # Default price
+        
+        # Update the account
+        updated_account = {
+            "name": request.account_name,
+            "properties": {
+                "owners": request.owners,
+                "type": request.account_type
+            },
+            "holdings": request.holdings
+        }
+        
+        accounts[account_index] = updated_account
+        
+        # Write back to file
+        with open(file_path, 'w') as f:
+            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
+        
+        # Clear portfolios cache to force reload
+        if file in portfolios:
+            del portfolios[file]
+            
+        return {"message": f"Account '{account_name}' updated successfully"}
         
     except HTTPException:
         raise
