@@ -104,6 +104,48 @@ const App: React.FC = () => {
     setIsValueVisible(!isValueVisible);
   };
 
+  const handlePortfolioCreated = async (newFilename: string) => {
+    // Refresh available files
+    await fetchAvailableFiles();
+    // Switch to the new file
+    setSelectedFile(newFilename);
+  };
+
+  const handleAccountAdded = async () => {
+    // Refresh the current portfolio metadata and data
+    try {
+      setIsLoading(true);
+      await fetchPortfolioMetadata();
+      await fetchPortfolioBreakdown(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePortfolioDeleted = async (deletedFilename: string) => {
+    // Refresh available files
+    await fetchAvailableFiles();
+    
+    // If the deleted portfolio was the selected one, switch to the first available
+    if (deletedFilename === selectedFile) {
+      const remainingFiles = availableFiles.filter(file => file.filename !== deletedFilename);
+      if (remainingFiles.length > 0) {
+        setSelectedFile(remainingFiles[0].filename);
+      }
+    }
+  };
+
+  const handleAccountDeleted = async () => {
+    // Refresh the current portfolio metadata and data
+    try {
+      setIsLoading(true);
+      await fetchPortfolioMetadata();
+      await fetchPortfolioBreakdown(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (isLoading) return <LoadingScreen />;
   if (error) return <div>{error}</div>;
   if (!portfolioMetadata || !portfolioData) return null;
@@ -117,6 +159,10 @@ const App: React.FC = () => {
         availableFiles={availableFiles}
         selectedFile={selectedFile}
         onFileChange={setSelectedFile}
+        onPortfolioCreated={handlePortfolioCreated}
+        onAccountAdded={handleAccountAdded}
+        onPortfolioDeleted={handlePortfolioDeleted}
+        onAccountDeleted={handleAccountDeleted}
       />
       <PortfolioSummary
         accounts={portfolioMetadata.accounts}

@@ -32,6 +32,8 @@ export interface PortfolioSelectorProps {
   selectedFile: string;
   onFileChange: (filename: string) => void;
   userName: string;
+  onPortfolioCreated: (newFilename: string) => Promise<void>;
+  onPortfolioDeleted: (deletedFilename: string) => Promise<void>;
 }
 
 export interface ChartBreakdown {

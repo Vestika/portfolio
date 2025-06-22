@@ -16,6 +16,8 @@ from playground.models.portfolio import Portfolio
 from playground.models.security_type import SecurityType
 from playground.portfolio_calculator import PortfolioCalculator
 from playground.utils import filter_security, filter_account
+import yaml
+from pydantic import BaseModel
 
 logger = logging.Logger(__name__)
 
@@ -292,6 +294,221 @@ async def get_holdings_table(
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File {file} not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreatePortfolioRequest(BaseModel):
+    portfolio_name: str
+    base_currency: str
+
+class CreateAccountRequest(BaseModel):
+    account_name: str
+    account_type: str = "bank-account"
+    owners: list[str] = ["me"]
+    holdings: list[dict[str, Any]] = []
+
+
+@fast_api_app.post("/portfolio/create")
+async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
+    """
+    Create a new portfolio YAML file with basic structure.
+    """
+    try:
+        # Sanitize the portfolio name to create a safe filename
+        safe_name = request.portfolio_name.lower().replace(' ', '-').replace('_', '-')
+        filename = f"{safe_name}.yaml"
+        
+        file_path = Path(filename)
+        if file_path.exists():
+            raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
+        
+        # Create basic portfolio structure
+        portfolio_data = {
+            "config": {
+                "user_name": request.portfolio_name,
+                "base_currency": request.base_currency,
+                "exchange_rates": {
+                    "USD": 3.56,
+                    "EUR": 3.95
+                },
+                "unit_prices": {
+                    "USD": 1.0,
+                    "ILS": 1.0
+                }
+            },
+            "securities": {
+                "USD": {
+                    "name": "USD",
+                    "type": "cash",
+                    "currency": "USD"
+                },
+                "ILS": {
+                    "name": "ILS", 
+                    "type": "cash",
+                    "currency": "ILS"
+                }
+            },
+            "accounts": []
+        }
+        
+        # Write the file
+        with open(file_path, 'w') as f:
+            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
+        
+        # Clear portfolios cache to force reload
+        if filename in portfolios:
+            del portfolios[filename]
+            
+        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "filename": filename}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fast_api_app.post("/portfolio/{file}/accounts")
+async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> dict[str, str]:
+    """
+    Add a new account to an existing portfolio file.
+    """
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
+        
+        # Load existing portfolio data
+        with open(file_path, 'r') as f:
+            portfolio_data = yaml.safe_load(f)
+        
+        # Check if account already exists
+        existing_accounts = [acc['name'] for acc in portfolio_data.get('accounts', [])]
+        if request.account_name in existing_accounts:
+            raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
+        
+        # Auto-create securities for new symbols
+        if 'securities' not in portfolio_data:
+            portfolio_data['securities'] = {}
+        
+        for holding in request.holdings:
+            symbol = holding.get('symbol')
+            if symbol and symbol not in portfolio_data['securities']:
+                # Create a basic security entry
+                portfolio_data['securities'][symbol] = {
+                    'name': symbol,
+                    'type': 'stock',  # Default type
+                    'currency': 'USD'  # Default currency
+                }
+                
+                # Add to unit_prices with default value
+                if 'config' not in portfolio_data:
+                    portfolio_data['config'] = {}
+                if 'unit_prices' not in portfolio_data['config']:
+                    portfolio_data['config']['unit_prices'] = {}
+                portfolio_data['config']['unit_prices'][symbol] = 100.0  # Default price
+        
+        # Add new account
+        new_account = {
+            "name": request.account_name,
+            "properties": {
+                "owners": request.owners,
+                "type": request.account_type
+            },
+            "holdings": request.holdings
+        }
+        
+        if 'accounts' not in portfolio_data:
+            portfolio_data['accounts'] = []
+            
+        portfolio_data['accounts'].append(new_account)
+        
+        # Write back to file
+        with open(file_path, 'w') as f:
+            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
+        
+        # Clear portfolios cache to force reload
+        if file in portfolios:
+            del portfolios[file]
+            
+        return {"message": f"Account '{request.account_name}' added to {file} successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fast_api_app.delete("/portfolio/{file}")
+async def delete_portfolio(file: str) -> dict[str, str]:
+    """
+    Delete an entire portfolio YAML file.
+    """
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
+        
+        # Check if this is the only portfolio file
+        yaml_files = glob.glob("*.yaml")
+        if len(yaml_files) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
+        
+        # Delete the file
+        file_path.unlink()
+        
+        # Clear from portfolios cache
+        if file in portfolios:
+            del portfolios[file]
+            
+        return {"message": f"Portfolio {file} deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@fast_api_app.delete("/portfolio/{file}/accounts/{account_name}")
+async def delete_account_from_portfolio(file: str, account_name: str) -> dict[str, str]:
+    """
+    Delete a specific account from a portfolio file.
+    """
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
+        
+        # Load existing portfolio data
+        with open(file_path, 'r') as f:
+            portfolio_data = yaml.safe_load(f)
+        
+        # Check if account exists
+        accounts = portfolio_data.get('accounts', [])
+        account_names = [acc['name'] for acc in accounts]
+        
+        if account_name not in account_names:
+            raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+        
+        # Check if this is the last account
+        if len(accounts) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last remaining account")
+        
+        # Remove the account
+        portfolio_data['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
+        
+        # Write back to file
+        with open(file_path, 'w') as f:
+            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
+        
+        # Clear portfolios cache to force reload
+        if file in portfolios:
+            del portfolios[file]
+            
+        return {"message": f"Account '{account_name}' deleted from {file} successfully"}
+        
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
