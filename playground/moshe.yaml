@@ -1,5 +1,5 @@
 config:
-  user_name: fffff
+  user_name: Moshe
   base_currency: ILS
   exchange_rates:
     USD: 3.56
@@ -7,10 +7,9 @@ config:
   unit_prices:
     USD: 1.0
     ILS: 1.0
+    msft: 100.0
     nvda: 100.0
     vti: 100.0
-    msft: 100.0
-    avuv: 100.0
 securities:
   USD:
     name: USD
@@ -20,6 +19,10 @@ securities:
     name: ILS
     type: cash
     currency: ILS
+  msft:
+    name: msft
+    type: stock
+    currency: USD
   nvda:
     name: nvda
     type: stock
@@ -28,36 +31,16 @@ securities:
     name: vti
     type: stock
     currency: USD
-  msft:
-    name: msft
-    type: stock
-    currency: USD
-  avuv:
-    name: avuv
-    type: stock
-    currency: USD
 accounts:
-- name: test1234
+- name: Psagot
   properties:
     owners:
     - me
-    type: bank-account
-  holdings:
-  - symbol: nvda
-    units: 10
-  - symbol: vti
-    units: 10
-- name: f
-  properties:
-    owners:
-    - me
-    type: bank-account
+    type: investment-account
   holdings:
   - symbol: msft
-    units: 4
+    units: 10
   - symbol: nvda
-    units: 4
+    units: 2
   - symbol: vti
-    units: 4
-  - symbol: avuv
-    units: 4
+    units: 100

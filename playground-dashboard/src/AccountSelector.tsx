@@ -117,13 +117,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     onToggleVisibility();
   };
 
-  const addHolding = () => {
-    setNewAccount({
-      ...newAccount,
-      holdings: [...newAccount.holdings, { symbol: '', units: '' }]
-    });
-  };
-
   const removeHolding = (index: number) => {
     if (newAccount.holdings.length > 1) {
       setNewAccount({
@@ -137,9 +130,27 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     const updatedHoldings = newAccount.holdings.map((holding, i) => 
       i === index ? { ...holding, [field]: value } : holding
     );
+    
+    // Auto-add new row if this is the last row and either field has content
+    if (index === updatedHoldings.length - 1 && value.trim()) {
+      updatedHoldings.push({ symbol: '', units: '' });
+    }
+    
+    // Auto-remove empty rows (except if it would leave us with no rows)
+    const filteredHoldings = updatedHoldings.filter((holding, i) => {
+      // Keep the row if it has content in either field
+      if (holding.symbol.trim() || holding.units.trim()) return true;
+      // Keep at least one empty row
+      const nonEmptyCount = updatedHoldings.filter(h => h.symbol.trim() || h.units.trim()).length;
+      return nonEmptyCount === 0 || i === updatedHoldings.length - 1;
+    });
+    
+    // Ensure we always have at least one row
+    const finalHoldings = filteredHoldings.length > 0 ? filteredHoldings : [{ symbol: '', units: '' }];
+    
     setNewAccount({
       ...newAccount,
-      holdings: updatedHoldings
+      holdings: finalHoldings
     });
   };
 
@@ -147,18 +158,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
       
-      // If we're on the last holding and it has content, add a new one
-      if (index === newAccount.holdings.length - 1 && 
-          newAccount.holdings[index].symbol.trim() && 
-          newAccount.holdings[index].units.trim()) {
-        addHolding();
-        
-        // Focus the next row after state update
-        setTimeout(() => {
-          const nextKey = field === 'symbol' ? `${index + 1}-units` : `${index + 1}-symbol`;
-          holdingRefs.current[nextKey]?.focus();
-        }, 0);
-      } else if (index < newAccount.holdings.length - 1) {
+      if (index < newAccount.holdings.length - 1) {
         // Navigate to next row
         const nextKey = field === 'symbol' ? `${index + 1}-symbol` : `${index + 1}-units`;
         holdingRefs.current[nextKey]?.focus();
@@ -270,13 +270,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     }
   };
 
-  const addEditHolding = () => {
-    setEditAccount({
-      ...editAccount,
-      holdings: [...editAccount.holdings, { symbol: '', units: '' }]
-    });
-  };
-
   const removeEditHolding = (index: number) => {
     if (editAccount.holdings.length > 1) {
       setEditAccount({
@@ -290,9 +283,27 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     const updatedHoldings = editAccount.holdings.map((holding, i) => 
       i === index ? { ...holding, [field]: value } : holding
     );
+    
+    // Auto-add new row if this is the last row and either field has content
+    if (index === updatedHoldings.length - 1 && value.trim()) {
+      updatedHoldings.push({ symbol: '', units: '' });
+    }
+    
+    // Auto-remove empty rows (except if it would leave us with no rows)
+    const filteredHoldings = updatedHoldings.filter((holding, i) => {
+      // Keep the row if it has content in either field
+      if (holding.symbol.trim() || holding.units.trim()) return true;
+      // Keep at least one empty row
+      const nonEmptyCount = updatedHoldings.filter(h => h.symbol.trim() || h.units.trim()).length;
+      return nonEmptyCount === 0 || i === updatedHoldings.length - 1;
+    });
+    
+    // Ensure we always have at least one row
+    const finalHoldings = filteredHoldings.length > 0 ? filteredHoldings : [{ symbol: '', units: '' }];
+    
     setEditAccount({
       ...editAccount,
-      holdings: updatedHoldings
+      holdings: finalHoldings
     });
   };
 
@@ -300,18 +311,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
       
-      // If we're on the last holding and it has content, add a new one
-      if (index === editAccount.holdings.length - 1 && 
-          editAccount.holdings[index].symbol.trim() && 
-          editAccount.holdings[index].units.trim()) {
-        addEditHolding();
-        
-        // Focus the next row after state update
-        setTimeout(() => {
-          const nextKey = field === 'symbol' ? `edit-${index + 1}-units` : `edit-${index + 1}-symbol`;
-          editHoldingRefs.current[nextKey]?.focus();
-        }, 0);
-      } else if (index < editAccount.holdings.length - 1) {
+      if (index < editAccount.holdings.length - 1) {
         // Navigate to next row
         const nextKey = field === 'symbol' ? `edit-${index + 1}-symbol` : `edit-${index + 1}-units`;
         editHoldingRefs.current[nextKey]?.focus();
@@ -583,14 +583,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           value={holding.symbol}
                           onChange={(e) => {
                             updateHolding(index, 'symbol', e.target.value);
-                            // Only add new row when both symbol and units have content
-                            setTimeout(() => {
-                              if (index === newAccount.holdings.length - 1 && 
-                                  e.target.value.trim() && 
-                                  holding.units.trim()) {
-                                addHolding();
-                              }
-                            }, 0);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
@@ -605,14 +597,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           value={holding.units}
                           onChange={(e) => {
                             updateHolding(index, 'units', e.target.value);
-                            // Only add new row when both symbol and units have content
-                            setTimeout(() => {
-                              if (index === newAccount.holdings.length - 1 && 
-                                  e.target.value.trim() && 
-                                  holding.symbol.trim()) {
-                                addHolding();
-                              }
-                            }, 0);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleKeyDown(e, index, 'units')}
@@ -637,7 +621,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 New rows are added automatically as you type
+                💡 Rows are added automatically when typing and removed when cleared
               </p>
             </div>
           </div>
@@ -749,14 +733,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           value={holding.symbol}
                           onChange={(e) => {
                             updateEditHolding(index, 'symbol', e.target.value);
-                            // Only add new row when both symbol and units have content
-                            setTimeout(() => {
-                              if (index === editAccount.holdings.length - 1 && 
-                                  e.target.value.trim() && 
-                                  holding.units.trim()) {
-                                addEditHolding();
-                              }
-                            }, 0);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
@@ -771,14 +747,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           value={holding.units}
                           onChange={(e) => {
                             updateEditHolding(index, 'units', e.target.value);
-                            // Only add new row when both symbol and units have content
-                            setTimeout(() => {
-                              if (index === editAccount.holdings.length - 1 && 
-                                  e.target.value.trim() && 
-                                  holding.symbol.trim()) {
-                                addEditHolding();
-                              }
-                            }, 0);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
@@ -803,7 +771,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 New rows are added automatically as you type
+                💡 Rows are added automatically when typing and removed when cleared
               </p>
             </div>
           </div>
