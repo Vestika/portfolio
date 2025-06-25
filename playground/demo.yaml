@@ -1,0 +1,234 @@
+config:
+  user_name: Demo
+  base_currency: ILS
+
+  exchange_rates:
+    USD: 3.57
+    EUR: 3.95
+
+  unit_prices:
+    USD: 1.0
+    ILS: 1.0
+    VTI: 299.93
+    VXUS: 61.7
+    SMH: 249.49
+    AVUV: 102.01
+    CRWD: 364.38
+    GOOG: 191.72
+    MSFT: 365
+    HCP: 33.78
+    INTC: 20.38
+    NKE: 77.6
+    TSLA: 439.46
+    NVDA: 134
+    QQQ: 530.53
+    FSTA: 51.69
+    "1159235": 327.6  # iShares MSCI
+    "1185164": 430.1  # Invesco MSCI
+    "1183441": 426.7  # Invesco S&P 500
+    "5137641": 1.0461 # Yalin Kaspit
+    "5118393": 1.1937 # TTF Bonds
+    "5113428": 1.4233 # KSM Bonds
+
+
+securities:
+  MSFT:
+    name: Microsoft
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  FSTA:
+    name: FSTA
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  QQQ:
+    name: Nasdaq
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  VTI:
+    name: VTI
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+      test: 1
+
+  VXUS:
+    name: VXUS
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        international: 0.98
+        israel: 0.02
+
+  SMH:
+    name: SMH Semiconductors
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        usa: 0.8
+        international: 0.2
+
+  AVUV:
+    name: Avantis Small Cap
+    type: etf
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  USD:
+    name: USD
+    type: cash
+    currency: USD
+
+  ILS:
+    name: ILS
+    type: cash
+    currency: ILS
+
+  CRWD:
+    name: CrowdStrike
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  GOOG:
+    name: Google
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  HCP:
+    name: HashiCorp
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  INTC:
+    name: Intel
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  NKE:
+    name: Nike
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  TSLA:
+    name: Tesla
+    type: stock
+    currency: USD
+    tags:
+      geographical:
+        usa: 1.0
+
+  "1159235":
+    name: iShares MSCI
+    type: etf
+    currency: ILS
+    tags:
+      geographical:
+        usa: 0.6
+        international: 0.4
+
+  "1185164":
+    name: Invesco MSCI
+    type: etf
+    currency: ILS
+    tags:
+      geographical:
+        usa: 0.6
+        international: 0.4
+
+  "1183441":
+    name: Invesco S&P 500
+    type: etf
+    currency: ILS
+    tags:
+      geographical:
+        usa: 1.0
+
+  "5137641":
+    name: Yalin Kaspit
+    type: bond
+    currency: ILS
+
+  "5118393":
+    name: TTF Bonds
+    type: bond
+    currency: ILS
+
+  "5113428":
+    name: KSM Bonds
+    type: bond
+    currency: ILS
+
+accounts:
+  - name: Mizrahi Tfahot
+    properties:
+      owners: ["me"]
+      type: education-fund
+    holdings:
+      - symbol: "1185164"
+        units: 10
+
+  - name: OneZero
+    properties:
+      owners: ["me"]
+      type: bank-account
+    holdings:
+      - symbol: ILS
+        units: 20000
+
+  - name: Schwab
+    properties:
+      owners: ["me"]
+      type: investment-account
+    holdings:
+      - symbol: MSFT
+        units: 10
+
+  - name: Interactive Brokers
+    properties:
+      owners: ["me", "wife"]
+      type: investment-account
+    holdings:
+      - symbol: SMH
+        units: 10
+      - symbol: VTI
+        units: 100
+      - symbol: GOOG
+        units: 10
+      - symbol: TSLA
+        units: 10
+      - symbol: ILS
+        units: 120
+      - symbol: USD
+        units: 199.7

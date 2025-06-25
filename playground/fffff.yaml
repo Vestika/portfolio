@@ -1,0 +1,59 @@
+config:
+  user_name: fffff
+  base_currency: ILS
+  exchange_rates:
+    USD: 3.56
+    EUR: 3.95
+  unit_prices:
+    USD: 1.0
+    ILS: 1.0
+securities:
+  USD:
+    name: USD
+    type: cash
+    currency: USD
+  ILS:
+    name: ILS
+    type: cash
+    currency: ILS
+  nvda:
+    name: nvda
+    type: stock
+    currency: USD
+  vti:
+    name: vti
+    type: stock
+    currency: USD
+  msft:
+    name: msft
+    type: stock
+    currency: USD
+  avuv:
+    name: avuv
+    type: stock
+    currency: USD
+accounts:
+- name: test1234
+  properties:
+    owners:
+    - me
+    type: bank-account
+  holdings:
+  - symbol: nvda
+    units: 10
+  - symbol: vti
+    units: 10
+- name: f
+  properties:
+    owners:
+    - me
+    type: bank-account
+  holdings:
+  - symbol: msft
+    units: 4
+  - symbol: nvda
+    units: 4
+  - symbol: vti
+    units: 4
+  - symbol: avuv
+    units: 4

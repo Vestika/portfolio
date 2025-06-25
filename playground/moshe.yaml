@@ -1,0 +1,43 @@
+config:
+  user_name: Moshe
+  base_currency: ILS
+  exchange_rates:
+    USD: 3.56
+    EUR: 3.95
+  unit_prices:
+    USD: 1.0
+    ILS: 1.0
+securities:
+  USD:
+    name: USD
+    type: cash
+    currency: USD
+  ILS:
+    name: ILS
+    type: cash
+    currency: ILS
+  msft:
+    name: msft
+    type: stock
+    currency: USD
+  nvda:
+    name: nvda
+    type: stock
+    currency: USD
+  vti:
+    name: vti
+    type: stock
+    currency: USD
+accounts:
+- name: Psagot
+  properties:
+    owners:
+    - me
+    type: investment-account
+  holdings:
+  - symbol: msft
+    units: 10
+  - symbol: nvda
+    units: 2
+  - symbol: vti
+    units: 100
