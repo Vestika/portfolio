@@ -68,7 +68,7 @@ const App: React.FC = () => {
       const holdings = await axios.get(`http://localhost:8000/portfolio/holdings?${holdingsParams}`);
       setHoldingsData(holdings.data);
 
-      setTimeout(() => { setIsLoading(false); }, 300);
+      setIsLoading(false);
     } catch (err) {
       setError('Failed to fetch portfolio breakdown');
       setTimeout(() => { setIsLoading(false); }, 300);
