@@ -1,6 +1,6 @@
 import asyncio
 import httpx
-import pymaya
+from pymaya.maya import Maya
 from abc import ABC, abstractmethod
 from datetime import datetime, date
 from loguru import logger
@@ -26,10 +26,10 @@ class StockFetcher(ABC):
 class FinnhubFetcher(StockFetcher):
     """Fetcher for US stocks using Finnhub API"""
     
-    def __init__(self) -> None:
-        self.api_key = settings.finnhub_api_key
-        self.base_url = settings.finnhub_base_url
-        
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.timeout = 10.0
+    
     def get_market_type(self) -> Literal["US", "TASE"]:
         return "US"
     
@@ -41,36 +41,34 @@ class FinnhubFetcher(StockFetcher):
             
         try:
             async with httpx.AsyncClient() as client:
-                # Get current price
-                price_response = await client.get(
-                    f"{self.base_url}/quote",
+                response = await client.get(
+                    "https://finnhub.io/api/v1/quote",
                     params={"symbol": symbol, "token": self.api_key},
-                    timeout=10.0
+                    timeout=self.timeout
                 )
-                price_response.raise_for_status()
-                price_data = price_response.json()
+                response.raise_for_status()
                 
-                if not price_data or price_data.get("c") is None:
-                    logger.warning(f"No price data found for symbol {symbol}")
+                data = response.json()
+                current_price = data.get("c")
+                
+                if current_price is None or current_price == 0:
+                    logger.warning(f"No price data available for symbol: {symbol}")
                     return None
-                
-                # Get company profile for additional info
-                profile_response = await client.get(
-                    f"{self.base_url}/stock/profile2",
-                    params={"symbol": symbol, "token": self.api_key},
-                    timeout=10.0
-                )
-                profile_data = {}
-                if profile_response.status_code == 200:
-                    profile_data = profile_response.json()
                 
                 return {
                     "symbol": symbol,
-                    "price": float(price_data["c"]),  # Current price
-                    "currency": profile_data.get("currency", "USD"),
+                    "price": float(current_price),
+                    "currency": "USD",  # Finnhub returns USD prices
                     "market": "US",
-                    "date": date.today().isoformat(),
-                    "fetched_at": datetime.utcnow()
+                    "source": "finnhub",
+                    "fetched_at": datetime.utcnow(),
+                    "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "previous_close": data.get("pc"),
+                    "change": data.get("d"),
+                    "change_percent": data.get("dp"),
+                    "high": data.get("h"),
+                    "low": data.get("l"),
+                    "open": data.get("o")
                 }
                 
         except httpx.HTTPError as e:
@@ -96,50 +94,116 @@ class TaseFetcher(StockFetcher):
                     # Convert symbol to integer for TASE
                     symbol_int = int(symbol)
                     
-                    # Get stock data using pymaya
-                    stock_data = pymaya.get_stock_data(symbol_int)
+                    # Create Maya instance and get detailed stock data including price
+                    maya = Maya()
                     
-                    if not stock_data or not stock_data.get("LastPrice"):
-                        logger.warning(f"No price data found for TASE symbol {symbol}")
+                    # Get detailed information for the specific security (includes current price)
+                    details = maya.get_details(str(symbol_int))
+                    
+                    if not details:
+                        logger.warning(f"No details found for TASE symbol: {symbol}")
                         return None
+                    
+                    logger.debug(f"TASE details for {symbol}: {details}")
+                    
+                    # Different securities have different price fields
+                    price = None
+                    
+                    # Try different price fields based on security type
+                    if 'LastRate' in details and details['LastRate']:
+                        # ETFs and stocks typically use LastRate
+                        price = float(details['LastRate'])
+                        price_field = 'LastRate'
+                    elif 'UnitValuePrice' in details and details['UnitValuePrice']:
+                        # Some funds use UnitValuePrice
+                        price = float(details['UnitValuePrice'])
+                        price_field = 'UnitValuePrice'
+                    elif 'PurchasePrice' in details and details['PurchasePrice']:
+                        # Some bonds/funds use PurchasePrice
+                        price = float(details['PurchasePrice'])
+                        price_field = 'PurchasePrice'
+                    elif 'SellPrice' in details and details['SellPrice']:
+                        # Fallback to SellPrice
+                        price = float(details['SellPrice'])
+                        price_field = 'SellPrice'
+                    
+                    if price is None or price == 0:
+                        available_fields = [k for k, v in details.items() if v and 'price' in k.lower() or 'rate' in k.lower()]
+                        logger.error(f"No valid price found for TASE symbol {symbol}. Available fields: {list(details.keys())[:10]}...")
+                        logger.debug(f"Price-related fields: {available_fields}")
+                        return None
+                    
+                    # Convert from agots to ILS (divide by 100) - as requested
+                    price_ils = price / 100
+                    
+                    logger.info(f"TASE {symbol}: {price} agots -> {price_ils} ILS (using {price_field})")
                     
                     return {
                         "symbol": symbol,
-                        "price": float(stock_data["LastPrice"]),
+                        "price": price_ils,  # Price in ILS
                         "currency": "ILS",
                         "market": "TASE",
-                        "date": date.today().isoformat(),
-                        "fetched_at": datetime.utcnow()
+                        "source": "maya",
+                        "fetched_at": datetime.utcnow(),
+                        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "raw_price": price,  # Original price in agots
+                        "price_field": price_field,  # Which field was used
+                        "security_name": details.get("Name", "Unknown")
                     }
                     
-                except ValueError:
-                    logger.error(f"Invalid TASE symbol format: {symbol} (must be numeric)")
+                except ValueError as e:
+                    logger.error(f"Invalid symbol format for TASE (must be numeric): {symbol}")
                     return None
                 except Exception as e:
                     logger.error(f"Error fetching TASE price for {symbol}: {e}")
                     return None
             
-            # Run in thread pool to avoid blocking
-            return await asyncio.get_event_loop().run_in_executor(None, _fetch_sync)
+            # Run in thread pool
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _fetch_sync)
+            return result
             
         except Exception as e:
-            logger.error(f"Error in TASE fetcher for {symbol}: {e}")
+            logger.error(f"Error in async TASE fetch for {symbol}: {e}")
             return None
 
 
-class StockFetcherFactory:
-    """Factory to create appropriate stock fetcher based on symbol"""
+def create_stock_fetcher(symbol: str) -> Optional[StockFetcher]:
+    """
+    Factory function to create appropriate fetcher based on symbol
     
-    @staticmethod
-    def create_fetcher(symbol: str) -> StockFetcher:
-        """Create appropriate fetcher based on symbol format"""
-        # If symbol is numeric, assume it's TASE
+    Args:
+        symbol: Stock symbol to fetch
+        
+    Returns:
+        Appropriate fetcher instance or None if symbol type not recognized
+    """
+    try:
+        # Check if symbol is numeric (TASE)
         if symbol.isdigit():
             return TaseFetcher()
         else:
-            return FinnhubFetcher()
+            # Assume US market for alphabetic symbols
+            return FinnhubFetcher(settings.finnhub_api_key)
+            
+    except Exception as e:
+        logger.error(f"Error creating fetcher for symbol {symbol}: {e}")
+        return None
+
+
+def detect_symbol_type(symbol: str) -> Literal["stock", "unknown"]:
+    """
+    Detect the type of symbol (stock only now that forex is separate)
     
-    @staticmethod
-    def get_market_type(symbol: str) -> Literal["US", "TASE"]:
-        """Determine market type based on symbol format"""
-        return "TASE" if symbol.isdigit() else "US" 
+    Args:
+        symbol: Symbol to analyze
+        
+    Returns:
+        Symbol type
+    """
+    if symbol.isdigit():
+        return "stock"  # TASE stock
+    elif symbol.isalpha() and len(symbol) <= 5:
+        return "stock"  # US stock
+    else:
+        return "unknown" 

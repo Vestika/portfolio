@@ -213,6 +213,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
               </th>
               <th className="px-3 text-left text-xs font-medium">Name</th>
               <th className="px-3 text-left text-xs font-medium">Tags</th>
+              <th className="px-3 text-right text-xs font-medium">
+                <SortableHeader
+                  label="Price (Original)"
+                  sortKey="original_price"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+              </th>
               {isValueVisible && (
                 <>
                   <th className="px-3 text-right text-xs font-medium">
@@ -225,15 +233,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                   </th>
                   <th className="px-3 text-right text-xs font-medium">
                     <SortableHeader
-                      label={`Price/${data.base_currency}`}
-                      sortKey="value_per_unit"
-                      sortConfig={sortConfig}
-                      onSort={handleSort}
-                    />
-                  </th>
-                  <th className="px-3 text-right text-xs font-medium">
-                    <SortableHeader
-                      label="Total Value"
+                      label={`Total Value (${data.base_currency})`}
                       sortKey="total_value"
                       sortConfig={sortConfig}
                       onSort={handleSort}
@@ -251,13 +251,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                 <td className="px-3 font-medium text-blue-400">{holding.symbol}</td>
                 <td className="px-3 text-sm text-gray-300">{holding.name}</td>
                 <td className="px-3 text-sm">{renderTags(holding.tags)}</td>
+                <td className="px-3 text-right text-sm">
+                  {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                  <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                </td>
                 {isValueVisible && (
                   <>
                     <td className="px-3 text-right text-sm">
                       {Math.round(holding.total_units).toLocaleString()}
-                    </td>
-                    <td className="px-3 text-right text-sm">
-                      {(Math.round(holding.value_per_unit * 100) / 100).toLocaleString()}
                     </td>
                     <td className="px-3 text-right text-sm whitespace-nowrap">
                       {Math.round(holding.total_value).toLocaleString()}

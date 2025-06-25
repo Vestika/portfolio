@@ -54,9 +54,12 @@ export interface SecurityHolding {
   name: string;
   tags: Record<string, string>;
   total_units: number;
+  original_price: number;
+  original_currency: string;
   value_per_unit: number;
   total_value: number;
   currency: string;
+  price_source?: string;
   historical_prices: HistoricalPrice[];
 }
 

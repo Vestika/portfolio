@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 from typing import Optional, Any
 
-from .stock_fetcher import StockFetcherFactory
+from .stock_fetcher import create_stock_fetcher, detect_symbol_type
 from ..config import settings
 from ..database import db, cache
 from ..models import StockPrice, TrackedSymbol, PriceResponse
@@ -67,7 +67,13 @@ class PriceManager:
         
         for symbol in symbols:
             try:
-                market_type = StockFetcherFactory.get_market_type(symbol)
+                # Detect symbol type and determine market
+                symbol_type = detect_symbol_type(symbol)
+                if symbol_type == "unknown":
+                    results[symbol] = "unsupported_symbol_type"
+                    continue
+                
+                market_type = "TASE" if symbol.isdigit() else "US"
                 
                 # Check if already tracked
                 existing = await db.database.tracked_symbols.find_one({"symbol": symbol})
@@ -191,7 +197,11 @@ class PriceManager:
     async def _fetch_and_store_price(self, symbol: str) -> Optional[PriceResponse]:
         """Fetch fresh price and store in DB and cache"""
         try:
-            fetcher = StockFetcherFactory.create_fetcher(symbol)
+            fetcher = create_stock_fetcher(symbol)
+            if not fetcher:
+                logger.error(f"No suitable fetcher found for symbol: {symbol}")
+                return None
+                
             price_data = await fetcher.fetch_price(symbol)
             
             if not price_data:

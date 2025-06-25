@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Optional, Any
 
-import yfinance as yf
+from loguru import logger
 
 from playground.models.account import Account
 from playground.models.currency import Currency
@@ -12,6 +12,7 @@ from playground.models.portfolio import Portfolio
 from playground.models.security import Security
 from playground.models.security_type import SecurityType
 from playground.utils.filters import AggregationKeyFunc, Filter
+from playground.services.closing_price_client import ClosingPriceClient
 
 
 class PortfolioCalculator:
@@ -20,209 +21,227 @@ class PortfolioCalculator:
         base_currency: Currency,
         exchange_rates: dict[Currency, float],
         unit_prices: dict[str, float],
+        closing_price_client: Optional[ClosingPriceClient] = None,
+        use_real_time_rates: bool = True,
     ):
         """
-        Initialize calculator with conversion parameters
-
-        :param base_currency: Base currency for calculations
-        :param exchange_rates: Dictionary of exchange rates
-        :param unit_prices: Dictionary of predefined unit prices
+        Initialize the portfolio calculator.
+        
+        Args:
+            base_currency: The base currency for calculations
+            exchange_rates: Static exchange rates as fallback
+            unit_prices: Static unit prices as fallback
+            closing_price_client: Client for fetching real-time data
+            use_real_time_rates: Whether to fetch real-time exchange rates
         """
         self.base_currency = base_currency
-        self.exchange_rates = exchange_rates
+        self.static_exchange_rates = exchange_rates
         self.unit_prices = unit_prices
-        self.real_prices = {}
-        self.tase_id_to_symbol = {}
-        self.load_latest_prices()
+        self.closing_price_client = closing_price_client or ClosingPriceClient()
+        self.use_real_time_rates = use_real_time_rates
+        
+        # Cache for real-time exchange rates to avoid repeated API calls
+        self._exchange_rate_cache = {}
 
-    @staticmethod
-    def _get_latest_prices_filename():
-        return f"data/prices-{datetime.today().strftime('%Y-%m-%d')}.json"
-
-    @functools.lru_cache(maxsize=1)
-    def fetch_latest_prices(self, portfolio: Portfolio) -> None:
-        symbols = []
-        ils_symbols = []
-        for account in portfolio.accounts:
-            for holding in account.holdings:
-                symbol = holding.symbol
-                security = portfolio.securities[symbol]
-                if security.security_type == SecurityType.CASH:
-                    continue  # TODO
-                if symbol in self.tase_id_to_symbol:
-                    symbol = self.tase_id_to_symbol[symbol]
-                    if symbol not in self.real_prices:
-                        ils_symbols.append(symbol)
-                        continue
-                elif security.currency != Currency.USD:
-                    continue
-                if symbol not in self.real_prices:
-                    symbols.append(symbol)
-
-        if not symbols and not ils_symbols:
-            return
-        data = yf.download(symbols + ils_symbols, period="5d", group_by="ticker", rounding=True)
-        if data.empty:
-            return
-        closing_prices = {}
-
-        def get_last_valid_close(data, symbol):
-            if symbol in data and not data[symbol].empty:
-                return float(data[symbol]["Close"].dropna().iloc[-1])
-            return None
-
-        for s in symbols:
-            if last_close := get_last_valid_close(data, s):
-                closing_prices[s] = last_close
-
-        for s in ils_symbols:
-            if last_close := get_last_valid_close(data, s):
-                closing_prices[s] = last_close / 100
-
-        self.real_prices.update({k: v for k, v in closing_prices.items() if v > 0})
-        self.save_latest_prices()
-
-    def save_latest_prices(self) -> None:
-        filename = self._get_latest_prices_filename()
-
-        # Load existing data if the file exists
-        existing_data = {}
-        if os.path.exists(filename):
-            with open(filename, "rt") as file:
-                existing_data = json.load(file)
-
-        existing_data.update(self.real_prices)
-
-        # Save updated data back to the file
-        with open(filename, "wt") as file:
-            json.dump(existing_data, file, indent=4)
-
-    def load_latest_prices(self) -> None:
-        filename = self._get_latest_prices_filename()
-
-        # If the file exists, load its data into self.real_prices
-        if not os.path.exists(filename):
-            return
-
-        with open(filename, "rt") as file:
-            self.real_prices = json.load(file)
-        with open("data/tase_securities.json", "rt") as tase_securities_file:
-            self.tase_id_to_symbol = {s["tase_id"]: s["symbol"] for s in json.load(tase_securities_file)}
-
-    def calc_holding_value(self, security: Security, units: int) -> dict[str, Any]:
+    def get_exchange_rate(self, from_currency: Currency, to_currency: Currency) -> float:
         """
-        Convert holding to base currency with detailed pricing information
-
-        :param security: Security details
-        :param units: Number of units of the provided Security
-        :return: Dictionary with conversion details
+        Get exchange rate from one currency to another.
+        Uses real-time rates when available, falls back to static rates.
+        
+        Args:
+            from_currency: Source currency
+            to_currency: Target currency
+            
+        Returns:
+            Exchange rate
         """
-        # Extract unit-price and identify its source
-        if unit_price := self.unit_prices.get(security.symbol):
-            price_source = "predefined"
-        elif unit_price := self.get_price(security.symbol):
-            price_source = "real-data"
+        # Same currency
+        if from_currency == to_currency:
+            logger.debug(f"Same currency {from_currency} = {to_currency}, returning 1.0")
+            return 1.0
+        
+        # Check cache first
+        cache_key = f"{from_currency}_{to_currency}"
+        if cache_key in self._exchange_rate_cache:
+            cached_rate = self._exchange_rate_cache[cache_key]
+            logger.debug(f"Using cached exchange rate for {from_currency}/{to_currency}: {cached_rate}")
+            return cached_rate
+        
+        # Try real-time rates if enabled
+        if self.use_real_time_rates:
+            try:
+                logger.debug(f"Fetching real-time rate for {from_currency}/{to_currency}")
+                real_time_rate = self.closing_price_client.get_exchange_rate_sync(
+                    from_currency.value, to_currency.value
+                )
+                if real_time_rate is not None:
+                    logger.info(f"Using real-time exchange rate {from_currency}/{to_currency}: {real_time_rate}")
+                    self._exchange_rate_cache[cache_key] = real_time_rate
+                    return real_time_rate
+                else:
+                    logger.warning(f"Real-time rate not available for {from_currency}/{to_currency}, using static rate")
+            except Exception as e:
+                logger.warning(f"Failed to fetch real-time rate for {from_currency}/{to_currency}: {e}")
+        
+        # Fallback to static rates
+        logger.debug(f"Checking static rates for {from_currency}: {list(self.static_exchange_rates.keys())}")
+        if from_currency in self.static_exchange_rates:
+            static_rate = self.static_exchange_rates[from_currency]
+            logger.info(f"Using static exchange rate {from_currency}/{to_currency}: {static_rate}")
+            self._exchange_rate_cache[cache_key] = static_rate
+            return static_rate
+        
+        # If no rate found, log error and return 1 (no conversion)
+        logger.error(f"No exchange rate available for {from_currency} to {to_currency}")
+        return 1.0
+
+    def calc_holding_value(self, security: Security, units: float) -> dict[str, Any]:
+        """
+        Calculate the value of a holding in the base currency.
+        Prioritizes real-time prices over static prices.
+        
+        Args:
+            security: The security
+            units: Number of units held
+            
+        Returns:
+            Dictionary with value calculation details
+        """
+        price_source = "predefined"  # Default
+        unit_price = None
+        
+        # Handle cash securities specially - they always have unit price of 1.0 in their own currency
+        if security.security_type == SecurityType.CASH:
+            unit_price = 1.0
+            price_source = "cash"
+            logger.debug(f"Cash security {security.symbol}: unit price = 1.0 {security.currency}")
         else:
-            raise ValueError(f"No price available for security: {security.symbol}")
-
-        # Extract conversion rate
-        if security.currency != self.base_currency and security.currency not in self.exchange_rates:
-            raise ValueError(f"No exchange rate found for {security.currency}")
-        conversion_rate = self.exchange_rates.get(security.currency, 1.0)
-
+            # Try to get real-time price first for non-cash securities
+            try:
+                price_data = self.closing_price_client.get_price_sync(security.symbol)
+                if price_data:
+                    unit_price = price_data["price"]
+                    price_source = "real-time"
+                    logger.debug(f"Using real-time price for {security.symbol}: {unit_price} {price_data['currency']}")
+            except Exception as e:
+                logger.warning(f"Failed to get real-time price for {security.symbol}: {e}")
+            
+            # Fallback to static price for non-cash securities
+            if unit_price is None:
+                if security.symbol in self.unit_prices:
+                    unit_price = self.unit_prices[security.symbol]
+                    logger.debug(f"Using static price for {security.symbol}: {unit_price}")
+                else:
+                    logger.error(f"No price available for {security.symbol}")
+                    unit_price = 0.0
+        
+        # Convert to base currency if needed
+        logger.info(f"DEBUG: Converting {security.symbol}: {security.currency} ({type(security.currency)}) -> {self.base_currency} ({type(self.base_currency)})")
+        exchange_rate = self.get_exchange_rate(security.currency, self.base_currency)
+        value_in_base = unit_price * exchange_rate
+        total_value = value_in_base * units
+        
+        logger.info(f"Conversion for {security.symbol}: {unit_price} {security.currency} * {exchange_rate} = {value_in_base} {self.base_currency} (total: {total_value} for {units} units)")
+        
         return {
-            "symbol": security.symbol,
-            "unit_price": unit_price,
+            "unit_price": unit_price,  # Price in original currency
+            "value": value_in_base,    # Value per unit in base currency
+            "total": total_value,      # Total value in base currency
+            "units": units,
+            "currency": security.currency,
+            "base_currency": self.base_currency,
+            "exchange_rate": exchange_rate,
             "price_source": price_source,
-            "currency_conversion_rate": conversion_rate,
-            "value": units * unit_price * conversion_rate,
         }
 
     def aggregate_holdings(
         self,
-        *,
         portfolio: Portfolio,
-        aggregation_key: AggregationKeyFunc | None,
-        account_filter: Optional[Filter[Account]],
-        security_filter: Optional[Filter[Security]],
+        aggregation_key: Optional[AggregationKeyFunc] = None,
+        account_filter: Optional[Filter[Account]] = None,
+        security_filter: Optional[Filter[Security]] = None,
         ignore_missing_key: bool = False,
-    ) -> dict[str, float]:
-        """
-        Flexible holdings aggregation with optional filtering
-
-        :param portfolio: the portfolio on which to aggregate holdings
-        :param aggregation_key: Function to extract aggregation key, or None to aggregate by account
-        :param account_filter: Optional filter for accounts
-        :param security_filter: Optional filter for securities
-        :param ignore_missing_key: Whether to ignore securities without an aggregation key
-        :return: Aggregated holdings
-        """
-        self.fetch_latest_prices(portfolio)
-
-        aggregations: dict[str, float] = {}
-
-        # Default filters if not provided
-        account_filter = account_filter or (lambda _: True)
-        security_filter = security_filter or (lambda _: True)
+    ) -> dict[str, Any]:
+        """Aggregate portfolio holdings by a given key function."""
+        
+        aggregated_values: dict[str, float] = {}
+        total_value = 0.0
 
         for account in portfolio.accounts:
-            # Skip accounts that don't match filter
-            if not account_filter(account):
+            if account_filter and not account_filter(account):
                 continue
 
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
-
-                # Skip securities that don't match filter
-                if not security_filter(security):
+                
+                if security_filter and not security_filter(security):
                     continue
+                
+                holding_value_info = self.calc_holding_value(security, holding.units)
+                holding_value = holding_value_info["total"]
+                total_value += holding_value
 
-                # Get aggregation key
-                key = aggregation_key(security) if aggregation_key else account.name
-
-                # Skip if key is None and ignore_missing_key is True
-                if key is None and ignore_missing_key:
-                    continue
-
-                # Convert to base currency
-                conversion_result = self.calc_holding_value(security, holding.units)
-                value = conversion_result["value"]
+                if aggregation_key is None:
+                    # Account-level aggregation
+                    key = account.name
+                else:
+                    # Custom aggregation
+                    try:
+                        key = aggregation_key(security)
+                    except Exception as e:
+                        if ignore_missing_key:
+                            continue
+                        else:
+                            raise e
 
                 # Handle different key types
                 if isinstance(key, dict):
-                    # For dictionary tags, aggregate by each key
+                    # For dictionary tags, aggregate by each key with weighted values
                     for sub_key, sub_value in key.items():
-                        weighted_value = value * sub_value
-                        aggregations[sub_key] = aggregations.get(sub_key, 0.0) + weighted_value
+                        weighted_value = holding_value * sub_value
+                        aggregated_values[sub_key] = aggregated_values.get(sub_key, 0.0) + weighted_value
                 elif isinstance(key, list):
                     # For list of keys, aggregate for each key
                     for sub_key in key:
-                        aggregations[sub_key] = aggregations.get(sub_key, 0.0) + value
+                        aggregated_values[sub_key] = aggregated_values.get(sub_key, 0.0) + holding_value
                 else:
+                    # Handle simple keys (strings, numbers, etc.)
                     if key is None:
                         key = "_Unknown"
-                    aggregations[key] = aggregations.get(key, 0.0) + value
+                    
+                    key_str = str(key)  # Convert to string to ensure it's hashable
+                    aggregated_values[key_str] = aggregated_values.get(key_str, 0.0) + holding_value
 
-        return aggregations
-
-    def get_aggregation_dict(self, aggregations: dict[str, float]) -> dict[str, Any]:
-        """
-        Return detailed aggregation suitable for API/charting
-        """
         return {
-            "total": sum(aggregations.values()),
+            "aggregated_values": aggregated_values,
+            "total_value": total_value,
             "base_currency": self.base_currency,
-            "breakdown": [
-                {
-                    "label": key,
-                    "value": value,
-                    "percentage": (value / sum(aggregations.values())) * 100,
-                }
-                for key, value in sorted(aggregations.items(), key=lambda x: x[1], reverse=True)
-            ],
         }
 
-    def get_price(self, symbol: str) -> float:
-        if symbol in self.tase_id_to_symbol:
-            symbol = self.tase_id_to_symbol[symbol]
-        return self.real_prices[symbol]  # will raise an exception if missing
+    def get_aggregation_dict(self, aggregation_data: dict[str, Any]) -> dict[str, Any]:
+        """Convert aggregation data to a dictionary format suitable for JSON responses."""
+        
+        breakdown = []
+        total_value = aggregation_data["total_value"]
+        
+        for label, value in aggregation_data["aggregated_values"].items():
+            percentage = (value / total_value * 100) if total_value > 0 else 0
+            breakdown.append({
+                "label": str(label),
+                "value": round(value, 2),
+                "percentage": round(percentage, 2)
+            })
+        
+        # Sort by value (descending)
+        breakdown.sort(key=lambda x: x["value"], reverse=True)
+        
+        return {
+            "total": round(total_value, 2),
+            "base_currency": aggregation_data["base_currency"].value,
+            "breakdown": breakdown,
+        }
+    
+    def clear_exchange_rate_cache(self):
+        """Clear the exchange rate cache to force fresh fetches."""
+        self._exchange_rate_cache.clear()
+        logger.info("Exchange rate cache cleared")

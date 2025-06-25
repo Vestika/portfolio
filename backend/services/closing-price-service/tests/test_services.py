@@ -79,9 +79,18 @@ class TestStockFetchers:
         """Test successful TASE price fetch"""
         fetcher = TaseFetcher()
         
-        mock_stock_data = {"LastPrice": 1234.56}
+        mock_securities = [
+            {
+                "Id": "1101534",
+                "Name": "Test Security",
+                "Price": 1234.56
+            }
+        ]
         
-        with patch('pymaya.get_stock_data', return_value=mock_stock_data):
+        with patch('app.services.stock_fetcher.Maya') as mock_maya_class:
+            mock_maya_instance = mock_maya_class.return_value
+            mock_maya_instance.get_all_securities.return_value = mock_securities
+            
             result = await fetcher.fetch_price("1101534")
             
             assert result is not None
@@ -104,7 +113,18 @@ class TestStockFetchers:
         """Test TASE fetcher when no data returned"""
         fetcher = TaseFetcher()
         
-        with patch('pymaya.get_stock_data', return_value=None):
+        mock_securities = [
+            {
+                "Id": "9999999",  # Different ID, not matching our search
+                "Name": "Other Security",
+                "Price": 999.99
+            }
+        ]
+        
+        with patch('app.services.stock_fetcher.Maya') as mock_maya_class:
+            mock_maya_instance = mock_maya_class.return_value
+            mock_maya_instance.get_all_securities.return_value = mock_securities
+            
             result = await fetcher.fetch_price("1101534")
             assert result is None
 

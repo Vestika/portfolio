@@ -57,6 +57,7 @@ calculator = PortfolioCalculator(
     base_currency=portfolio.base_currency,
     exchange_rates=portfolio.exchange_rates,
     unit_prices=portfolio.unit_prices,
+    use_real_time_rates=True,  # Enable real-time exchange rates
 )
 
 # Predefined charts with their aggregation keys
@@ -135,6 +136,7 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            use_real_time_rates=True,  # Enable real-time exchange rates
         )
 
         result = {
@@ -146,7 +148,7 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
             account_data = {
                 "account_name": account.name,
                 "account_total": sum(
-                    calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["value"]
+                    calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["total"]
                     for holding in account.holdings
                 ),
                 "account_properties": account.properties,
@@ -216,6 +218,7 @@ async def get_portfolio_aggregations(
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            use_real_time_rates=True,  # Enable real-time exchange rates
         )
 
         result = []
@@ -259,6 +262,7 @@ async def get_holdings_table(
             base_currency=portfolio.base_currency,
             exchange_rates=portfolio.exchange_rates,
             unit_prices=portfolio.unit_prices,
+            use_real_time_rates=True,  # Enable real-time exchange rates
         )
 
         # Create a dictionary to aggregate holdings across selected accounts
@@ -272,20 +276,28 @@ async def get_holdings_table(
                 security = portfolio.securities[holding.symbol]
 
                 if holding.symbol not in holdings_aggregation:
+                    # Get detailed pricing information
+                    pricing_info = calculator.calc_holding_value(security, 1)
+                    
+                    # Calculate original price (before currency conversion)
+                    original_price = pricing_info["unit_price"]
+                    
                     holdings_aggregation[holding.symbol] = {
                         "symbol": holding.symbol,
                         "security_type": security.security_type.value,
                         "name": security.name,
                         "tags": security.tags,
                         "total_units": 0,
-                        "value_per_unit": calculator.calc_holding_value(security, 1)["value"],
-                        "currency": security.currency,
-                        # Generate mock historical prices for the last 30 days
+                        "original_price": original_price,  # Price in original currency
+                        "original_currency": security.currency,  # Original currency
+                        "value_per_unit": pricing_info["value"],  # Converted to base currency
+                        "currency": portfolio.base_currency,  # Base currency for display compatibility
+                        "price_source": pricing_info["price_source"],  # real-time or predefined
+                        # Generate mock historical prices for the last 30 days (in original currency)
                         "historical_prices": [
                             {
                                 "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                                "price": calculator.calc_holding_value(security, 1)["value"]
-                                * (1 + 0.1 * math.sin(i / 5)),  # Generate sine wave pattern
+                                "price": original_price * (1 + 0.1 * math.sin(i / 5)),  # Generate sine wave pattern
                             }
                             for i in range(30)
                         ],

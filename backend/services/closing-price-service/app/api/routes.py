@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from loguru import logger
-from typing import Any
+from typing import Any, Optional
 
 from ..models import PriceResponse, TrackSymbolsRequest, RefreshResponse
 from ..services.price_manager import PriceManager
+from ..services.currency_service import currency_service
 
 router = APIRouter()
+price_manager = PriceManager()
 
 
 def get_price_manager() -> PriceManager:
@@ -13,139 +15,179 @@ def get_price_manager() -> PriceManager:
     return PriceManager()
 
 
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "closing-price-service"}
+
+
 @router.get("/prices/{symbol}", response_model=PriceResponse)
-async def get_price(
-    symbol: str,
-    price_manager: PriceManager = Depends(get_price_manager)
-) -> PriceResponse:
-    """
-    Get the latest closing price for a specific symbol.
-    
-    - **symbol**: Stock symbol (e.g., 'AAPL' for US stocks or '1101534' for TASE stocks)
-    
-    This endpoint will:
-    1. Check cache first
-    2. Fall back to database if cache miss
-    3. Fetch fresh data if needed (lazy loading)
-    4. Update tracking information
-    """
+async def get_price(symbol: str = Path(..., description="Stock symbol to fetch price for")):
+    """Get latest price for a specific symbol"""
     try:
         price = await price_manager.get_price(symbol.upper())
         if not price:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Could not fetch price for symbol: {symbol}"
-            )
+            raise HTTPException(status_code=404, detail=f"Could not fetch price for symbol: {symbol}")
         return price
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in get_price endpoint for {symbol}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error while fetching price for {symbol}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/prices", response_model=list[PriceResponse])
-async def get_tracked_prices(
-    price_manager: PriceManager = Depends(get_price_manager)
-) -> list[PriceResponse]:
-    """
-    Get the latest closing prices for all tracked symbols.
-    
-    Returns a list of prices for all symbols currently being tracked.
-    """
+async def get_tracked_prices():
+    """Get latest prices for all tracked symbols"""
     try:
         prices = await price_manager.get_tracked_prices()
         return prices
-        
     except Exception as e:
         logger.error(f"Error in get_tracked_prices endpoint: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while fetching tracked prices"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.post("/prices", response_model=dict[str, str])
-async def track_symbols(
-    request: TrackSymbolsRequest,
-    price_manager: PriceManager = Depends(get_price_manager)
-) -> dict[str, str]:
-    """
-    Add symbols to the tracking list.
-    
-    - **symbols**: List of stock symbols to track
-    
-    Returns the status of each symbol:
-    - "added": Symbol was successfully added to tracking
-    - "already_tracked": Symbol was already being tracked
-    - "error: <message>": An error occurred while adding the symbol
-    """
+@router.post("/track")
+async def track_symbols(request: TrackSymbolsRequest):
+    """Add symbols to tracking list"""
     try:
-        if not request.symbols:
+        results = await price_manager.track_symbols(request.symbols)
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Error in track_symbols endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh_tracked():
+    """Manually refresh all tracked symbols"""
+    try:
+        result = await price_manager.refresh_tracked_symbols()
+        return RefreshResponse(**result)
+    except Exception as e:
+        logger.error(f"Error in refresh_tracked endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Currency exchange rate endpoints
+@router.get("/currency/{from_currency}/{to_currency}")
+async def get_exchange_rate(
+    from_currency: str = Path(..., description="Source currency code (e.g., USD)"),
+    to_currency: str = Path(..., description="Target currency code (e.g., ILS)")
+):
+    """Get exchange rate between two currencies"""
+    try:
+        rate = await currency_service.get_exchange_rate(from_currency, to_currency)
+        if rate is None:
             raise HTTPException(
-                status_code=400,
-                detail="No symbols provided"
+                status_code=404, 
+                detail=f"Could not fetch exchange rate for {from_currency}/{to_currency}"
             )
         
-        # Convert symbols to uppercase for consistency
-        symbols = [symbol.upper() for symbol in request.symbols]
-        results = await price_manager.track_symbols(symbols)
-        
-        return results
+        return {
+            "from_currency": from_currency.upper(),
+            "to_currency": to_currency.upper(),
+            "rate": rate,
+            "description": f"1 {from_currency.upper()} = {rate} {to_currency.upper()}"
+        }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in track_symbols endpoint: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while tracking symbols"
-        )
+        logger.error(f"Error getting exchange rate {from_currency}/{to_currency}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.post("/prices/refresh", response_model=RefreshResponse)
-async def refresh_prices(
-    price_manager: PriceManager = Depends(get_price_manager)
-) -> RefreshResponse:
-    """
-    Manually refresh prices for all tracked symbols.
-    
-    This endpoint will:
-    1. Fetch fresh prices for all tracked symbols
-    2. Update the database and cache
-    3. Clean up old tracking records (symbols not queried for 7+ days)
-    
-    Returns a summary of the refresh operation:
-    - refreshed_count: Number of symbols successfully refreshed
-    - not_refreshed_count: Number of symbols not refreshed (no new data available)
-    - failed_symbols: List of symbols that failed to refresh due to errors
-    """
+@router.get("/currency/{from_currency}/{to_currency}/info")
+async def get_currency_info(
+    from_currency: str = Path(..., description="Source currency code (e.g., USD)"),
+    to_currency: str = Path(..., description="Target currency code (e.g., ILS)")
+):
+    """Get detailed currency information including rate, timestamp, and source"""
     try:
-        result = await price_manager.refresh_tracked_symbols()
+        info = await currency_service.get_currency_info(from_currency, to_currency)
+        if info is None:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Could not fetch currency info for {from_currency}/{to_currency}"
+            )
         
-        return RefreshResponse(
-            message=result["message"],
-            refreshed_count=result["refreshed_count"],
-            not_refreshed_count=result["not_refreshed_count"],
-            failed_symbols=result["failed_symbols"]
-        )
+        return info
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in refresh_prices endpoint: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while refreshing prices"
-        )
+        logger.error(f"Error getting currency info {from_currency}/{to_currency}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/health")
-async def health_check() -> dict[str, str]:
-    """
-    Health check endpoint for monitoring.
-    """
-    return {
-        "status": "healthy",
-        "service": "closing-price-service",
-    }
+@router.get("/currency/supported")
+async def get_supported_currencies():
+    """Get list of supported currencies"""
+    try:
+        currencies = await currency_service.get_supported_currencies()
+        if currencies is None:
+            raise HTTPException(status_code=503, detail="Currency service unavailable")
+        
+        return {
+            "currencies": currencies,
+            "count": len(currencies),
+            "major_pairs": {
+                "USD_EUR": "US Dollar to Euro",
+                "USD_GBP": "US Dollar to British Pound",
+                "USD_JPY": "US Dollar to Japanese Yen",
+                "USD_ILS": "US Dollar to Israeli Shekel",
+                "EUR_USD": "Euro to US Dollar"
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting supported currencies: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Convenience endpoint for common currency pairs
+@router.get("/currency/usd-ils")
+async def get_usd_ils_rate():
+    """Get current USD to ILS exchange rate (convenience endpoint)"""
+    try:
+        rate = await currency_service.get_exchange_rate("USD", "ILS")
+        if rate is None:
+            raise HTTPException(status_code=404, detail="Could not fetch USD/ILS exchange rate")
+        
+        return {
+            "from_currency": "USD",
+            "to_currency": "ILS",
+            "rate": rate,
+            "description": f"1 USD = {rate} ILS"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting USD/ILS rate: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/currency/eur-usd")
+async def get_eur_usd_rate():
+    """Get current EUR to USD exchange rate (convenience endpoint)"""
+    try:
+        rate = await currency_service.get_exchange_rate("EUR", "USD")
+        if rate is None:
+            raise HTTPException(status_code=404, detail="Could not fetch EUR/USD exchange rate")
+        
+        return {
+            "from_currency": "EUR",
+            "to_currency": "USD",
+            "rate": rate,
+            "description": f"1 EUR = {rate} USD"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting EUR/USD rate: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
