@@ -430,7 +430,6 @@ async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> 
                     portfolio_data['config'] = {}
                 if 'unit_prices' not in portfolio_data['config']:
                     portfolio_data['config']['unit_prices'] = {}
-                portfolio_data['config']['unit_prices'][symbol] = 100.0  # Default price
         
         # Add new account
         new_account = {
@@ -587,7 +586,6 @@ async def update_account_in_portfolio(file: str, account_name: str, request: Cre
                     portfolio_data['config'] = {}
                 if 'unit_prices' not in portfolio_data['config']:
                     portfolio_data['config']['unit_prices'] = {}
-                portfolio_data['config']['unit_prices'][symbol] = 100.0  # Default price
         
         # Update the account
         updated_account = {

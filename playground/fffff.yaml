@@ -7,10 +7,6 @@ config:
   unit_prices:
     USD: 1.0
     ILS: 1.0
-    nvda: 100.0
-    vti: 100.0
-    msft: 100.0
-    avuv: 100.0
 securities:
   USD:
     name: USD
