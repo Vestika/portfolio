@@ -1,9 +1,11 @@
-.PHONY: help run playground closing-price ui clean install
+.PHONY: help run playground closing-price ui clean install stop setup
 
 # Default target
 help:
 	@echo "Available commands:"
+	@echo "  make setup            - Set up pyenv environment (first time setup)"
 	@echo "  make run              - Run all services (playground API, closing-price service, and UI)"
+	@echo "  make stop             - Stop all running services"
 	@echo "  make playground       - Run only the playground API service"
 	@echo "  make closing-price    - Run only the closing-price service"
 	@echo "  make ui               - Run only the UI development server"
@@ -46,9 +48,12 @@ ui:
 # Install dependencies
 install:
 	@echo "📦 Installing Python dependencies..."
-	@pip install -r requirements.txt
+	@echo "🔍 Checking Python environment..."
+	@python --version || (echo "❌ Python not found. Please activate a pyenv environment (e.g., 'pyenv shell portfolio')" && exit 1)
+	@python -m pip --version || (echo "❌ pip not available. Please activate a pyenv environment with pip installed" && exit 1)
+	@python -m pip install -r requirements.txt
 	@echo "📦 Installing closing-price service dependencies..."
-	@cd backend/services/closing-price-service && pip install -r requirements.txt
+	@cd backend/services/closing-price-service && python -m pip install -r requirements.txt
 	@echo "📦 Installing UI dependencies..."
 	@cd playground-dashboard && npm install
 	@echo "✅ All dependencies installed!"
@@ -60,4 +65,41 @@ clean:
 	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "*.pyc" -delete 2>/dev/null || true
 	@cd playground-dashboard && rm -rf node_modules/.vite 2>/dev/null || true
-	@echo "✅ Cleanup complete!" 
+	@echo "✅ Cleanup complete!"
+
+# Stop all services
+stop:
+	@echo "🛑 Stopping all services..."
+	@echo "📊 Stopping Portfolio API (port 8000)..."
+	@-lsof -ti:8000 | xargs -r kill -TERM 2>/dev/null || true
+	@echo "💰 Stopping Closing Price Service (port 8001)..."
+	@-lsof -ti:8001 | xargs -r kill -TERM 2>/dev/null || true
+	@echo "🎨 Stopping UI Development Server (port 5173)..."
+	@-lsof -ti:5173 | xargs -r kill -TERM 2>/dev/null || true
+	@sleep 2
+	@echo "🔄 Force killing any remaining processes..."
+	@-lsof -ti:8000 | xargs -r kill -KILL 2>/dev/null || true
+	@-lsof -ti:8001 | xargs -r kill -KILL 2>/dev/null || true
+	@-lsof -ti:5173 | xargs -r kill -KILL 2>/dev/null || true
+	@echo "✅ All services stopped!"
+
+# Setup pyenv environment
+setup:
+	@echo "🔧 Setting up development environment..."
+	@if command -v pyenv >/dev/null 2>&1; then \
+		echo "✅ pyenv found"; \
+		if pyenv versions | grep -q portfolio; then \
+			echo "✅ portfolio environment exists"; \
+			echo "portfolio" > .python-version; \
+			echo "📝 Created .python-version file"; \
+			echo "🔄 Environment will auto-activate when you cd into this directory"; \
+			echo "💡 You may need to cd out and back in for it to take effect"; \
+		else \
+			echo "❌ portfolio environment not found"; \
+			echo "📝 Available environments:"; \
+			pyenv versions; \
+			echo "💡 To create: pyenv virtualenv 3.13.3 portfolio"; \
+		fi; \
+	else \
+		echo "❌ pyenv not found. Please install pyenv first."; \
+	fi 
