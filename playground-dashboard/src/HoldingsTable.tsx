@@ -68,9 +68,8 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'] }> = ({ d
       backgroundColor: 'rgba(30, 41, 59, 0.9)',
       borderWidth: 0,
       borderRadius: 8,
-      zIndex: 4000,
       style: { color: '#fff', zIndex: 300},
-      formatter: function() {
+      formatter: function(this: any) {
         const point = this.point;
         const date = new Date(data[point.index!].date);
         return `<b>${point.y?.toFixed(2)}</b>(${date.toLocaleDateString()})`;
@@ -163,14 +162,19 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       holding.security_type.toLowerCase().includes(filters.type.toLowerCase())
     )
     .sort((a, b) => {
-      if (a[sortConfig.key] < b[sortConfig.key]) {
-        return sortConfig.direction === 'asc' ? -1 : 1;
-      }
-      if (a[sortConfig.key] > b[sortConfig.key]) {
-        return sortConfig.direction === 'asc' ? 1 : -1;
-      }
+      const key = sortConfig.key;
+
+      const aValue = a[key];
+      const bValue = b[key];
+
+      if (aValue === undefined || bValue === undefined) return 0;
+
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
+
+
 
   const handleSort = (key: keyof SecurityHolding) => {
     setSortConfig({

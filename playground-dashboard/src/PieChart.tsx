@@ -18,18 +18,13 @@ const PieChart: React.FC<PieChartProps> = ({
   hideValues = false
 }) => {
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
-
+  console.log(selectedSeries);
   // Format number with comma separators and no decimal
   const formatNumber = (value: number) =>
     new Intl.NumberFormat('en-US', {
       maximumFractionDigits: 0,
       minimumFractionDigits: 0
     }).format(value);
-
-  // Filter data based on selected series
-  const filteredData = selectedSeries.length > 0
-    ? data.filter(item => selectedSeries.includes(item.label))
-    : data;
 
   const chartOptions: Highcharts.Options = {
     chart: {
@@ -73,7 +68,7 @@ const PieChart: React.FC<PieChartProps> = ({
         showInLegend: true,
         events: {
           legendItemClick: function(e) {
-            const point = e.target as Highcharts.Point;
+            const point = e.target;
 
             if (point.visible) {
               setSelectedSeries(prev =>
