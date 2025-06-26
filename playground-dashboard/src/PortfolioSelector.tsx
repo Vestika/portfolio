@@ -49,8 +49,6 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
   }
 
-  const selectedFileDisplay = files.find(file => file.filename === selectedFile)?.display_name || 'Portfolio';
-
   const handleCreatePortfolio = async () => {
     try {
       const response = await fetch('http://localhost:8000/portfolio/create', {
