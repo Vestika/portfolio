@@ -70,20 +70,10 @@ class TrackedSymbol(BaseModel):
 
 
 class PriceResponse(BaseModel):
+    """Response model for price data"""
     symbol: str
     price: float
     currency: str
     market: str
     date: str
-    fetched_at: datetime
-
-
-class TrackSymbolsRequest(BaseModel):
-    symbols: list[str]
-
-
-class RefreshResponse(BaseModel):
-    message: str
-    refreshed_count: int
-    not_refreshed_count: int
-    failed_symbols: list[str]
+    fetched_at: datetime 

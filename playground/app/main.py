@@ -14,8 +14,15 @@ from playground.models.portfolio import Portfolio
 from playground.models.security_type import SecurityType
 from playground.portfolio_calculator import PortfolioCalculator
 from playground.utils import filter_security, filter_account
+from playground.services.closing_price.service import get_global_service
 
 logger = logging.Logger(__name__)
+
+# Get the playground directory path
+PLAYGROUND_DIR = Path(__file__).parent.parent  # Go up from app/ to playground/
+
+# Get the global closing price service
+closing_price_service = get_global_service()
 
 # Create FastAPI app
 app = FastAPI(
@@ -31,6 +38,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on application startup"""
+    try:
+        logger.info("Starting up Portfolio API...")
+        # Initialize the closing price service
+        await closing_price_service.initialize()
+        logger.info("Portfolio API startup completed successfully")
+    except Exception as e:
+        logger.error(f"Failed to start Portfolio API: {e}")
+        raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on application shutdown"""
+    try:
+        logger.info("Shutting down Portfolio API...")
+        # Clean up the closing price service
+        await closing_price_service.cleanup()
+        logger.info("Portfolio API shutdown completed successfully")
+    except Exception as e:
+        logger.warning(f"Error during shutdown: {e}")
+
 
 portfolios = {}
 
@@ -67,6 +100,22 @@ CHARTS: list[dict[str, Any]] = [
 ]
 
 
+def resolve_yaml_path(filename: str) -> Path:
+    """Resolve YAML file path relative to playground directory"""
+    return PLAYGROUND_DIR / filename
+
+
+def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
+    """Create a PortfolioCalculator with the global closing price service"""
+    return PortfolioCalculator(
+        base_currency=portfolio.base_currency,
+        exchange_rates=portfolio.exchange_rates,
+        unit_prices=portfolio.unit_prices,
+        closing_price_service=closing_price_service,
+        use_real_time_rates=True,  # Enable real-time exchange rates
+    )
+
+
 def display_aggregation(title: str, aggregation_data: dict[str, Any]) -> None:
     aggregation_data = calculator.get_aggregation_dict(aggregation_data)
 
@@ -85,24 +134,19 @@ def display_aggregation(title: str, aggregation_data: dict[str, Any]) -> None:
 
 
 # Initialize demo portfolio on startup
-portfolios["demo.yaml"] = Portfolio.from_yaml(Path("demo.yaml"))
+portfolios["demo.yaml"] = Portfolio.from_yaml(resolve_yaml_path("demo.yaml"))
 portfolio = portfolios["demo.yaml"]
 
-calculator = PortfolioCalculator(
-    base_currency=portfolio.base_currency,
-    exchange_rates=portfolio.exchange_rates,
-    unit_prices=portfolio.unit_prices,
-    use_real_time_rates=True,  # Enable real-time exchange rates
-)
+calculator = create_calculator(portfolio)
 
 
 @app.get("/portfolio/files")
 async def get_available_files() -> list[dict[str, str]]:
     """
-    Returns a list of available YAML files in the directory.
+    Returns a list of available YAML files in the playground directory.
     """
-    yaml_files = glob.glob("*.yaml")
-    return [{"filename": file, "display_name": Path(file).stem.title()} for file in yaml_files]
+    yaml_files = glob.glob(str(PLAYGROUND_DIR / "*.yaml"))
+    return [{"filename": Path(file).name, "display_name": Path(file).stem.title()} for file in yaml_files]
 
 
 @app.get("/portfolio")
@@ -133,14 +177,9 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
     """
     try:
         if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(Path(file))
+            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
         portfolio = portfolios[file]
-        calculator = PortfolioCalculator(
-            base_currency=portfolio.base_currency,
-            exchange_rates=portfolio.exchange_rates,
-            unit_prices=portfolio.unit_prices,
-            use_real_time_rates=True,  # Enable real-time exchange rates
-        )
+        calculator = create_calculator(portfolio)
 
         result = {
             "base_currency": portfolio.base_currency,
@@ -215,14 +254,9 @@ async def get_portfolio_aggregations(
     """
     try:
         if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(Path(file))
+            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
         portfolio = portfolios[file]
-        calculator = PortfolioCalculator(
-            base_currency=portfolio.base_currency,
-            exchange_rates=portfolio.exchange_rates,
-            unit_prices=portfolio.unit_prices,
-            use_real_time_rates=True,  # Enable real-time exchange rates
-        )
+        calculator = create_calculator(portfolio)
 
         result = []
         for chart_config in CHARTS:
@@ -259,14 +293,9 @@ async def get_holdings_table(
     """
     try:
         if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(Path(file))
+            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
         portfolio = portfolios[file]
-        calculator = PortfolioCalculator(
-            base_currency=portfolio.base_currency,
-            exchange_rates=portfolio.exchange_rates,
-            unit_prices=portfolio.unit_prices,
-            use_real_time_rates=True,  # Enable real-time exchange rates
-        )
+        calculator = create_calculator(portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts
         holdings_aggregation: dict[str, dict] = {}
@@ -346,7 +375,7 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
         safe_name = request.portfolio_name.lower().replace(' ', '-').replace('_', '-')
         filename = f"{safe_name}.yaml"
         
-        file_path = Path(filename)
+        file_path = resolve_yaml_path(filename)
         if file_path.exists():
             raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
         
@@ -401,7 +430,7 @@ async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> 
     Add a new account to an existing portfolio file.
     """
     try:
-        file_path = Path(file)
+        file_path = resolve_yaml_path(file)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
         
@@ -471,12 +500,12 @@ async def delete_portfolio(file: str) -> dict[str, str]:
     Delete an entire portfolio YAML file.
     """
     try:
-        file_path = Path(file)
+        file_path = resolve_yaml_path(file)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
         
         # Check if this is the only portfolio file
-        yaml_files = glob.glob("*.yaml")
+        yaml_files = glob.glob(str(PLAYGROUND_DIR / "*.yaml"))
         if len(yaml_files) <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
         
@@ -501,7 +530,7 @@ async def delete_account_from_portfolio(file: str, account_name: str) -> dict[st
     Delete a specific account from a portfolio file.
     """
     try:
-        file_path = Path(file)
+        file_path = resolve_yaml_path(file)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
         
@@ -545,7 +574,7 @@ async def update_account_in_portfolio(file: str, account_name: str, request: Cre
     Update an existing account in a portfolio file.
     """
     try:
-        file_path = Path(file)
+        file_path = resolve_yaml_path(file)
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
         

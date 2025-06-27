@@ -3,3 +3,4 @@
 #!demo.yaml
 __pycache__/** 
 models/__pycache__/**
+.env
