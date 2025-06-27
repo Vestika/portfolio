@@ -1,6 +1,6 @@
 from typing import Callable
 
-from backend.models.security import Security
+from models.security import Security
 
 type AggregationKey = str | None
 type AggregationKeyFunc = Callable[[Security], AggregationKey]

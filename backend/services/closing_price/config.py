@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 from pathlib import Path
 
 # Try to load .env file if available

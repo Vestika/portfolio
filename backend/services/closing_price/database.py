@@ -5,7 +5,6 @@ from typing import Optional
 
 from .config import settings
 
-
 class Database:
     client: Optional[AsyncIOMotorClient] = None
     database = None
