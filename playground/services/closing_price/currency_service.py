@@ -4,7 +4,7 @@ from datetime import datetime, date
 from loguru import logger
 from typing import Optional, Dict, Any
 
-from ..config import settings
+from .config import settings
 
 
 class CurrencyService:

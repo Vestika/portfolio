@@ -1,1 +1,0 @@
-# Closing Price Service - A microservice for fetching and caching stock prices 

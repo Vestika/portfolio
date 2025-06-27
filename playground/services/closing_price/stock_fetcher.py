@@ -6,7 +6,7 @@ from datetime import datetime, date
 from loguru import logger
 from typing import Optional, Literal, Any
 
-from ..config import settings
+from .config import settings
 
 
 class StockFetcher(ABC):

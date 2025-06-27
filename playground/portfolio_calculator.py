@@ -12,7 +12,8 @@ from playground.models.portfolio import Portfolio
 from playground.models.security import Security
 from playground.models.security_type import SecurityType
 from playground.utils.filters import AggregationKeyFunc, Filter
-from playground.services.closing_price_client import ClosingPriceClient
+from playground.services.closing_price import ClosingPriceService
+from playground.services.closing_price.service import get_global_service
 
 
 class PortfolioCalculator:
@@ -21,7 +22,7 @@ class PortfolioCalculator:
         base_currency: Currency,
         exchange_rates: dict[Currency, float],
         unit_prices: dict[str, float],
-        closing_price_client: Optional[ClosingPriceClient] = None,
+        closing_price_service: Optional[ClosingPriceService] = None,
         use_real_time_rates: bool = True,
     ):
         """
@@ -31,13 +32,13 @@ class PortfolioCalculator:
             base_currency: The base currency for calculations
             exchange_rates: Static exchange rates as fallback
             unit_prices: Static unit prices as fallback
-            closing_price_client: Client for fetching real-time data
+            closing_price_service: Service for fetching real-time data
             use_real_time_rates: Whether to fetch real-time exchange rates
         """
         self.base_currency = base_currency
         self.static_exchange_rates = exchange_rates
         self.unit_prices = unit_prices
-        self.closing_price_client = closing_price_client or ClosingPriceClient()
+        self.closing_price_service = closing_price_service or get_global_service()
         self.use_real_time_rates = use_real_time_rates
         
         # Cache for real-time exchange rates to avoid repeated API calls
@@ -71,7 +72,7 @@ class PortfolioCalculator:
         if self.use_real_time_rates:
             try:
                 logger.debug(f"Fetching real-time rate for {from_currency}/{to_currency}")
-                real_time_rate = self.closing_price_client.get_exchange_rate_sync(
+                real_time_rate = self.closing_price_service.get_exchange_rate_sync(
                     from_currency.value, to_currency.value
                 )
                 if real_time_rate is not None:
@@ -118,11 +119,14 @@ class PortfolioCalculator:
         else:
             # Try to get real-time price first for non-cash securities
             try:
-                price_data = self.closing_price_client.get_price_sync(security.symbol)
+                logger.debug(f"Attempting to fetch real-time price for {security.symbol}")
+                price_data = self.closing_price_service.get_price_sync(security.symbol)
                 if price_data:
                     unit_price = price_data["price"]
                     price_source = "real-time"
                     logger.debug(f"Using real-time price for {security.symbol}: {unit_price} {price_data['currency']}")
+                else:
+                    logger.debug(f"No real-time price data available for {security.symbol}")
             except Exception as e:
                 logger.warning(f"Failed to get real-time price for {security.symbol}: {e}")
             
@@ -136,12 +140,12 @@ class PortfolioCalculator:
                     unit_price = 0.0
         
         # Convert to base currency if needed
-        logger.info(f"DEBUG: Converting {security.symbol}: {security.currency} ({type(security.currency)}) -> {self.base_currency} ({type(self.base_currency)})")
+        logger.debug(f"Converting {security.symbol}: {security.currency} ({type(security.currency)}) -> {self.base_currency} ({type(self.base_currency)})")
         exchange_rate = self.get_exchange_rate(security.currency, self.base_currency)
         value_in_base = unit_price * exchange_rate
         total_value = value_in_base * units
         
-        logger.info(f"Conversion for {security.symbol}: {unit_price} {security.currency} * {exchange_rate} = {value_in_base} {self.base_currency} (total: {total_value} for {units} units)")
+        logger.debug(f"Conversion for {security.symbol}: {unit_price} {security.currency} * {exchange_rate} = {value_in_base} {self.base_currency} (total: {total_value} for {units} units)")
         
         return {
             "unit_price": unit_price,  # Price in original currency
