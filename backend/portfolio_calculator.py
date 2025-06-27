@@ -6,14 +6,14 @@ from typing import Optional, Any
 
 from loguru import logger
 
-from playground.models.account import Account
-from playground.models.currency import Currency
-from playground.models.portfolio import Portfolio
-from playground.models.security import Security
-from playground.models.security_type import SecurityType
-from playground.utils.filters import AggregationKeyFunc, Filter
-from playground.services.closing_price import ClosingPriceService
-from playground.services.closing_price.service import get_global_service
+from backend.models.account import Account
+from backend.models.currency import Currency
+from backend.models.portfolio import Portfolio
+from backend.models.security import Security
+from backend.models.security_type import SecurityType
+from backend.utils.filters import AggregationKeyFunc, Filter
+from backend.services.closing_price import ClosingPriceService
+from backend.services.closing_price.service import get_global_service
 
 
 class PortfolioCalculator:

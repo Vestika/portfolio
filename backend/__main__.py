@@ -3,10 +3,10 @@ import webbrowser
 from pathlib import Path
 
 import uvicorn
-from playground.models.portfolio import Portfolio
-from playground.portfolio_calculator import PortfolioCalculator
-from playground.utils import filter_security, filter_account
-from playground.app.main import app
+from backend.models.portfolio import Portfolio
+from backend.portfolio_calculator import PortfolioCalculator
+from backend.utils import filter_security, filter_account
+from backend.app.main import app
 
 
 def display_aggregation(title: str, aggregation_data: dict[str, any]) -> None:
