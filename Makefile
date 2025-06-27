@@ -1,4 +1,4 @@
-.PHONY: help run playground closing-price ui clean install stop setup
+.PHONY: help run clean install stop setup backend frontend
 
 # Default target
 help:
@@ -6,7 +6,7 @@ help:
 	@echo "  make setup            - Set up pyenv environment (first time setup)"
 	@echo "  make run              - Run all services in the background"
 	@echo "  make stop             - Stop all running services"
-	@echo "  make backend          - Run only the playground API service"
+	@echo "  make backend          - Run only the backend API service"
 	@echo "  make frontend         - Run only the UI development server"
 	@echo "  make install          - Install dependencies for all services"
 	@echo "  make clean            - Clean up temporary files and caches"
@@ -15,9 +15,9 @@ help:
 run:
 	@echo "🚀 Starting all services..."
 	@echo "📊 Starting Portfolio backend & API..."
-	@PYTHONPATH=$(pwd) uvicorn playground.app.main:app --reload --port 8000 &
+	@PYTHONPATH=$(pwd) uvicorn backend.app.main:app --reload --port 8000 &
 	@echo "🎨 Starting UI Development Server..."
-	@cd playground-dashboard && npm run dev &
+	@cd frontend && npm run dev &
 	@echo ""
 	@echo "✅ All services started!"
 	@echo "📊 Portfolio API: http://localhost:8000"
@@ -29,12 +29,12 @@ run:
 # Run only backend
 backend:
 	@echo "📊 Starting Portfolio backend & API..."
-	@cd playground && PYTHONPATH=$(shell pwd) uvicorn app.main:app --reload --port 8000
+	@PYTHONPATH=$(pwd) uvicorn backend.app.main:app --reload --port 8000
 
 # Run only frontend
 frontend:
 	@echo "🎨 Starting UI Development Server..."
-	@cd playground-dashboard && npm run dev
+	@cd frontend && npm run dev
 
 # Install dependencies
 install:
@@ -46,7 +46,7 @@ install:
 	@echo "📦 Installing closing-price service dependencies..."
 	@cd backend/services/closing-price-service && python -m pip install -r requirements.txt
 	@echo "📦 Installing UI dependencies..."
-	@cd playground-dashboard && npm install
+	@cd frontend && npm install
 	@echo "✅ All dependencies installed!"
 
 # Clean up
@@ -55,7 +55,7 @@ clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "*.pyc" -delete 2>/dev/null || true
-	@cd playground-dashboard && rm -rf node_modules/.vite 2>/dev/null || true
+	@cd frontend && rm -rf node_modules/.vite 2>/dev/null || true
 	@echo "✅ Cleanup complete!"
 
 # Stop all services

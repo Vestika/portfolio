@@ -1,6 +1,6 @@
 from typing import Callable
 
-from playground.models.security import Security
+from backend.models.security import Security
 
 type AggregationKey = str | None
 type AggregationKeyFunc = Callable[[Security], AggregationKey]

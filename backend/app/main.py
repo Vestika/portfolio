@@ -10,11 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yaml
 
-from playground.models.portfolio import Portfolio
-from playground.models.security_type import SecurityType
-from playground.portfolio_calculator import PortfolioCalculator
-from playground.utils import filter_security, filter_account
-from playground.services.closing_price.service import get_global_service
+from backend.models.portfolio import Portfolio
+from backend.models.security_type import SecurityType
+from backend.portfolio_calculator import PortfolioCalculator
+from backend.utils import filter_security, filter_account
+from backend.services.closing_price.service import get_global_service
 
 logger = logging.Logger(__name__)
 
