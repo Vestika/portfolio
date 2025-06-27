@@ -3,9 +3,9 @@ from typing import Any, Self
 
 import yaml
 
-from backend.models.account import Account
-from backend.models.currency import Currency
-from backend.models.security import Security
+from models.account import Account
+from models.currency import Currency
+from models.security import Security
 
 
 class Portfolio:

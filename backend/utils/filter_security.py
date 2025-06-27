@@ -1,7 +1,7 @@
 from typing import Callable
 
-from backend.models.security import Security
-from backend.utils.filters import AggregationKey, Filter, AggregationKeyFunc
+from models.security import Security
+from utils.filters import AggregationKey, Filter, AggregationKeyFunc
 
 type SecurityFilter = Callable[[Security], bool]
 

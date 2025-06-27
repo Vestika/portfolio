@@ -1,10 +1,7 @@
-import asyncio
 import httpx
 from datetime import datetime, date
 from loguru import logger
 from typing import Optional, Dict, Any
-
-from .config import settings
 
 
 class CurrencyService:
