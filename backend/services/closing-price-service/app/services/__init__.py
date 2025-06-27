@@ -1,1 +1,0 @@
-# Services package for closing price service 
