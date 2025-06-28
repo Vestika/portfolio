@@ -156,6 +156,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     type: ''
   });
 
+  const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
+
   const filteredAndSortedHoldings = [...data.holdings]
     .filter(holding =>
       holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase()) &&
@@ -190,96 +192,147 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
 
   return (
     <div className="w-full rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead className="bg-gray-700/50">
-            <tr className="h-8">
-              <th className="px-3 text-left text-xs font-medium">Type</th>
-              <th className="px-3 text-left text-xs font-medium">
-                <div className="flex items-center gap-2">
+      {/* View Toggle Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/30">
+        <h3 className="text-sm font-medium text-gray-200">Holdings Overview</h3>
+        <div className="flex items-center space-x-2">
+          <span className="text-xs text-gray-400">View:</span>
+          <div className="flex bg-gray-700/50 rounded-md p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-gray-600 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Table
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('heatmap')}
+              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
+                viewMode === 'heatmap'
+                  ? 'bg-gray-600 text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Heatmap
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {viewMode === 'table' && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead className="bg-gray-700/50">
+              <tr className="h-8">
+                <th className="px-3 text-left text-xs font-medium">Type</th>
+                <th className="px-3 text-left text-xs font-medium">
+                  <div className="flex items-center gap-2">
+                    <SortableHeader
+                      label="Symbol"
+                      sortKey="symbol"
+                      sortConfig={sortConfig}
+                      onSort={handleSort}
+                    />
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Filter..."
+                        className="pl-7 pr-2 py-0.5 bg-gray-700/50 rounded text-xs w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={filters.symbol}
+                        onChange={(e) => setFilters(prev => ({ ...prev, symbol: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </th>
+                <th className="px-3 text-left text-xs font-medium">Name</th>
+                <th className="px-3 text-left text-xs font-medium">Tags</th>
+                <th className="px-3 text-right text-xs font-medium">
                   <SortableHeader
-                    label="Symbol"
-                    sortKey="symbol"
+                    label="Price (Original)"
+                    sortKey="original_price"
                     sortConfig={sortConfig}
                     onSort={handleSort}
                   />
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Filter..."
-                      className="pl-7 pr-2 py-0.5 bg-gray-700/50 rounded text-xs w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      value={filters.symbol}
-                      onChange={(e) => setFilters(prev => ({ ...prev, symbol: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </th>
-              <th className="px-3 text-left text-xs font-medium">Name</th>
-              <th className="px-3 text-left text-xs font-medium">Tags</th>
-              <th className="px-3 text-right text-xs font-medium">
-                <SortableHeader
-                  label="Price (Original)"
-                  sortKey="original_price"
-                  sortConfig={sortConfig}
-                  onSort={handleSort}
-                />
-              </th>
-              {isValueVisible && (
-                <>
-                  <th className="px-3 text-right text-xs font-medium">
-                    <SortableHeader
-                      label="Units"
-                      sortKey="total_units"
-                      sortConfig={sortConfig}
-                      onSort={handleSort}
-                    />
-                  </th>
-                  <th className="px-3 text-right text-xs font-medium">
-                    <SortableHeader
-                      label={`Total Value (${data.base_currency})`}
-                      sortKey="total_value"
-                      sortConfig={sortConfig}
-                      onSort={handleSort}
-                    />
-                  </th>
-                </>
-              )}
-              <th className="px-3 text-center text-xs font-medium">30d Trend</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-700/30">
-            {filteredAndSortedHoldings.map((holding) => (
-              <tr key={holding.symbol} className="h-10 hover:bg-gray-750/50">
-                <td className="px-3">{getSecurityTypeIcon(holding.security_type)}</td>
-                <td className="px-3 font-medium text-blue-400">{holding.symbol}</td>
-                <td className="px-3 text-sm text-gray-300">{holding.name}</td>
-                <td className="px-3 text-sm">{renderTags(holding.tags)}</td>
-                <td className="px-3 text-right text-sm">
-                  {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
-                  <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
-                </td>
+                </th>
                 {isValueVisible && (
                   <>
-                    <td className="px-3 text-right text-sm">
-                      {Math.round(holding.total_units).toLocaleString()}
-                    </td>
-                    <td className="px-3 text-right text-sm whitespace-nowrap">
-                      {Math.round(holding.total_value).toLocaleString()}
-                      <span className="text-xs text-gray-400 ml-1">
-                        ({calculatePercentage(holding)}%)
-                      </span>
-                    </td>
+                    <th className="px-3 text-right text-xs font-medium">
+                      <SortableHeader
+                        label="Units"
+                        sortKey="total_units"
+                        sortConfig={sortConfig}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="px-3 text-right text-xs font-medium">
+                      <SortableHeader
+                        label={`Total Value (${data.base_currency})`}
+                        sortKey="total_value"
+                        sortConfig={sortConfig}
+                        onSort={handleSort}
+                      />
+                    </th>
                   </>
                 )}
-                <td className="px-3">
-                  <MiniChart data={holding.historical_prices} />
-                </td>
+                <th className="px-3 text-center text-xs font-medium">30d Trend</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-700/30">
+              {filteredAndSortedHoldings.map((holding) => (
+                <tr key={holding.symbol} className="h-10 hover:bg-gray-750/50">
+                  <td className="px-3">{getSecurityTypeIcon(holding.security_type)}</td>
+                  <td className="px-3 font-medium text-blue-400">{holding.symbol}</td>
+                  <td className="px-3 text-sm text-gray-300">{holding.name}</td>
+                  <td className="px-3 text-sm">{renderTags(holding.tags)}</td>
+                  <td className="px-3 text-right text-sm">
+                    {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                    <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                  </td>
+                  {isValueVisible && (
+                    <>
+                      <td className="px-3 text-right text-sm">
+                        {Math.round(holding.total_units).toLocaleString()}
+                      </td>
+                      <td className="px-3 text-right text-sm whitespace-nowrap">
+                        {Math.round(holding.total_value).toLocaleString()}
+                        <span className="text-xs text-gray-400 ml-1">
+                          ({calculatePercentage(holding)}%)
+                        </span>
+                      </td>
+                    </>
+                  )}
+                  <td className="px-3">
+                    <MiniChart data={holding.historical_prices} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {viewMode === 'heatmap' && (
+        <div className="p-8 bg-gray-800/50">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-700/50 rounded-full mb-4">
+              <ChartNoAxesCombined size={24} className="text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-200 mb-2">Heatmap View</h3>
+            <p className="text-sm text-gray-400">
+              Visualize your holdings distribution with an interactive heatmap.
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Coming soon...
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
