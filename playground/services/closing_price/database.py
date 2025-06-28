@@ -31,7 +31,7 @@ async def connect_to_mongo() -> None:
         
         # Create indexes
         await db.database.stock_prices.create_index([("symbol", 1), ("date", -1)])
-        await db.database.tracked_symbols.create_index([("symbol", 1)])
+        await db.database.tracked_symbols.create_index([("symbol", 1)], unique=True, name="symbol_1")
         await db.database.tracked_symbols.create_index([("last_queried_at", 1)])
         
     except Exception as e:
