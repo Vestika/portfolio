@@ -258,6 +258,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         }));
       }
       
+      // Ensure there's always at least one empty row available for typing
+      const hasEmptyRow = mappedHoldings.some(h => !h.symbol.trim() && !h.units.trim());
+      if (!hasEmptyRow) {
+        mappedHoldings.push({ symbol: '', units: '' });
+      }
+      
       setEditAccount({
         account_name: account.account_name,
         account_type: account.account_type || 'bank-account',
