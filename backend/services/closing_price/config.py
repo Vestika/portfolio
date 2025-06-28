@@ -24,6 +24,7 @@ class Settings:
         self.mongodb_database: str = os.getenv("MONGODB_DATABASE", "closing_price_service")
         
         # Redis Configuration
+        self.use_fake_redis: bool = True
         self.redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.redis_db: int = int(os.getenv("REDIS_DB", "0"))
         

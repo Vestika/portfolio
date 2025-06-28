@@ -1,7 +1,9 @@
-import redis.asyncio as redis
 from loguru import logger
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional
+import redis.asyncio as redis
+import fakeredis.aioredis as fakeredis
+
 
 from .config import settings
 
@@ -46,18 +48,22 @@ async def close_mongo_connection() -> None:
 
 
 async def connect_to_redis() -> None:
-    """Create Redis connection"""
+    """Create Redis or FakeRedis connection depending on config"""
     try:
-        cache.redis_client = redis.from_url(
-            settings.redis_url,
-            db=settings.redis_db,
-            decode_responses=True
-        )
-        
+        if settings.use_fake_redis:
+            cache.redis_client = fakeredis.FakeRedis(decode_responses=True)
+            logger.info("Using FakeRedis for in-memory caching")
+        else:
+            cache.redis_client = redis.from_url(
+                settings.redis_url,
+                db=settings.redis_db,
+                decode_responses=True
+            )
+            logger.info(f"Connected to Redis at {settings.redis_url}")
+
         # Test the connection
         await cache.redis_client.ping()
-        logger.info(f"Connected to Redis at {settings.redis_url}")
-        
+
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
         raise
