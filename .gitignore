@@ -1,4 +1,5 @@
 .python-version
 .idea/
 **/__pycache__/
-playground/michael.yaml
+backend/michael.yaml
+**.env

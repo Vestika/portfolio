@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Any, Self
 
-from playground.models.currency import Currency
-from playground.models.security_type import SecurityType
+from models.currency import Currency
+from models.security_type import SecurityType
 
 
 @dataclass

@@ -3,9 +3,9 @@ from typing import Any, Self
 
 import yaml
 
-from playground.models.account import Account
-from playground.models.currency import Currency
-from playground.models.security import Security
+from models.account import Account
+from models.currency import Currency
+from models.security import Security
 
 
 class Portfolio:

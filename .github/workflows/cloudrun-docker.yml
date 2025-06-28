@@ -1,0 +1,50 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  vestika-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set env
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      # Setup gcloud CLI
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          
+      # Setup gcloud CLI
+#       - uses: google-github-actions/setup-gcloud@v1
+#         with:
+#           service_account_email: ${{ secrets.GCP_EMAIL }}
+#           service_account_key: ${{ secrets.GCP_CREDENTIALS }}
+#           export_default_credentials: true
+
+      # Configure Docker with Credentials
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker
+
+      # Build the Docker image
+      - name: Build & Publish
+        run: |
+          gcloud config set project ${{ secrets.GCP_PROJECT }}
+          gcloud builds submit --tag gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.GCP_APPLICATION }}
+          gcloud config set run/region us-central1
+
+      # Deploy the Docker image to the GKE cluster
+      - name: Deploy
+        run: |
+          gcloud run deploy ${{ secrets.GCP_APPLICATION }} --image gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.GCP_APPLICATION }} \
+          --region us-west1 \
+          --allow-unauthenticated \
+          --set-env-vars MONGODB_URL=${{ secrets.MONGODB_URL }},\
+            FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }},\

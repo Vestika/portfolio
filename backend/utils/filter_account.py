@@ -1,7 +1,7 @@
 from typing import Callable, Iterable
 
-from playground.models.account import Account
-from playground.utils.filters import Filter
+from models.account import Account
+from utils.filters import Filter
 
 type AccountFilter = Callable[[Account], bool]
 

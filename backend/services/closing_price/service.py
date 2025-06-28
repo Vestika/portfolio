@@ -6,7 +6,6 @@ from loguru import logger
 from .price_manager import PriceManager
 from .currency_service import currency_service
 from .database import connect_to_mongo, connect_to_redis, close_mongo_connection, close_redis_connection
-from .models import PriceResponse
 
 
 class ClosingPriceService:

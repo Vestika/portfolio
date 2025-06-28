@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Self
 
-from playground.models.holding import Holding
+from models.holding import Holding
 
 
 @dataclass

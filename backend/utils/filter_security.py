@@ -1,7 +1,7 @@
 from typing import Callable
 
-from playground.models.security import Security
-from playground.utils.filters import AggregationKey, Filter, AggregationKeyFunc
+from models.security import Security
+from utils.filters import AggregationKey, Filter, AggregationKeyFunc
 
 type SecurityFilter = Callable[[Security], bool]
 
