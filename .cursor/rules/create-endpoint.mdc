@@ -1,0 +1,115 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Cursor Rule: create-endpoint
+
+## Prompts
+- resource_name — name of the resource in snake_case (e.g. user_message)
+- fields — list of fields (e.g. text:str, sent_at:str)
+- parent_keys — list of parent path keys (e.g. user_id, org_id, project_id)
+  - This controls nesting in the URL like /users/{user_id}/user-messages
+- methods — multiselect of supported HTTP methods: GET, POST, PUT, DELETE
+
+---
+
+## Generation Instructions
+
+### 1. backend/schemas/{resource_name}.py
+- Create Pydantic models:
+  - `{Resource}Create` with required fields
+  - `{Resource}Read` with all Create fields + `id` and all `parent_keys` as `str`
+    - Use `Field(..., alias="_id")` for `id`
+    - Add `Config` with `allow_population_by_field_name = True`
+  - `{Resource}Update` with all fields as optional
+
+### 2. backend/api/{resource_name}.py
+- Import the schema
+- Instantiate a `MongoResourceEndpoint(...)`:
+  - `collection_name="{resource_name}s"`
+  - `item_key="{resource_name}_id"`
+  - `parent_keys=[...]`
+  - Use the generated schemas
+- Only register the selected methods:
+  - POST → `create_item`
+  - GET → `get_item`, `list_items`
+  - PUT → `update_item`
+  - DELETE → `delete_item`
+- Build `router = APIRouter(...)`:
+  - `prefix` is constructed like:
+    - `/users/{user_id}/user-messages`
+    - `/orgs/{org_id}/projects/{project_id}/activity-logs`
+  - Use plural/kebab-case for resource and parent path segments
+  - `tags` should be a human-friendly version (e.g. User Messages)
+
+### 3. frontend/lib/api.ts
+- Add a TypeScript interface `{Resource}` with:
+  - All fields in camelCase
+  - `id: string`
+  - All `parent_keys` in camelCase
+- Add the following functions based on selected methods:
+  - GET: `list{Resources}(...)`, `get{Resource}(...)`
+  - POST: `create{Resource}(...)`
+  - PUT: `update{Resource}(...)`
+  - DELETE: `delete{Resource}(...)`
+- Use `fetch()` with appropriate methods and JSON body
+- Build paths as:
+  - `/orgs/${orgId}/projects/${projectId}/resource-name/${resourceId}`
+
+---
+
+## Naming & Format Instructions
+- Use:
+  - `snake_case` for Python code and file names
+  - `PascalCase` for Pydantic and TS interfaces
+  - `camelCase` for TypeScript fields and function names
+  - `kebab-case` for URL path segments
+  - Pluralize collection and route names
+
+---
+
+## Example
+If you wanted to create a user endpoint, you would create `schemas/user.py`:
+
+```python
+from pydantic import BaseModel, Field
+from typing import Optional
+
+class UserCreate(BaseModel):
+    action: str
+
+class UserRead(UserCreate):
+    id: str = Field(..., alias="_id")
+    first_name: str
+    last_name: str
+    date_of_birth: datetime
+
+    class Config:
+        allow_population_by_field_name = True
+
+class UserUpdate(BaseModel):
+    action: Optional[str] = None
+```
+
+And in `api/user.py`:
+
+```python
+from app.api.base import MongoResourceEndpoint
+from app.schemas.user import UserCreate, UserRead, UserUpdate
+
+user_endpoint = MongoResourceEndpoint(
+    collection_name="users",
+    parent_keys=[],
+    item_key="user_id",
+    create_schema=UserCreate,
+    read_schema=UserRead,
+    update_schema=UserUpdate,
+    requires_auth=True,
+)
+
+router = user_endpoint.router
+```
+
+And in `frontend/lib/api.ts`:
+- Add a `User` interface and API methods as described above.
