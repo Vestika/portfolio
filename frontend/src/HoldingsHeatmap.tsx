@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { HoldingsTableData, SecurityHolding } from './types';
+import { HoldingsTableData } from './types';
 
 import 'highcharts/modules/treemap';
 import 'highcharts/modules/accessibility';
