@@ -1,5 +1,5 @@
-from backend.endpoints.base import MongoResourceEndpoint
-from backend.schemas.portfolio import PortfolioCreate, PortfolioRead, PortfolioUpdate
+from endpoints.base import MongoResourceEndpoint
+from schemas.portfolio import PortfolioCreate, PortfolioRead, PortfolioUpdate
 
 portfolio_endpoint = MongoResourceEndpoint(
     collection_name="portfolios",

@@ -15,7 +15,7 @@ help:
 run:
 	@echo "🚀 Starting all services..."
 	@echo "📊 Starting Portfolio backend & API..."
-	@PYTHONPATH=$(pwd) uvicorn backend.app.main:app --reload --port 8000 &
+	@cd backend && PYTHONPATH=. uvicorn app.main:app --reload --port 8000 &
 	@echo "🎨 Starting UI Development Server..."
 	@cd frontend && npm run dev &
 	@echo ""
@@ -29,7 +29,7 @@ run:
 # Run only backend
 backend:
 	@echo "📊 Starting Portfolio backend & API..."
-	@PYTHONPATH=$(pwd) uvicorn backend.app.main:app --reload --port 8000
+	@cd backend && PYTHONPATH=. uvicorn app.main:app --reload --port 8000
 
 # Run only frontend
 frontend:

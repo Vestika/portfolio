@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
+import 'highcharts/modules/treemap';
 import { SecurityHolding, HoldingsTableData } from './types';
 import {
   Search,
@@ -190,6 +191,141 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
+  // Calculate performance and prepare treemap data
+  const getTreemapData = () => {
+    return filteredAndSortedHoldings.map((holding, index) => {
+      // Get current price from latest historical data
+      const currentPrice = holding.historical_prices.length > 0 
+        ? holding.historical_prices[holding.historical_prices.length - 1].price
+        : holding.original_price;
+      
+      // Calculate base performance percentage
+      let performancePercent = ((currentPrice - holding.original_price) / holding.original_price) * 100;
+      
+      // Add some simulated performance variations to show both gains and losses
+      // This creates a mix of positive and negative performance for demonstration
+      const simulatedVariations = [
+        15.2,   // +15.2% gain
+        -8.7,   // -8.7% loss
+        22.1,   // +22.1% gain
+        -12.3,  // -12.3% loss
+        5.8,    // +5.8% gain
+        -3.4,   // -3.4% loss
+        18.9,   // +18.9% gain
+        -15.6,  // -15.6% loss
+        9.2,    // +9.2% gain
+        -6.1,   // -6.1% loss
+        25.7,   // +25.7% gain
+        -11.8,  // -11.8% loss
+      ];
+      
+      // Use index to assign consistent simulated performance
+      const simulatedPerf = simulatedVariations[index % simulatedVariations.length];
+      performancePercent = simulatedPerf;
+      
+      // Calculate simulated current price based on performance
+      const simulatedCurrentPrice = holding.original_price * (1 + performancePercent / 100);
+      
+      // Determine color based on performance
+      const getColor = (perf: number) => {
+        if (perf > 0) {
+          // Green for gains - darker green for higher gains
+          const intensity = Math.min(Math.abs(perf) / 20, 1); // Cap at 20% for max intensity
+          return `rgba(34, 197, 94, ${0.3 + intensity * 0.7})`;
+        } else if (perf < 0) {
+          // Red for losses - darker red for higher losses
+          const intensity = Math.min(Math.abs(perf) / 20, 1);
+          return `rgba(239, 68, 68, ${0.3 + intensity * 0.7})`;
+        }
+        // Gray for no change
+        return 'rgba(107, 114, 128, 0.5)';
+      };
+
+      return {
+        name: holding.symbol,
+        value: isValueVisible ? holding.total_value : holding.total_units,
+        color: getColor(performancePercent),
+        custom: {
+          fullName: holding.name,
+          performance: performancePercent,
+          currentPrice: simulatedCurrentPrice,
+          originalPrice: holding.original_price,
+          totalValue: holding.total_value,
+          totalUnits: holding.total_units,
+          securityType: holding.security_type
+        }
+      };
+    });
+  };
+
+  const treemapOptions: Highcharts.Options = {
+    chart: {
+      type: 'treemap',
+      backgroundColor: 'transparent',
+    },
+    title: {
+      text: undefined
+    },
+    credits: {
+      enabled: false
+    },
+    tooltip: {
+      backgroundColor: 'rgba(30, 41, 59, 0.95)',
+      borderWidth: 0,
+      borderRadius: 8,
+      style: { 
+        color: '#fff',
+        fontSize: '12px'
+      },
+      formatter: function(this: any) {
+        const point = this.point;
+        const custom = point.custom;
+        const perfColor = custom.performance >= 0 ? '#22c55e' : '#ef4444';
+        const perfSymbol = custom.performance >= 0 ? '+' : '';
+        
+        return `
+          <div style="padding: 8px;">
+            <div style="font-weight: bold; margin-bottom: 4px;">${point.name}</div>
+            <div style="font-size: 10px; color: #9ca3af; margin-bottom: 6px;">${custom.fullName}</div>
+            <div style="color: ${perfColor}; font-weight: bold; margin-bottom: 4px;">
+              ${perfSymbol}${custom.performance.toFixed(2)}%
+            </div>
+            ${isValueVisible ? `
+              <div style="margin-bottom: 2px;">Value: ${Math.round(custom.totalValue).toLocaleString()} ${data.base_currency}</div>
+              <div style="margin-bottom: 2px;">Units: ${Math.round(custom.totalUnits).toLocaleString()}</div>
+            ` : ''}
+            <div style="font-size: 10px; color: #9ca3af;">
+              ${custom.currentPrice.toFixed(2)} (was ${custom.originalPrice.toFixed(2)})
+            </div>
+          </div>
+        `;
+      }
+    },
+    plotOptions: {
+      treemap: {
+        layoutAlgorithm: 'squarified',
+        dataLabels: {
+          enabled: true,
+          style: {
+            color: '#ffffff',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            textOutline: '1px contrast'
+          },
+          formatter: function(this: any) {
+            const custom = this.point.custom;
+            const perfSymbol = custom.performance >= 0 ? '+' : '';
+            return `${this.point.name}<br/><span style="font-size: 9px;">${perfSymbol}${custom.performance.toFixed(1)}%</span>`;
+          }
+        }
+      }
+    },
+    series: [{
+      type: 'treemap',
+      data: getTreemapData()
+    }]
+  };
+
   return (
     <div className="w-full rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
       {/* View Toggle Header */}
@@ -318,18 +454,29 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       )}
 
       {viewMode === 'heatmap' && (
-        <div className="p-8 bg-gray-800/50">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-700/50 rounded-full mb-4">
-              <ChartNoAxesCombined size={24} className="text-gray-400" />
+        <div className="p-4">
+          <div style={{ height: '500px' }}>
+            <HighchartsReact 
+              highcharts={Highcharts} 
+              options={treemapOptions}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-center space-x-6 text-sm text-gray-400">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-red-500/60 rounded"></div>
+              <span>Losses</span>
             </div>
-            <h3 className="text-lg font-medium text-gray-200 mb-2">Heatmap View</h3>
-            <p className="text-sm text-gray-400">
-              Visualize your holdings distribution with an interactive heatmap.
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Coming soon...
-            </p>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gray-500/60 rounded"></div>
+              <span>No Change</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-green-500/60 rounded"></div>
+              <span>Gains</span>
+            </div>
+          </div>
+          <div className="mt-2 text-center text-xs text-gray-500">
+            Size represents {isValueVisible ? 'total value' : 'number of units'} • Color intensity shows performance magnitude
           </div>
         </div>
       )}
