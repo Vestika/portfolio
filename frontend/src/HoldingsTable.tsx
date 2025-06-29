@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
+import HoldingsHeatmap from './HoldingsHeatmap';
+import { dummyHoldingsData } from './dummyHoldingsData';
+
 import {
   Search,
   ArrowUpDown,
@@ -318,20 +321,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       )}
 
       {viewMode === 'heatmap' && (
-        <div className="p-8 bg-gray-800/50">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-700/50 rounded-full mb-4">
-              <ChartNoAxesCombined size={24} className="text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-200 mb-2">Heatmap View</h3>
-            <p className="text-sm text-gray-400">
-              Visualize your holdings distribution with an interactive heatmap.
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Coming soon...
-            </p>
-          </div>
-        </div>
+        <HoldingsHeatmap data={dummyHoldingsData} isValueVisible={isValueVisible} />
       )}
     </div>
   );
