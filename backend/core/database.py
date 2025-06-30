@@ -20,5 +20,4 @@ class DatabaseManager:
         return self.database[collection_name]
 
 
-# Global database instance
 db_manager = DatabaseManager()
