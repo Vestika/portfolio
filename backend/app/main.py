@@ -656,7 +656,4 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "docs_url": "/docs"
-    }
-
-from api.portfolio import router as portfolio_router
-app.include_router(portfolio_router, prefix="/portfolio", tags=["Portfolio"])
+    } 

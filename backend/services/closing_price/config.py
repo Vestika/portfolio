@@ -21,8 +21,8 @@ class Settings:
     def __init__(self):
         # MongoDB Configuration
         self.mongodb_url: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-        self.mongodb_database: str = os.getenv("MONGODB_DATABASE", "vestika")
-
+        self.mongodb_database: str = os.getenv("MONGODB_DATABASE", "closing_price_service")
+        
         # Redis Configuration
         self.use_fake_redis: bool = True
         self.redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")

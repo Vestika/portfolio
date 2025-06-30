@@ -6,7 +6,6 @@ from loguru import logger
 from .price_manager import PriceManager
 from .currency_service import currency_service
 from .database import connect_to_mongo, connect_to_redis, close_mongo_connection, close_redis_connection
-from ..database_service import DatabaseService
 
 
 class ClosingPriceService:
@@ -271,7 +270,6 @@ class ClosingPriceService:
                 logger.debug("Cleaning up closing price service...")
                 await close_redis_connection()
                 await close_mongo_connection()
-                await DatabaseService.close_database_connection()
                 self._initialized = False
                 logger.debug("Closing price service cleaned up successfully")
         except Exception as e:
