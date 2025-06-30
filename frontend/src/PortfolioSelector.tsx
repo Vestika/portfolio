@@ -29,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   files = [],
   selectedFile,
@@ -51,7 +53,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
 
   const handleCreatePortfolio = async () => {
     try {
-      const response = await fetch('http://localhost:8000/portfolio/create', {
+      const response = await fetch(`${apiUrl}/portfolio/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +79,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
 
   const handleDeletePortfolio = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/portfolio/${portfolioToDelete}`, {
+      const response = await fetch(`${apiUrl}/portfolio/${portfolioToDelete}`, {
         method: 'DELETE',
       });
 

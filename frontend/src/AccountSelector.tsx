@@ -34,6 +34,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
   onAccountsChange: (accountNames: string[]) => void;
@@ -191,7 +193,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: validHoldings
       };
 
-      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts`, {
+      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -217,7 +219,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleDeleteAccount = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToDelete)}`, {
+      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToDelete)}`, {
         method: 'DELETE',
       });
 
@@ -350,7 +352,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: validHoldings
       };
 
-      const response = await fetch(`http://localhost:8000/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
+      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

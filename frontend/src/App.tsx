@@ -13,6 +13,8 @@ import {
   HoldingsTableData,
 } from './types';
 
+const apiUrl = import.meta.env.VITE_API_URL;
+
 const App: React.FC = () => {
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
@@ -26,7 +28,7 @@ const App: React.FC = () => {
 
   const fetchAvailableFiles = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/portfolio/files');
+      const response = await axios.get(`${apiUrl}/portfolio/files`);
       setAvailableFiles(response.data || []); // Ensure we always set an array
     } catch (err) {
       console.error('Failed to fetch available portfolio files:', err);
@@ -37,7 +39,7 @@ const App: React.FC = () => {
 
   const fetchPortfolioMetadata = async () => {
     try {
-      const metadata = await axios.get(`http://localhost:8000/portfolio?file=${selectedFile}`);
+      const metadata = await axios.get(`${apiUrl}/portfolio?file=${selectedFile}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
       return metadata.data;
@@ -55,7 +57,7 @@ const App: React.FC = () => {
         accountNames.forEach(name => params.append('account_names', name));
       }
 
-      const breakdown = await axios.get(`http://localhost:8000/portfolio/breakdown?${params}`);
+      const breakdown = await axios.get(`${apiUrl}/portfolio/breakdown?${params}`);
       setPortfolioData(breakdown.data);
 
       // Fetch holdings data along with breakdown
@@ -65,7 +67,7 @@ const App: React.FC = () => {
         accountNames.forEach(name => holdingsParams.append('account_names', name));
       }
 
-      const holdings = await axios.get(`http://localhost:8000/portfolio/holdings?${holdingsParams}`);
+      const holdings = await axios.get(`${apiUrl}/portfolio/holdings?${holdingsParams}`);
       setHoldingsData(holdings.data);
 
       setIsLoading(false);
