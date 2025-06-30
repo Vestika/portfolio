@@ -69,7 +69,7 @@ Child model must have parent_id field matching parent_field
 Frontend Rules (TypeScript - camelCase)
 
 1. Type Generation
-When creating a backend model, automatically generate corresponding TypeScript interfaces in frontend/lib/types.ts:
+When creating a backend model, automatically generate corresponding TypeScript interfaces in frontend/src/lib/types.ts:
 
 typescript
 // Convert snake_case fields to camelCase
