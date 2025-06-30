@@ -1,0 +1,197 @@
+## FastAPI Auto-Generated Feature Creation Rules
+
+You are helping create features for a FastAPI application with auto-generated endpoints and MongoDB integration using Motor. Follow these rules precisely:
+
+### Backend Rules (Python - snake_case)
+
+#### 1. File Creation
+- Create model files in `backend/models/` as `{feature_name}_model.py`
+- Use snake_case for file names, variables, and function names
+- Use PascalCase for class names
+
+#### 2. Model Structure Template
+```python
+# backend/models/{feature_name}_model.py
+from app.core import BaseFeatureModel, FeatureConfig, AuthType, NestedRelation
+from pydantic import Field, EmailStr
+from typing import Optional
+
+class {FeatureName}(BaseFeatureModel):
+    # Define fields with snake_case names
+    field_name: str = Field(..., min_length=1, max_length=100, description="Field description")
+    optional_field: Optional[int] = Field(None, ge=0, description="Optional field")
+
+    @classmethod
+    def get_feature_config(cls) -> FeatureConfig:
+        return FeatureConfig(
+            collection_name="{feature_name}s",  # Always plural snake_case
+            auth_required=AuthType.BEARER,  # NONE, BASIC, BEARER, API_KEY
+            enable_create=True,
+            enable_read=True,
+            enable_update=True,
+            enable_delete=True,
+            enable_list=True,
+            async_operations=True,
+            # Optional: For nested resources
+            nested_under=NestedRelation(
+                parent_field="parent_id",
+                parent_collection="parents",
+                route_name="nested_route_name"
+            ),
+            # Optional: Custom hooks
+            pre_hooks={
+                "create": [cls.validate_before_create],
+            },
+            post_hooks={
+                "read": [cls.enrich_data_after_read],
+            }
+        )
+
+    # Custom hook methods (if needed)
+    @staticmethod
+    async def validate_before_create(data: dict):
+        """Custom validation before creation"""
+        pass
+
+    @staticmethod
+    async def enrich_data_after_read(item: dict):
+        """Custom data enrichment after read"""
+        return item
+
+3. Registration Rules
+Add import to backend/models/__init__.py
+Add to models_to_register list in backend/app/main.py
+
+4. Nested Resource Rules
+For nested resources, set nested_under in FeatureConfig
+Parent model should list child route names in nested_children
+Child model must have parent_id field matching parent_field
+Frontend Rules (TypeScript - camelCase)
+
+1. Type Generation
+When creating a backend model, automatically generate corresponding TypeScript interfaces in frontend/lib/types.ts:
+
+typescript
+// Convert snake_case fields to camelCase
+export interface {FeatureName} extends BaseModel {
+  fieldName: string;  // field_name -> fieldName
+  optionalField?: number;  // optional_field -> optionalField
+}
+
+// For nested resources
+export interface {NestedFeatureName} extends BaseModel {
+  parentId: string;  // parent_id -> parentId
+  childField: string;  // child_field -> childField
+}
+
+2. API Client Methods
+Add methods to frontend/src/lib/api.ts:
+
+typescript
+// For standalone resources
+export class {FeatureName}Api {
+  async create{FeatureName}(data: Partial<{FeatureName}>): Promise<ApiResponse<{ id: string }>> {
+    return apiClient.create('{feature_name}s', data);
+  }
+
+  async get{FeatureName}(id: string): Promise<ApiResponse<{FeatureName}>> {
+    return apiClient.getById('{feature_name}s', id);
+  }
+
+  async list{FeatureName}s(params?: { skip?: number; limit?: number }): Promise<ApiResponse<PaginatedResponse<{FeatureName}>>> {
+    return apiClient.list('{feature_name}s', params);
+  }
+
+  async update{FeatureName}(id: string, data: Partial<{FeatureName}>): Promise<ApiResponse<{ message: string }>> {
+    return apiClient.update('{feature_name}s', id, data);
+  }
+
+  async delete{FeatureName}(id: string): Promise<ApiResponse<{ message: string }>> {
+    return apiClient.delete('{feature_name}s', id);
+  }
+}
+
+// For nested resources
+export class {NestedFeatureName}Api {
+  async create{NestedFeatureName}(parentId: string, data: Partial<{NestedFeatureName}>): Promise<ApiResponse<{ id: string }>> {
+    return apiClient.createNested('{parent_name}s', parentId, '{nested_route_name}', data);
+  }
+
+  async list{NestedFeatureName}s(parentId: string, params?: { skip?: number; limit?: number }): Promise<ApiResponse<PaginatedResponse<{NestedFeatureName}>>> {
+    return apiClient.listNested('{parent_name}s', parentId, '{nested_route_name}', params);
+  }
+
+  async get{NestedFeatureName}(parentId: string, id: string): Promise<ApiResponse<{NestedFeatureName}>> {
+    return apiClient.getNestedById('{parent_name}s', parentId, '{nested_route_name}', id);
+  }
+
+  async update{NestedFeatureName}(parentId: string, id: string, data: Partial<{NestedFeatureName}>): Promise<ApiResponse<{ message: string }>> {
+    return apiClient.updateNested('{parent_name}s', parentId, '{nested_route_name}', id, data);
+  }
+
+  async delete{NestedFeatureName}(parentId: string, id: string): Promise<ApiResponse<{ message: string }>> {
+    return apiClient.deleteNested('{parent_name}s', parentId, '{nested_route_name}', id);
+  }
+}
+
+export const {featureName}Api = new {FeatureName}Api();
+
+
+# Naming Convention Rules
+## Backend (Python)
+    * Files: feature_name_model.py
+    * Classes: FeatureName
+    * Fields: field_name
+    * Collections: feature_names (plural)
+    * Functions: function_name
+
+## Frontend (TypeScript)
+    * Interfaces: FeatureName
+    * Fields: fieldName
+    * API Classes: FeatureNameApi
+    * Instances: featureNameApi
+    * Methods: createFeatureName, getFeatureName, etc.
+
+## Validation Rules
+    * Always use Pydantic Field() with proper validation
+    * Add descriptions to all fields
+    * Use proper typing (Optional, List, etc.)
+    * Implement custom hooks only when needed
+    * Ensure parent-child relationships are properly configured
+
+## Auth Rules
+    * Set appropriate AuthType based on security requirements
+    * Use AuthType.NONE for public endpoints
+    * Use AuthType.BEARER for user-specific endpoints
+    * Use AuthType.API_KEY for service-to-service
+## Error Handling
+    * All API methods should return ApiResponse<T> type
+    * Handle errors gracefully in custom hooks
+    * Use proper HTTP status codes (404 for not found, etc.)
+
+# When asked to create a new feature:
+1. Ask for feature requirements (fields, auth, nested relationships)
+2. Create the backend model file
+3. Update init.py imports
+4. Update main.py registration
+5. Generate TypeScript interfaces
+6. Generate API client methods
+7. Provide usage examples
+Follow these rules exactly to maintain consistency across the codebase.
+
+
+# Usage Examples
+
+## Creating a Standalone Feature
+```bash
+# AI Prompt: "Create a Category feature with name, description, and is_active fields. Requires bearer auth."
+Creating a Nested Feature
+bash
+# AI Prompt: "Create a ProductImage feature nested under Product with image_url, alt_text, and is_primary fields. Requires bearer auth."
+
+The system will auto-generate:
+1. Backend model with proper snake_case
+2. TypeScript interfaces with proper camelCase
+3. API client methods
+4. Proper registration in main.py
+5. Updated imports in init.py files
