@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yaml
 
+from core import feature_generator
+from core.database import db_manager
+from models import User, Product
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
@@ -47,7 +50,16 @@ async def startup_event():
         logger.info("Starting up Portfolio API...")
         # Initialize the closing price service
         await closing_price_service.initialize()
+        await db_manager.connect("vestika")
+
         logger.info("Portfolio API startup completed successfully")
+
+        models_to_register = [User, Product]
+
+        for model_class in models_to_register:
+            router = feature_generator.register_feature(model_class)
+            app.include_router(router, prefix="/api/v1")
+
     except Exception as e:
         logger.error(f"Failed to start Portfolio API: {e}")
         raise
@@ -656,4 +668,5 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "docs_url": "/docs"
-    } 
+    }
+
