@@ -118,16 +118,17 @@ def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
 
 def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> PortfolioCalculator:
     """Get existing calculator from cache or create a new one"""
-    # Create a cache key based on file and portfolio configuration
+    # Create a cache key based on portfolio_id and portfolio configuration
     cache_key = f"{portfolio_id}:{portfolio.base_currency.value}:{hash(str(portfolio.exchange_rates))}"
 
     if cache_key not in calculator_cache:
         calculator_cache[cache_key] = create_calculator(portfolio)
-        logger.info(f"Created new calculator for {file}")
+        logger.info(f"Created new calculator for {portfolio_id}")
     else:
-        logger.debug(f"Reusing cached calculator for {file}")
+        logger.debug(f"Reusing cached calculator for {portfolio_id}")
 
     return calculator_cache[cache_key]
+
 
 @app.get("/portfolios")
 async def list_portfolios() -> list[dict[str, str]]:
@@ -448,9 +449,9 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
         }
         await collection.insert_one(portfolio_data)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(filename)
+        invalidate_portfolio_cache(request.portfolio_name)
 
-        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "filename": request.portfolio_name}
+        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "portfolio_id": request.portfolio_name}
     except HTTPException:
         raise
     except Exception as e:
@@ -494,7 +495,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         portfolio_data['accounts'].append(new_account)
         await collection.replace_one({"portfolio_name": portfolio_id}, portfolio_data)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
+        invalidate_portfolio_cache(portfolio_id)
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
@@ -516,7 +517,7 @@ async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         # Clear from portfolios cache
-        invalidate_portfolio_cache(file)
+        invalidate_portfolio_cache(portfolio_id)
 
         return {"message": f"Portfolio {portfolio_id} deleted successfully"}
     except HTTPException:
@@ -544,7 +545,7 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
         doc['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
         await collection.replace_one({"portfolio_name": portfolio_id}, doc)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
+        invalidate_portfolio_cache(portfolio_id)
 
         return {"message": f"Account '{account_name}' deleted from {portfolio_id} successfully"}
     except HTTPException:
@@ -597,7 +598,7 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         doc['accounts'] = accounts
         await collection.replace_one({"portfolio_name": portfolio_id}, doc)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
+        invalidate_portfolio_cache(portfolio_id)
         return {"message": f"Account '{account_name}' updated successfully"}
     except HTTPException:
         raise
@@ -617,14 +618,10 @@ async def root():
     }
 
 
-def invalidate_portfolio_cache(file: str):
-    """Invalidate both portfolio and calculator caches for a file"""
-    if file in portfolios:
-        del portfolios[file]
-        logger.info(f"Invalidated portfolio cache for {file}")
-
-    # Clear calculator cache entries for this file
-    keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{file}:")]
+def invalidate_portfolio_cache(portfolio_id: str):
+    """Invalidate calculator cache for a given portfolio_id"""
+    # Clear calculator cache entries for this portfolio_id
+    keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{portfolio_id}:")]
     for key in keys_to_remove:
         del calculator_cache[key]
         logger.info(f"Invalidated calculator cache for key {key}")
