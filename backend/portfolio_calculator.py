@@ -43,6 +43,9 @@ class PortfolioCalculator:
         
         # Cache for real-time exchange rates to avoid repeated API calls
         self._exchange_rate_cache = {}
+        
+        # Cache for holding value calculations to avoid redundant calculations
+        self._holding_value_cache = {}
 
     def get_exchange_rate(self, from_currency: Currency, to_currency: Currency) -> float:
         """
@@ -100,6 +103,7 @@ class PortfolioCalculator:
         """
         Calculate the value of a holding in the base currency.
         Prioritizes real-time prices over static prices.
+        Uses caching to avoid redundant calculations.
         
         Args:
             security: The security
@@ -108,6 +112,15 @@ class PortfolioCalculator:
         Returns:
             Dictionary with value calculation details
         """
+        # Create cache key based on security symbol, units, and base currency
+        cache_key = f"{security.symbol}:{units}:{self.base_currency.value}"
+        
+        # Check cache first
+        if cache_key in self._holding_value_cache:
+            cached_result = self._holding_value_cache[cache_key]
+            logger.debug(f"Using cached value for {security.symbol}: {cached_result['total']} {self.base_currency} (for {units} units)")
+            return cached_result
+        
         price_source = "predefined"  # Default
         unit_price = None
         
@@ -147,7 +160,7 @@ class PortfolioCalculator:
         
         logger.debug(f"Conversion for {security.symbol}: {unit_price} {security.currency} * {exchange_rate} = {value_in_base} {self.base_currency} (total: {total_value} for {units} units)")
         
-        return {
+        result = {
             "unit_price": unit_price,  # Price in original currency
             "value": value_in_base,    # Value per unit in base currency
             "total": total_value,      # Total value in base currency
@@ -157,6 +170,11 @@ class PortfolioCalculator:
             "exchange_rate": exchange_rate,
             "price_source": price_source,
         }
+        
+        # Cache the result
+        self._holding_value_cache[cache_key] = result
+        
+        return result
 
     def aggregate_holdings(
         self,
@@ -249,3 +267,14 @@ class PortfolioCalculator:
         """Clear the exchange rate cache to force fresh fetches."""
         self._exchange_rate_cache.clear()
         logger.info("Exchange rate cache cleared")
+    
+    def clear_holding_value_cache(self):
+        """Clear the holding value cache to force fresh calculations."""
+        self._holding_value_cache.clear()
+        logger.info("Holding value cache cleared")
+    
+    def clear_all_caches(self):
+        """Clear all caches to force fresh data."""
+        self.clear_exchange_rate_cache()
+        self.clear_holding_value_cache()
+        logger.info("All caches cleared")

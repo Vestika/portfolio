@@ -68,6 +68,11 @@ async def shutdown_event():
     except Exception as e:
         logger.warning(f"Error during shutdown: {e}")
 
+
+# Cache for calculator instances to maintain cache across requests
+calculator_cache = {}
+
+
 # Predefined charts with their aggregation keys
 CHARTS: list[dict[str, Any]] = [
     {
@@ -110,6 +115,20 @@ def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
         use_real_time_rates=True,  # Enable real-time exchange rates
     )
 
+
+def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> PortfolioCalculator:
+    """Get existing calculator from cache or create a new one"""
+    # Create a cache key based on file and portfolio configuration
+    cache_key = f"{portfolio_id}:{portfolio.base_currency.value}:{hash(str(portfolio.exchange_rates))}"
+
+    if cache_key not in calculator_cache:
+        calculator_cache[cache_key] = create_calculator(portfolio)
+        logger.info(f"Created new calculator for {file}")
+    else:
+        logger.debug(f"Reusing cached calculator for {file}")
+
+    return calculator_cache[cache_key]
+
 @app.get("/portfolios")
 async def list_portfolios() -> list[dict[str, str]]:
     """
@@ -126,6 +145,7 @@ async def list_portfolios() -> list[dict[str, str]]:
     return portfolios
 
 
+
 @app.get("/portfolio")
 async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
     """
@@ -137,7 +157,7 @@ async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
-        calculator = create_calculator(portfolio)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
             "base_currency": portfolio.base_currency,
             "user_name": portfolio.user_name,
@@ -210,17 +230,84 @@ async def get_portfolio_aggregations(
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
-        calculator = create_calculator(portfolio)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
+
+        # Calculate all holding values once
+        holding_values = {}
+        filtered_accounts = []
+
+        for account in portfolio.accounts:
+            if request.account_names and account.name not in request.account_names:
+                continue
+            filtered_accounts.append(account)
+
+            for holding in account.holdings:
+                security = portfolio.securities[holding.symbol]
+                holding_key = f"{account.name}:{holding.symbol}"
+                holding_values[holding_key] = {
+                    "account": account,
+                    "holding": holding,
+                    "security": security,
+                    "value_info": calculator.calc_holding_value(security, holding.units)
+                }
 
         result = []
         for chart_config in CHARTS:
-            aggregation_data = calculator.aggregate_holdings(
-                portfolio=portfolio,
-                aggregation_key=chart_config.get("aggregation_key"),
-                account_filter=filter_account.by_names(request.account_names),
-                security_filter=chart_config.get("security_filter"),
-                ignore_missing_key=bool(chart_config.get("ignore_missing_key")),
-            )
+            # Aggregate holdings based on chart configuration
+            aggregated_values: dict[str, float] = {}
+            total_value = 0.0
+
+            for holding_key, holding_data in holding_values.items():
+                account = holding_data["account"]
+                holding = holding_data["holding"]
+                security = holding_data["security"]
+                holding_value = holding_data["value_info"]["total"]
+
+                # Apply security filter if specified
+                if chart_config.get("security_filter") and not chart_config["security_filter"](security):
+                    continue
+
+                total_value += holding_value
+
+                # Determine aggregation key
+                aggregation_key = chart_config.get("aggregation_key")
+                if aggregation_key is None:
+                    # Account-level aggregation
+                    key = account.name
+                else:
+                    # Custom aggregation
+                    try:
+                        key = aggregation_key(security)
+                    except Exception as e:
+                        if chart_config.get("ignore_missing_key"):
+                            continue
+                        else:
+                            raise e
+
+                # Handle different key types
+                if isinstance(key, dict):
+                    # For dictionary tags, aggregate by each key with weighted values
+                    for sub_key, sub_value in key.items():
+                        weighted_value = holding_value * sub_value
+                        aggregated_values[sub_key] = aggregated_values.get(sub_key, 0.0) + weighted_value
+                elif isinstance(key, list):
+                    # For list of keys, aggregate for each key
+                    for sub_key in key:
+                        aggregated_values[sub_key] = aggregated_values.get(sub_key, 0.0) + holding_value
+                else:
+                    # Handle simple keys (strings, numbers, etc.)
+                    if key is None:
+                        key = "_Unknown"
+
+                    key_str = str(key)  # Convert to string to ensure it's hashable
+                    aggregated_values[key_str] = aggregated_values.get(key_str, 0.0) + holding_value
+
+            # Convert to aggregation dict format
+            aggregation_data = {
+                "aggregated_values": aggregated_values,
+                "total_value": total_value,
+                "base_currency": calculator.base_currency,
+            }
             aggregation_dict = calculator.get_aggregation_dict(aggregation_data)
 
             result.append(
@@ -251,7 +338,7 @@ async def get_holdings_table(
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
-        calculator = create_calculator(portfolio)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts
         holdings_aggregation: dict[str, dict] = {}
@@ -360,6 +447,9 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
             "accounts": []
         }
         await collection.insert_one(portfolio_data)
+        # Clear portfolios cache to force reload
+        invalidate_portfolio_cache(filename)
+
         return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "filename": request.portfolio_name}
     except HTTPException:
         raise
@@ -388,8 +478,8 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             if symbol and symbol not in portfolio_data['securities']:
                 portfolio_data['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'Stock',
-                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'
+                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
+                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
         new_account = {
             "name": request.account_name,
@@ -403,6 +493,8 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             portfolio_data['accounts'] = []
         portfolio_data['accounts'].append(new_account)
         await collection.replace_one({"portfolio_name": portfolio_id}, portfolio_data)
+        # Clear portfolios cache to force reload
+        invalidate_portfolio_cache(file)
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
@@ -423,6 +515,9 @@ async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
         result = await collection.delete_one({"portfolio_name": portfolio_id})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        # Clear from portfolios cache
+        invalidate_portfolio_cache(file)
+
         return {"message": f"Portfolio {portfolio_id} deleted successfully"}
     except HTTPException:
         raise
@@ -448,6 +543,9 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining account")
         doc['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
         await collection.replace_one({"portfolio_name": portfolio_id}, doc)
+        # Clear portfolios cache to force reload
+        invalidate_portfolio_cache(file)
+
         return {"message": f"Account '{account_name}' deleted from {portfolio_id} successfully"}
     except HTTPException:
         raise
@@ -484,8 +582,8 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             if symbol and symbol not in doc['securities']:
                 doc['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'Stock',
-                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'
+                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
+                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
         updated_account = {
             "name": request.account_name,
@@ -498,6 +596,8 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
         await collection.replace_one({"portfolio_name": portfolio_id}, doc)
+        # Clear portfolios cache to force reload
+        invalidate_portfolio_cache(file)
         return {"message": f"Account '{account_name}' updated successfully"}
     except HTTPException:
         raise
@@ -515,4 +615,17 @@ async def root():
         "status": "running",
         "docs_url": "/docs"
     }
+
+
+def invalidate_portfolio_cache(file: str):
+    """Invalidate both portfolio and calculator caches for a file"""
+    if file in portfolios:
+        del portfolios[file]
+        logger.info(f"Invalidated portfolio cache for {file}")
+
+    # Clear calculator cache entries for this file
+    keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{file}:")]
+    for key in keys_to_remove:
+        del calculator_cache[key]
+        logger.info(f"Invalidated calculator cache for key {key}")
 
