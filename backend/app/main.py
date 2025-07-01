@@ -548,7 +548,7 @@ async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> 
                 # Create a basic security entry
                 portfolio_data['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'Stock',  # Default type
+                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
                 
@@ -701,7 +701,7 @@ async def update_account_in_portfolio(file: str, account_name: str, request: Cre
                 # Create a basic security entry
                 portfolio_data['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'Stock' ,  # Default type
+                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
                 
