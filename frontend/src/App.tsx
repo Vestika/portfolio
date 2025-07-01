@@ -22,24 +22,24 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isValueVisible, setIsValueVisible] = useState(true);
-  const [availableFiles, setAvailableFiles] = useState<PortfolioFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string>("demo.yaml");
+  const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("demo");
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
 
-  const fetchAvailableFiles = async () => {
+  const fetchAvailablePortfolios = async () => {
     try {
-      const response = await axios.get(`${apiUrl}/portfolio/files`);
-      setAvailableFiles(response.data || []); // Ensure we always set an array
+      const response = await axios.get(`${apiUrl}/portfolios`);
+      setAvailablePortfolios(response.data || []); // Ensure we always set an array
     } catch (err) {
-      console.error('Failed to fetch available portfolio files:', err);
-      setAvailableFiles([]); // Set empty array on error
-      setError('Failed to fetch available portfolio files');
+      console.error('Failed to fetch available portfolios:', err);
+      setAvailablePortfolios([]); // Set empty array on error
+      setError('Failed to fetch available portfolios');
     }
   };
 
   const fetchPortfolioMetadata = async () => {
     try {
-      const metadata = await axios.get(`${apiUrl}/portfolio?file=${selectedFile}`);
+      const metadata = await axios.get(`${apiUrl}/portfolio?portfolio_id=${selectedPortfolioId}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
       return metadata.data;
@@ -52,7 +52,7 @@ const App: React.FC = () => {
   const fetchPortfolioBreakdown = async (accountNames: string[] | null = null) => {
     try {
       const params = new URLSearchParams();
-      params.append('file', selectedFile);
+      params.append('portfolio_id', selectedPortfolioId);
       if (accountNames) {
         accountNames.forEach(name => params.append('account_names', name));
       }
@@ -73,7 +73,7 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchAvailableFiles();
+    fetchAvailablePortfolios();
   }, []);
 
   useEffect(() => {
@@ -87,10 +87,10 @@ const App: React.FC = () => {
       }
     };
 
-    if (selectedFile) {
+    if (selectedPortfolioId) {
       initializePortfolio();
     }
-  }, [selectedFile]);
+  }, [selectedPortfolioId]);
 
   const handleAccountsChange = (accountNames: string[]) => {
     setSelectedAccounts(accountNames);
@@ -101,11 +101,11 @@ const App: React.FC = () => {
     setIsValueVisible(!isValueVisible);
   };
 
-  const handlePortfolioCreated = async (newFilename: string) => {
-    // Refresh available files
-    await fetchAvailableFiles();
-    // Switch to the new file
-    setSelectedFile(newFilename);
+  const handlePortfolioCreated = async (newPortfolioId: string) => {
+    // Refresh available portfolios
+    await fetchAvailablePortfolios();
+    // Switch to the new portfolio
+    setSelectedPortfolioId(newPortfolioId);
   };
 
   const handleAccountAdded = async () => {
@@ -119,15 +119,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePortfolioDeleted = async (deletedFilename: string) => {
-    // Refresh available files
-    await fetchAvailableFiles();
-    
+  const handlePortfolioDeleted = async (deletedPortfolioId: string) => {
+    // Refresh available portfolios
+    await fetchAvailablePortfolios();
     // If the deleted portfolio was the selected one, switch to the first available
-    if (deletedFilename === selectedFile) {
-      const remainingFiles = availableFiles.filter(file => file.filename !== deletedFilename);
-      if (remainingFiles.length > 0) {
-        setSelectedFile(remainingFiles[0].filename);
+    if (deletedPortfolioId === selectedPortfolioId) {
+      const remainingPortfolios = availablePortfolios.filter(
+        p => (p as any).portfolio_name || (p as any).filename !== deletedPortfolioId
+      );
+      if (remainingPortfolios.length > 0) {
+        setSelectedPortfolioId((remainingPortfolios[0] as any).portfolio_name || (remainingPortfolios[0] as any).filename);
       }
     }
   };
@@ -153,9 +154,9 @@ const App: React.FC = () => {
         portfolioMetadata={portfolioMetadata}
         onAccountsChange={handleAccountsChange}
         onToggleVisibility={handleToggleVisibility}
-        availableFiles={availableFiles}
-        selectedFile={selectedFile}
-        onFileChange={setSelectedFile}
+        availableFiles={availablePortfolios}
+        selectedFile={selectedPortfolioId}
+        onFileChange={setSelectedPortfolioId}
         onPortfolioCreated={handlePortfolioCreated}
         onAccountAdded={handleAccountAdded}
         onPortfolioDeleted={handlePortfolioDeleted}
