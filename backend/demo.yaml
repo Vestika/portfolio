@@ -191,6 +191,14 @@ securities:
     currency: ILS
 
 accounts:
+  - name: Mizrahi Tfahot
+    properties:
+      owners: ["me"]
+      type: education-fund
+    holdings:
+      - symbol: "1185164"
+        units: 10
+
   - name: OneZero
     properties:
       owners: ["me"]
@@ -198,3 +206,29 @@ accounts:
     holdings:
       - symbol: ILS
         units: 20000
+
+  - name: Schwab
+    properties:
+      owners: ["me"]
+      type: investment-account
+    holdings:
+      - symbol: MSFT
+        units: 10
+
+  - name: Interactive Brokers
+    properties:
+      owners: ["me", "wife"]
+      type: investment-account
+    holdings:
+      - symbol: SMH
+        units: 10
+      - symbol: VTI
+        units: 100
+      - symbol: GOOG
+        units: 10
+      - symbol: TSLA
+        units: 10
+      - symbol: ILS
+        units: 120
+      - symbol: USD
+        units: 199.7

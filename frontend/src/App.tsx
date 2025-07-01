@@ -57,19 +57,14 @@ const App: React.FC = () => {
         accountNames.forEach(name => params.append('account_names', name));
       }
 
-      const breakdown = await axios.get(`${apiUrl}/portfolio/breakdown?${params}`);
-      setPortfolioData(breakdown.data);
+      // Make both API calls in parallel instead of sequential
+      const [breakdownResponse, holdingsResponse] = await Promise.all([
+        axios.get(`${apiUrl}/portfolio/breakdown?${params}`),
+        axios.get(`${apiUrl}/portfolio/holdings?${params}`)
+      ]);
 
-      // Fetch holdings data along with breakdown
-      const holdingsParams = new URLSearchParams();
-      holdingsParams.append('file', selectedFile);
-      if (accountNames) {
-        accountNames.forEach(name => holdingsParams.append('account_names', name));
-      }
-
-      const holdings = await axios.get(`${apiUrl}/portfolio/holdings?${holdingsParams}`);
-      setHoldingsData(holdings.data);
-
+      setPortfolioData(breakdownResponse.data);
+      setHoldingsData(holdingsResponse.data);
       setIsLoading(false);
     } catch (err) {
       setError('Failed to fetch portfolio breakdown');
