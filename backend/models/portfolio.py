@@ -31,3 +31,14 @@ class Portfolio:
             },
             accounts=[Account.from_dict(account_data) for account_data in data["accounts"]],
         )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        return cls(
+            config=data["config"],
+            securities={
+                symbol: Security.from_dict(symbol, security_data)
+                for symbol, security_data in data["securities"].items()
+            },
+            accounts=[Account.from_dict(account_data) for account_data in data["accounts"]],
+        )

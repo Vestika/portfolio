@@ -1,14 +1,12 @@
 import logging
 import math
-import glob
+from bson import ObjectId
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, Query, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import yaml
 
 from core import feature_generator
 from core.database import db_manager
@@ -20,9 +18,6 @@ from utils import filter_security, filter_account
 from services.closing_price.service import get_global_service
 
 logger = logging.Logger(__name__)
-
-# Get the playground directory path
-PLAYGROUND_DIR = Path(__file__).parent.parent  # Go up from app/ to playground/
 
 # Get the global closing price service
 closing_price_service = get_global_service()
@@ -41,7 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.on_event("startup")
 async def startup_event():
@@ -64,7 +58,6 @@ async def startup_event():
         logger.error(f"Failed to start Portfolio API: {e}")
         raise
 
-
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up resources on application shutdown"""
@@ -77,10 +70,9 @@ async def shutdown_event():
         logger.warning(f"Error during shutdown: {e}")
 
 
-portfolios = {}
-
 # Cache for calculator instances to maintain cache across requests
 calculator_cache = {}
+
 
 # Predefined charts with their aggregation keys
 CHARTS: list[dict[str, Any]] = [
@@ -114,12 +106,6 @@ CHARTS: list[dict[str, Any]] = [
     },
 ]
 
-
-def resolve_yaml_path(filename: str) -> Path:
-    """Resolve YAML file path relative to playground directory"""
-    return PLAYGROUND_DIR / filename
-
-
 def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
     """Create a PortfolioCalculator with the global closing price service"""
     return PortfolioCalculator(
@@ -131,85 +117,50 @@ def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
     )
 
 
-def get_or_create_calculator(file: str, portfolio: Portfolio) -> PortfolioCalculator:
+def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> PortfolioCalculator:
     """Get existing calculator from cache or create a new one"""
-    # Create a cache key based on file and portfolio configuration
-    cache_key = f"{file}:{portfolio.base_currency.value}:{hash(str(portfolio.exchange_rates))}"
-    
+    # Create a cache key based on portfolio_id and portfolio configuration
+    cache_key = f"{portfolio_id}:{portfolio.base_currency.value}:{hash(str(portfolio.exchange_rates))}"
+
     if cache_key not in calculator_cache:
         calculator_cache[cache_key] = create_calculator(portfolio)
-        logger.info(f"Created new calculator for {file}")
+        logger.info(f"Created new calculator for {portfolio_id}")
     else:
-        logger.debug(f"Reusing cached calculator for {file}")
-    
+        logger.debug(f"Reusing cached calculator for {portfolio_id}")
+
     return calculator_cache[cache_key]
 
 
-def display_aggregation(title: str, aggregation_data: dict[str, Any]) -> None:
-    aggregation_data = calculator.get_aggregation_dict(aggregation_data)
-
-    print()
-    print(f"{title}:")
-    print("-" * 40)
-    print(f"Total Value: {aggregation_data['total']:,.0f} {aggregation_data['base_currency']}")
-    print("-" * 40)
-
-    for item in aggregation_data["breakdown"]:
-        print(
-            f"{item['label'].upper():<15}: "
-            f"{item['value']:>10,.0f} {aggregation_data['base_currency']} "
-            f"({item['percentage']:>6.2f}%)"
-        )
-
-
-# Initialize demo portfolio on startup
-portfolios["demo.yaml"] = Portfolio.from_yaml(resolve_yaml_path("demo.yaml"))
-portfolio = portfolios["demo.yaml"]
-
-calculator = create_calculator(portfolio)
-
-
-@app.get("/portfolio/files")
-async def get_available_files() -> list[dict[str, str]]:
+@app.get("/portfolios")
+async def list_portfolios() -> list[dict[str, str]]:
     """
-    Returns a list of available YAML files in the playground directory.
+    Returns a list of all portfolios in the database.
     """
-    yaml_files = glob.glob(str(PLAYGROUND_DIR / "*.yaml"))
-    return [{"filename": Path(file).name, "display_name": Path(file).stem.title()} for file in yaml_files]
+    collection = db_manager.get_collection("portfolios")
+    portfolios_cursor = collection.find({}, {"_id": 1, "portfolio_name": 1})
+    portfolios = []
+    async for doc in portfolios_cursor:
+        portfolios.append({
+            "portfolio_id": str(doc["_id"]),
+            "portfolio_name": doc["portfolio_name"],
+            "display_name": doc["portfolio_name"].title()
+        })
+    return portfolios
+
 
 
 @app.get("/portfolio")
-async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
+async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
     """
-    Endpoint to return portfolio metadata, config and account data with the following structure:
-    {
-        "base_currency": "ILS",
-        "user_name": "Michael",
-        "accounts": [
-            {
-                "account_name": "OneZero Account",
-                "account_total": 10333,
-                "account_properties": {
-                    # content of this dictionary is dynamic and based on .yaml data
-                    # it can be empty if not properties are defined.
-                    "owners": ["me", "wife"],
-                    "type": "investment-account"
-                    ...
-                },
-                "account_cash": {
-                    "ILS": 333,
-                    "USD": 222
-                }
-            }
-        ]
-    }
+    Endpoint to return portfolio metadata, config and account data from MongoDB by portfolio_id.
     """
     try:
-        if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
-        portfolio = portfolios[file]
-        calculator = get_or_create_calculator(file, portfolio)
-
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
             "base_currency": portfolio.base_currency,
             "user_name": portfolio.user_name,
@@ -224,7 +175,6 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
                 ),
                 "account_properties": account.properties,
                 "account_cash": {},
-                # Add missing fields needed for editing
                 "account_type": account.properties.get("type", "bank-account"),
                 "owners": account.properties.get("owners", ["me"]),
                 "holdings": [
@@ -235,17 +185,13 @@ async def get_portfolio_metadata(file: str = "demo.yaml") -> dict[str, Any]:
                     for holding in account.holdings
                 ]
             }
-            
-            # Calculate cash holdings
             for holding in account.holdings:
                 if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
                     account_data["account_cash"][holding.symbol] = holding.units
-            
             result["accounts"].append(account_data)
-
         return result
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"File {file} not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -260,7 +206,7 @@ class BreakdownRequest:
 
 @app.get("/portfolio/breakdown")
 async def get_portfolio_aggregations(
-    request: BreakdownRequest = Depends(BreakdownRequest), file: str = "demo.yaml"
+    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
 ) -> list[dict[str, Any]]:
     """
     Endpoint to calculate all predefined portfolio aggregations on the requested accounts.
@@ -282,20 +228,22 @@ async def get_portfolio_aggregations(
     ]
     """
     try:
-        if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
-        portfolio = portfolios[file]
-        calculator = get_or_create_calculator(file, portfolio)
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Calculate all holding values once
         holding_values = {}
         filtered_accounts = []
-        
+
         for account in portfolio.accounts:
             if request.account_names and account.name not in request.account_names:
                 continue
             filtered_accounts.append(account)
-            
+
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
                 holding_key = f"{account.name}:{holding.symbol}"
@@ -311,19 +259,19 @@ async def get_portfolio_aggregations(
             # Aggregate holdings based on chart configuration
             aggregated_values: dict[str, float] = {}
             total_value = 0.0
-            
+
             for holding_key, holding_data in holding_values.items():
                 account = holding_data["account"]
                 holding = holding_data["holding"]
                 security = holding_data["security"]
                 holding_value = holding_data["value_info"]["total"]
-                
+
                 # Apply security filter if specified
                 if chart_config.get("security_filter") and not chart_config["security_filter"](security):
                     continue
-                
+
                 total_value += holding_value
-                
+
                 # Determine aggregation key
                 aggregation_key = chart_config.get("aggregation_key")
                 if aggregation_key is None:
@@ -353,7 +301,7 @@ async def get_portfolio_aggregations(
                     # Handle simple keys (strings, numbers, etc.)
                     if key is None:
                         key = "_Unknown"
-                    
+
                     key_str = str(key)  # Convert to string to ensure it's hashable
                     aggregated_values[key_str] = aggregated_values.get(key_str, 0.0) + holding_value
 
@@ -373,25 +321,27 @@ async def get_portfolio_aggregations(
                 },
             )
         return result
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"File {file} not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/portfolio/holdings")
 async def get_holdings_table(
-    request: BreakdownRequest = Depends(BreakdownRequest), file: str = "demo.yaml"
+    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
 ) -> dict[str, Any]:
     """
     Endpoint to return detailed holdings information for the selected accounts.
     Returns aggregated holdings with security details and historical prices.
     """
     try:
-        if file not in portfolios:
-            portfolios[file] = Portfolio.from_yaml(resolve_yaml_path(file))
-        portfolio = portfolios[file]
-        calculator = get_or_create_calculator(file, portfolio)
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts
         holdings_aggregation: dict[str, dict] = {}
@@ -444,8 +394,8 @@ async def get_holdings_table(
             "holdings": sorted(holdings, key=lambda x: x["total_value"], reverse=True),
         }
 
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"File {file} not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -464,19 +414,15 @@ class CreateAccountRequest(BaseModel):
 @app.post("/portfolio/create")
 async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
     """
-    Create a new portfolio YAML file with basic structure.
+    Create a new portfolio document in MongoDB with basic structure.
     """
     try:
-        # Sanitize the portfolio name to create a safe filename
-        safe_name = request.portfolio_name.lower().replace(' ', '-').replace('_', '-')
-        filename = f"{safe_name}.yaml"
-        
-        file_path = resolve_yaml_path(filename)
-        if file_path.exists():
+        collection = db_manager.get_collection("portfolios")
+        existing = await collection.find_one({"portfolio_name": request.portfolio_name})
+        if existing:
             raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
-        
-        # Create basic portfolio structure
         portfolio_data = {
+            "portfolio_name": request.portfolio_name,
             "config": {
                 "user_name": request.portfolio_name,
                 "base_currency": request.base_currency,
@@ -496,69 +442,48 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
                     "currency": "USD"
                 },
                 "ILS": {
-                    "name": "ILS", 
+                    "name": "ILS",
                     "type": "cash",
                     "currency": "ILS"
                 }
             },
             "accounts": []
         }
-        
-        # Write the file
-        with open(file_path, 'w') as f:
-            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
-        
+        await collection.insert_one(portfolio_data)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(filename)
-            
-        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "filename": filename}
-        
+        invalidate_portfolio_cache(request.portfolio_name)
+
+        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "portfolio_id": request.portfolio_name}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/portfolio/{file}/accounts")
-async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> dict[str, str]:
+@app.post("/portfolio/{portfolio_id}/accounts")
+async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequest) -> dict[str, str]:
     """
-    Add a new account to an existing portfolio file.
+    Add a new account to an existing portfolio document in MongoDB.
     """
     try:
-        file_path = resolve_yaml_path(file)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
-        
-        # Load existing portfolio data
-        with open(file_path, 'r') as f:
-            portfolio_data = yaml.safe_load(f)
-        
-        # Check if account already exists
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        portfolio_data = doc
         existing_accounts = [acc['name'] for acc in portfolio_data.get('accounts', [])]
         if request.account_name in existing_accounts:
             raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
-        
-        # Auto-create securities for new symbols
         if 'securities' not in portfolio_data:
             portfolio_data['securities'] = {}
-        
         for holding in request.holdings:
             symbol = holding.get('symbol')
             if symbol and symbol not in portfolio_data['securities']:
-                # Create a basic security entry
                 portfolio_data['securities'][symbol] = {
                     'name': symbol,
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
-                
-                # Add to unit_prices with default value
-                if 'config' not in portfolio_data:
-                    portfolio_data['config'] = {}
-                if 'unit_prices' not in portfolio_data['config']:
-                    portfolio_data['config']['unit_prices'] = {}
-        
-        # Add new account
         new_account = {
             "name": request.account_name,
             "properties": {
@@ -567,151 +492,102 @@ async def add_account_to_portfolio(file: str, request: CreateAccountRequest) -> 
             },
             "holdings": request.holdings
         }
-        
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
-            
         portfolio_data['accounts'].append(new_account)
-        
-        # Write back to file
-        with open(file_path, 'w') as f:
-            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
-        
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
-            
-        return {"message": f"Account '{request.account_name}' added to {file} successfully"}
-        
+        invalidate_portfolio_cache(portfolio_id)
+        return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/portfolio/{file}")
-async def delete_portfolio(file: str) -> dict[str, str]:
+@app.delete("/portfolio/{portfolio_id}")
+async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
     """
-    Delete an entire portfolio YAML file.
+    Delete an entire portfolio document from MongoDB.
     """
     try:
-        file_path = resolve_yaml_path(file)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
-        
-        # Check if this is the only portfolio file
-        yaml_files = glob.glob(str(PLAYGROUND_DIR / "*.yaml"))
-        if len(yaml_files) <= 1:
+        collection = db_manager.get_collection("portfolios")
+        count = await collection.count_documents({})
+        if count <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
-        
-        # Delete the file
-        file_path.unlink()
-        
+        result = await collection.delete_one({"_id": ObjectId(portfolio_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         # Clear from portfolios cache
-        invalidate_portfolio_cache(file)
-            
-        return {"message": f"Portfolio {file} deleted successfully"}
-        
+        invalidate_portfolio_cache(portfolio_id)
+
+        return {"message": f"Portfolio {portfolio_id} deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/portfolio/{file}/accounts/{account_name}")
-async def delete_account_from_portfolio(file: str, account_name: str) -> dict[str, str]:
+@app.delete("/portfolio/{portfolio_id}/accounts/{account_name}")
+async def delete_account_from_portfolio(portfolio_id: str, account_name: str) -> dict[str, str]:
     """
-    Delete a specific account from a portfolio file.
+    Delete a specific account from a portfolio document in MongoDB.
     """
     try:
-        file_path = resolve_yaml_path(file)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
-        
-        # Load existing portfolio data
-        with open(file_path, 'r') as f:
-            portfolio_data = yaml.safe_load(f)
-        
-        # Check if account exists
-        accounts = portfolio_data.get('accounts', [])
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        accounts = doc.get('accounts', [])
         account_names = [acc['name'] for acc in accounts]
-        
         if account_name not in account_names:
             raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
-        
-        # Check if this is the last account
         if len(accounts) <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining account")
-        
-        # Remove the account
-        portfolio_data['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
-        
-        # Write back to file
-        with open(file_path, 'w') as f:
-            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
-        
+        doc['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
-            
-        return {"message": f"Account '{account_name}' deleted from {file} successfully"}
-        
+        invalidate_portfolio_cache(portfolio_id)
+
+        return {"message": f"Account '{account_name}' deleted from {portfolio_id} successfully"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/portfolio/{file}/accounts/{account_name}")
-async def update_account_in_portfolio(file: str, account_name: str, request: CreateAccountRequest) -> dict[str, str]:
+@app.put("/portfolio/{portfolio_id}/accounts/{account_name}")
+async def update_account_in_portfolio(portfolio_id: str, account_name: str, request: CreateAccountRequest) -> dict[str, str]:
     """
-    Update an existing account in a portfolio file.
+    Update an existing account in a portfolio document in MongoDB.
     """
     try:
-        file_path = resolve_yaml_path(file)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Portfolio file {file} not found")
-        
-        # Load existing portfolio data
-        with open(file_path, 'r') as f:
-            portfolio_data = yaml.safe_load(f)
-        
-        # Check if account exists
-        accounts = portfolio_data.get('accounts', [])
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        accounts = doc.get('accounts', [])
         account_index = None
         for i, acc in enumerate(accounts):
             if acc['name'] == account_name:
                 account_index = i
                 break
-        
         if account_index is None:
             raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
-        
-        # Check if new account name conflicts with existing accounts (unless it's the same account)
         if request.account_name != account_name:
             existing_accounts = [acc['name'] for acc in accounts]
             if request.account_name in existing_accounts:
                 raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
-        
-        # Auto-create securities for new symbols
-        if 'securities' not in portfolio_data:
-            portfolio_data['securities'] = {}
-        
+        if 'securities' not in doc:
+            doc['securities'] = {}
         for holding in request.holdings:
             symbol = holding.get('symbol')
-            if symbol and symbol not in portfolio_data['securities']:
-                # Create a basic security entry
-                portfolio_data['securities'][symbol] = {
+            if symbol and symbol not in doc['securities']:
+                doc['securities'][symbol] = {
                     'name': symbol,
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
-                
-                # Add to unit_prices with default value
-                if 'config' not in portfolio_data:
-                    portfolio_data['config'] = {}
-                if 'unit_prices' not in portfolio_data['config']:
-                    portfolio_data['config']['unit_prices'] = {}
-        
-        # Update the account
         updated_account = {
             "name": request.account_name,
             "properties": {
@@ -720,18 +596,12 @@ async def update_account_in_portfolio(file: str, account_name: str, request: Cre
             },
             "holdings": request.holdings
         }
-        
         accounts[account_index] = updated_account
-        
-        # Write back to file
-        with open(file_path, 'w') as f:
-            yaml.dump(portfolio_data, f, default_flow_style=False, sort_keys=False)
-        
+        doc['accounts'] = accounts
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(file)
-            
+        invalidate_portfolio_cache(portfolio_id)
         return {"message": f"Account '{account_name}' updated successfully"}
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -750,14 +620,10 @@ async def root():
     }
 
 
-def invalidate_portfolio_cache(file: str):
-    """Invalidate both portfolio and calculator caches for a file"""
-    if file in portfolios:
-        del portfolios[file]
-        logger.info(f"Invalidated portfolio cache for {file}")
-    
-    # Clear calculator cache entries for this file
-    keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{file}:")]
+def invalidate_portfolio_cache(portfolio_id: str):
+    """Invalidate calculator cache for a given portfolio_id"""
+    # Clear calculator cache entries for this portfolio_id
+    keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{portfolio_id}:")]
     for key in keys_to_remove:
         del calculator_cache[key]
         logger.info(f"Invalidated calculator cache for key {key}")
