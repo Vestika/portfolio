@@ -29,17 +29,18 @@ export interface ChartDataItem {
 }
 
 export interface PortfolioFile {
-  filename: string;
+  portfolio_id: string;
+  portfolio_name: string;
   display_name: string;
 }
 
 export interface PortfolioSelectorProps {
-  files: PortfolioFile[];
-  selectedFile: string;
-  onFileChange: (filename: string) => void;
+  portfolios: PortfolioFile[];
+  selectedPortfolioId: string;
+  onPortfolioChange: (portfolio_id: string) => void;
   userName: string;
-  onPortfolioCreated: (newFilename: string) => Promise<void>;
-  onPortfolioDeleted: (deletedFilename: string) => Promise<void>;
+  onPortfolioCreated: (newPortfolioId: string) => Promise<void>;
+  onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
 }
 
 export interface ChartBreakdown {

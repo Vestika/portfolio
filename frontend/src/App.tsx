@@ -23,16 +23,17 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("demo");
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
 
   const fetchAvailablePortfolios = async () => {
     try {
       const response = await axios.get(`${apiUrl}/portfolios`);
-      setAvailablePortfolios(response.data || []); // Ensure we always set an array
+      setAvailablePortfolios(response.data || []);
+      setSelectedPortfolioId(prevId => prevId || (response.data && response.data.length > 0 ? response.data[0].portfolio_id : ""));
     } catch (err) {
       console.error('Failed to fetch available portfolios:', err);
-      setAvailablePortfolios([]); // Set empty array on error
+      setAvailablePortfolios([]);
       setError('Failed to fetch available portfolios');
     }
   };
@@ -125,10 +126,12 @@ const App: React.FC = () => {
     // If the deleted portfolio was the selected one, switch to the first available
     if (deletedPortfolioId === selectedPortfolioId) {
       const remainingPortfolios = availablePortfolios.filter(
-        p => (p as any).portfolio_name || (p as any).filename !== deletedPortfolioId
+        p => p.portfolio_id !== deletedPortfolioId
       );
       if (remainingPortfolios.length > 0) {
-        setSelectedPortfolioId((remainingPortfolios[0] as any).portfolio_name || (remainingPortfolios[0] as any).filename);
+        setSelectedPortfolioId(remainingPortfolios[0].portfolio_id);
+      } else {
+        setSelectedPortfolioId("");
       }
     }
   };
@@ -156,7 +159,7 @@ const App: React.FC = () => {
         onToggleVisibility={handleToggleVisibility}
         availableFiles={availablePortfolios}
         selectedFile={selectedPortfolioId}
-        onFileChange={setSelectedPortfolioId}
+        onPortfolioChange={setSelectedPortfolioId}
         onPortfolioCreated={handlePortfolioCreated}
         onAccountAdded={handleAccountAdded}
         onPortfolioDeleted={handlePortfolioDeleted}

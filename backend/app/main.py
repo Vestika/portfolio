@@ -1,5 +1,6 @@
 import logging
 import math
+from bson import ObjectId
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -136,10 +137,11 @@ async def list_portfolios() -> list[dict[str, str]]:
     Returns a list of all portfolios in the database.
     """
     collection = db_manager.get_collection("portfolios")
-    portfolios_cursor = collection.find({}, {"_id": 0, "portfolio_name": 1})
+    portfolios_cursor = collection.find({}, {"_id": 1, "portfolio_name": 1})
     portfolios = []
     async for doc in portfolios_cursor:
         portfolios.append({
+            "portfolio_id": str(doc["_id"]),
             "portfolio_name": doc["portfolio_name"],
             "display_name": doc["portfolio_name"].title()
         })
@@ -154,7 +156,7 @@ async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
@@ -227,7 +229,7 @@ async def get_portfolio_aggregations(
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
@@ -335,7 +337,7 @@ async def get_holdings_table(
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
@@ -465,7 +467,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio_data = doc
@@ -493,7 +495,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
         portfolio_data['accounts'].append(new_account)
-        await collection.replace_one({"portfolio_name": portfolio_id}, portfolio_data)
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
@@ -513,7 +515,7 @@ async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
         count = await collection.count_documents({})
         if count <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
-        result = await collection.delete_one({"portfolio_name": portfolio_id})
+        result = await collection.delete_one({"_id": ObjectId(portfolio_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         # Clear from portfolios cache
@@ -533,7 +535,7 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         accounts = doc.get('accounts', [])
@@ -543,7 +545,7 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
         if len(accounts) <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining account")
         doc['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
-        await collection.replace_one({"portfolio_name": portfolio_id}, doc)
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
 
@@ -561,7 +563,7 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"portfolio_name": portfolio_id})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         accounts = doc.get('accounts', [])
@@ -596,7 +598,7 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         }
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
-        await collection.replace_one({"portfolio_name": portfolio_id}, doc)
+        await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
         return {"message": f"Account '{account_name}' updated successfully"}

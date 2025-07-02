@@ -32,9 +32,9 @@ import {
 const apiUrl = import.meta.env.VITE_API_URL;
 
 const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
-  files = [],
-  selectedFile,
-  onFileChange,
+  portfolios = [],
+  selectedPortfolioId,
+  onPortfolioChange,
   userName,
   onPortfolioCreated,
   onPortfolioDeleted,
@@ -47,7 +47,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     base_currency: 'ILS'
   });
 
-  if (!files || files.length === 0) {
+  if (!portfolios || portfolios.length === 0) {
     return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
   }
 
@@ -98,8 +98,8 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     }
   };
 
-  const confirmDeletePortfolio = (filename: string) => {
-    setPortfolioToDelete(filename);
+  const confirmDeletePortfolio = (portfolio_id: string) => {
+    setPortfolioToDelete(portfolio_id);
     setShowDeleteModal(true);
   };
 
@@ -118,30 +118,30 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 bg-white dark:bg-gray-900 border shadow-lg">
-          {files.map((file) => (
+          {portfolios.map((portfolio) => (
             <DropdownMenuItem
-              key={file.filename}
+              key={portfolio.portfolio_id}
               className={`flex items-center justify-between p-3 cursor-pointer transition-colors hover:bg-blue-50 hover:dark:bg-blue-950 hover:text-blue-900 hover:dark:text-blue-100 ${
-                selectedFile === file.filename ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 font-medium' : ''
+                selectedPortfolioId === portfolio.portfolio_id ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 font-medium' : ''
               }`}
-              onSelect={() => onFileChange(file.filename)}
+              onSelect={() => onPortfolioChange(portfolio.portfolio_id)}
             >
               <div className="flex items-center space-x-3">
                 <div className={`w-2.5 h-2.5 rounded-full ${
-                  selectedFile === file.filename ? 'bg-primary' : 'bg-muted-foreground'
+                  selectedPortfolioId === portfolio.portfolio_id ? 'bg-primary' : 'bg-muted-foreground'
                 }`} />
-                <span className={selectedFile === file.filename ? 'font-semibold' : 'font-medium'}>
-                  {file.display_name}
+                <span className={selectedPortfolioId === portfolio.portfolio_id ? 'font-semibold' : 'font-medium'}>
+                  {portfolio.display_name}
                 </span>
-                {selectedFile === file.filename && (
+                {selectedPortfolioId === portfolio.portfolio_id && (
                   <span className="text-xs text-muted-foreground">• Active</span>
                 )}
               </div>
-              {files.length > 1 && (
+              {portfolios.length > 1 && (
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
-                    confirmDeletePortfolio(file.filename);
+                    confirmDeletePortfolio(portfolio.portfolio_id);
                   }}
                   variant="ghost"
                   size="icon"
@@ -232,7 +232,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
             </p>
             <div className="p-3 bg-muted rounded-lg border">
               <p className="font-medium text-center">
-                {files.find(f => f.filename === portfolioToDelete)?.display_name}
+                {portfolios.find(f => f.portfolio_id === portfolioToDelete)?.display_name}
               </p>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -42,10 +42,10 @@ interface AccountSelectorProps {
   onToggleVisibility: () => void;
   availableFiles: PortfolioFile[];
   selectedFile: string;
-  onFileChange: (filename: string) => void;
-  onPortfolioCreated: (newFilename: string) => Promise<void>;
+  onPortfolioChange: (portfolio_id: string) => void;
+  onPortfolioCreated: (newPortfolioId: string) => Promise<void>;
   onAccountAdded: () => Promise<void>;
-  onPortfolioDeleted: (deletedFilename: string) => Promise<void>;
+  onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
 }
 
@@ -55,7 +55,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onToggleVisibility,
   availableFiles = [], // Provide default empty array
   selectedFile,
-  onFileChange,
+  onPortfolioChange,
   onPortfolioCreated,
   onAccountAdded,
   onPortfolioDeleted,
@@ -88,6 +88,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   });
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  useEffect(() => {
+    setAccounts(
+      portfolioMetadata.accounts.map(account => ({
+        ...account,
+        isSelected: true
+      }))
+    );
+  }, [portfolioMetadata.accounts]);
 
   const toggleAccountSelection = (accountName: string) => {
     const updatedAccounts = accounts.map(account =>
@@ -384,9 +393,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       <div className="container mx-auto flex justify-between items-start">
         <div>
           <PortfolioSelector
-            files={availableFiles}
-            selectedFile={selectedFile}
-            onFileChange={onFileChange}
+            portfolios={availableFiles}
+            selectedPortfolioId={selectedFile}
+            onPortfolioChange={onPortfolioChange}
             userName={portfolioMetadata.user_name}
             onPortfolioCreated={onPortfolioCreated}
             onPortfolioDeleted={onPortfolioDeleted}
