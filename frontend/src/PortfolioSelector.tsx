@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Download, Upload } from 'lucide-react';
 import {
   PortfolioSelectorProps,
 } from './types';
@@ -28,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import yaml from 'js-yaml';
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -46,6 +47,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     portfolio_name: '',
     base_currency: 'ILS'
   });
+  const [uploadedYaml, setUploadedYaml] = useState<any | null>(null);
 
   if (!portfolios || portfolios.length === 0) {
     return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
@@ -103,6 +105,84 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     setShowDeleteModal(true);
   };
 
+  const handleDownloadPortfolio = async (portfolio_id: string, portfolio_name: string) => {
+    try {
+      const response = await fetch(`${apiUrl}/portfolio/raw?portfolio_id=${portfolio_id}`);
+      if (!response.ok) throw new Error('Failed to fetch portfolio');
+      const yamlStr = await response.text();
+      const blob = new Blob([yamlStr], { type: 'application/x-yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${portfolio_name || 'portfolio'}.yaml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error downloading portfolio: ' + err);
+    }
+  };
+
+  const handleUploadPortfolio = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      let yamlObj: any;
+      try {
+        yamlObj = yaml.load(text) as any;
+      } catch (e) {
+        alert('Invalid YAML file.');
+        return;
+      }
+      setUploadedYaml(yamlObj);
+      // Optionally, set the portfolio name input to the uploaded name
+      if (yamlObj.portfolio_name) {
+        setNewPortfolio((prev) => ({ ...prev, portfolio_name: yamlObj.portfolio_name }));
+      }
+    } catch (err) {
+      alert('Error reading YAML: ' + err);
+    }
+  };
+
+  const handleCreatePortfolioFromYaml = async () => {
+    if (!uploadedYaml) return;
+    try {
+      // Clone and modify the YAML object
+      const yamlToUpload = { ...uploadedYaml };
+      delete yamlToUpload._id;
+      yamlToUpload.portfolio_name = newPortfolio.portfolio_name;
+      if (yamlToUpload.config) {
+        yamlToUpload.config.user_name = newPortfolio.portfolio_name;
+        yamlToUpload.config.base_currency = newPortfolio.base_currency;
+      }
+      // Remove user_name at top level if present
+      delete yamlToUpload.user_name;
+      // Convert to YAML string
+      const yamlStr = yaml.dump(yamlToUpload);
+      const blob = new Blob([yamlStr], { type: 'application/x-yaml' });
+      const formData = new FormData();
+      formData.append('file', new File([blob], 'portfolio.yaml', { type: 'application/x-yaml' }));
+      const response = await fetch(`${apiUrl}/portfolio/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        alert('Error uploading portfolio: ' + err.detail);
+        return;
+      }
+      const result = await response.json();
+      setShowCreateModal(false);
+      setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
+      setUploadedYaml(null);
+      await onPortfolioCreated(result.portfolio_id);
+    } catch (err) {
+      alert('Error creating portfolio: ' + err);
+    }
+  };
+
   return (
     <div className="relative">
       <DropdownMenu>
@@ -137,20 +217,34 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                   <span className="text-xs text-muted-foreground">• Active</span>
                 )}
               </div>
-              {portfolios.length > 1 && (
+              <div className="flex items-center space-x-2">
                 <Button
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
-                    confirmDeletePortfolio(portfolio.portfolio_id);
+                    handleDownloadPortfolio(portfolio.portfolio_id, portfolio.portfolio_name);
                   }}
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 border border-transparent hover:text-red-500 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
-                  title="Delete portfolio"
+                  className="h-8 w-8 border border-transparent hover:text-blue-500 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                  title="Download portfolio"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Download className="h-4 w-4" />
                 </Button>
-              )}
+                {portfolios.length > 1 && (
+                  <Button
+                    onClick={e => {
+                      e.stopPropagation();
+                      confirmDeletePortfolio(portfolio.portfolio_id);
+                    }}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 border border-transparent hover:text-red-500 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                    title="Delete portfolio"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
@@ -199,13 +293,28 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="portfolio-upload">Upload Portfolio (YAML)</Label>
+              <Input
+                id="portfolio-upload"
+                type="file"
+                accept=".yaml,application/x-yaml,text/yaml"
+                onChange={handleUploadPortfolio}
+              />
+            </div>
+            {uploadedYaml && (
+              <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded border mt-2">
+                <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">YAML loaded. You can now edit the portfolio name and click Create.</div>
+                <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml)}</pre>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateModal(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleCreatePortfolio}
+            <Button
+              onClick={uploadedYaml ? handleCreatePortfolioFromYaml : handleCreatePortfolio}
               disabled={!newPortfolio.portfolio_name}
             >
               Create Portfolio
