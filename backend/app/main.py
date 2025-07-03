@@ -4,9 +4,11 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import FastAPI, Query, Depends, HTTPException
+from fastapi import FastAPI, Query, Depends, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+import yaml
 
 from core import feature_generator
 from core.database import db_manager
@@ -426,10 +428,6 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
             "config": {
                 "user_name": request.portfolio_name,
                 "base_currency": request.base_currency,
-                "exchange_rates": {
-                    "USD": 3.56,
-                    "EUR": 3.95
-                },
                 "unit_prices": {
                     "USD": 1.0,
                     "ILS": 1.0
@@ -627,4 +625,38 @@ def invalidate_portfolio_cache(portfolio_id: str):
     for key in keys_to_remove:
         del calculator_cache[key]
         logger.info(f"Invalidated calculator cache for key {key}")
+
+
+@app.get("/portfolio/raw")
+async def download_portfolio_raw(portfolio_id: str):
+    """
+    Download the raw portfolio document as YAML.
+    """
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    doc["_id"] = str(doc["_id"])
+    yaml_str = yaml.dump(doc, allow_unicode=True)
+    return Response(content=yaml_str, media_type="application/x-yaml")
+
+@app.post("/portfolio/upload")
+async def upload_portfolio(file: UploadFile = File(...)):
+    """
+    Upload a new portfolio as a YAML file.
+    """
+    try:
+        content = await file.read()
+        data = content.decode()
+        try:
+            portfolio_yaml = yaml.safe_load(data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+        collection = db_manager.get_collection("portfolios")
+        # Remove _id if present
+        portfolio_yaml.pop("_id", None)
+        result = await collection.insert_one(portfolio_yaml)
+        return {"portfolio_id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
