@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Plus, Trash2, Download, Upload } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Download } from 'lucide-react';
 import {
   PortfolioSelectorProps,
 } from './types';
