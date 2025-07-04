@@ -46,5 +46,4 @@ jobs:
           gcloud run deploy ${{ secrets.GCP_APPLICATION }} --image gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.GCP_APPLICATION }} \
           --region us-west1 \
           --allow-unauthenticated \
-          --set-env-vars MONGODB_URL=${{ secrets.MONGODB_URL }} \
-          --set-env-vars FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
+          --set-env-vars MONGODB_URL=${{ secrets.MONGODB_URL }},FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
