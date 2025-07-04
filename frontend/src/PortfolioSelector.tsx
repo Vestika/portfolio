@@ -69,7 +69,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
         setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
         
         // Use callback to refresh files and switch to new portfolio
-        await onPortfolioCreated(result.filename);
+        await onPortfolioCreated(result.portfolio_id);
       } else {
         const error = await response.json();
         alert(`Error creating portfolio: ${error.detail}`);
