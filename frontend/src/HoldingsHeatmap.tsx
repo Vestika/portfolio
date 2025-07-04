@@ -9,46 +9,29 @@ import 'highcharts/modules/accessibility';
 interface HoldingsHeatmapProps {
   data: HoldingsTableData;
   isValueVisible: boolean;
+  quotes?: Record<string, any>;
 }
 
-const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible }) => {
+const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible, quotes }) => {
   const chartOptions = useMemo(() => {
     // Filter to only include stocks and securities with historical data
     const stockHoldings = data.holdings.filter(holding =>
-      holding.historical_prices &&
-      holding.historical_prices.length >= 2
+      holding.security_type.toLowerCase() === 'stock'
     );
 
     const holdingsWithPerformance = stockHoldings.map(holding => {
-      const prices = holding.historical_prices;
-
-      // Ensure we have at least 2 price points
-      if (prices.length < 2) {
-        return {
-          ...holding,
-          performance: 0
-        };
-      }
-
-      // Get the most recent and previous prices
-      const currentPrice = prices[0].price;
-      const previousPrice = prices[1].price;
-
-      // Calculate percentage change
-      const performance = previousPrice > 0 ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
-
-      // Debug logging
-      console.log(`${holding.symbol}: ${previousPrice} -> ${currentPrice} = ${performance.toFixed(2)}%`);
-
+      // Use percent_change from quotes if available
+      const quote = quotes && quotes[holding.symbol];
+      const percentChange = quote && typeof quote.percent_change === 'number' ? quote.percent_change : 0;
       return {
         ...holding,
-        performance
+        performance: percentChange
       };
     });
 
     // Add individual holdings
     const holdingsData = holdingsWithPerformance.map(holding => {
-              let color;
+      let color;
       const performance = holding.performance;
 
       if (performance > 6) {
@@ -71,6 +54,15 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
         color = '#8F0000';
       }
 
+      // Safely access quotes and format values
+      const quote = quotes && quotes[holding.symbol];
+      const percentChange = quote && typeof quote.percent_change === 'number'
+        ? quote.percent_change.toFixed(2)
+        : 'N/A';
+      const currentPrice = quote && typeof quote.current_price === 'number'
+        ? quote.current_price.toFixed(2)
+        : 'N/A';
+
       return {
         id: holding.symbol,
         name: holding.symbol,
@@ -79,10 +71,10 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
         color: color,
         custom: {
           fullName: holding.name,
-          performance: (holding.performance < 0 ? '' : '+') + holding.performance.toFixed(2) + '%',
+          performance: percentChange + '%',
           totalValue: holding.total_value,
           totalUnits: holding.total_units,
-          currentPrice: holding.historical_prices[holding.historical_prices.length - 1].price
+          currentPrice: currentPrice
         }
       };
     });
@@ -178,7 +170,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
             '<b>Total Value:</b> ' + data.base_currency + ' {point.value:,.0f}<br/>' :
             '<b>Total Units:</b> {point.value:,.0f}<br/>'
           ) +
-          '<b>Current Price:</b> $ {point.custom.currentPrice:.2f}'
+          '<b>Current Price:</b> $ {point.custom.currentPrice}'
       },
 
       legend: {
@@ -194,7 +186,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
     };
 
     return options;
-  }, [data, isValueVisible]);
+  }, [data, isValueVisible, quotes]);
 
   // Filter to only include stocks with historical data
   const stockHoldings = data.holdings.filter(holding =>

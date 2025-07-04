@@ -2,7 +2,7 @@ import asyncio
 import httpx
 from pymaya.maya import Maya
 from abc import ABC, abstractmethod
-from datetime import datetime, date
+from datetime import datetime
 from loguru import logger
 from typing import Optional, Literal, Any
 
@@ -187,6 +187,34 @@ class TaseFetcher(StockFetcher):
         except Exception as e:
             logger.error(f"Error in async TASE fetch for {symbol}: {e}")
             return None
+
+
+async def fetch_quotes(symbols: list[str]) -> dict[str, dict]:
+    results = {}
+    async with httpx.AsyncClient() as client:
+        for symbol in symbols:
+            try:
+                resp = await client.get(
+                    "https://finnhub.io/api/v1/quote",
+                    params={"symbol": symbol, "token": settings.finnhub_api_key}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # Map Finnhub keys to more readable keys
+                    results[symbol] = {
+                        "current_price": data.get("c"),
+                        "change": data.get("d"),
+                        "percent_change": data.get("dp"),
+                        "high": data.get("h"),
+                        "low": data.get("l"),
+                        "open": data.get("o"),
+                        "previous_close": data.get("pc"),
+                    }
+                else:
+                    results[symbol] = None
+            except Exception:
+                results[symbol] = None
+    return results
 
 
 def create_stock_fetcher(symbol: str) -> Optional[StockFetcher]:

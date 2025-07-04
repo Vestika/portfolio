@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, Query, Depends, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 import yaml
 
@@ -16,9 +16,10 @@ from models import User, Product
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
-from utils import filter_security, filter_account
+from utils import filter_security
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
+from services.closing_price.stock_fetcher import fetch_quotes
 
 logger = logging.Logger(__name__)
 
@@ -667,4 +668,10 @@ async def get_market_status():
     """Return the US market open/closed status."""
     manager = PriceManager()
     return await manager.get_us_market_status()
+
+
+@app.get("/quotes")
+async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols")):
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    return await fetch_quotes(symbol_list)
 
