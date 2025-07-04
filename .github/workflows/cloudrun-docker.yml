@@ -47,4 +47,4 @@ jobs:
           --region us-west1 \
           --allow-unauthenticated \
           --set-env-vars MONGODB_URL=${{ secrets.MONGODB_URL }},\
-            FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }},\
+            FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
