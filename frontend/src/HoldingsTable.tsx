@@ -4,6 +4,7 @@ import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import { dummyHoldingsData } from './dummyHoldingsData';
+import axios from 'axios';
 
 import {
   Search,
@@ -160,6 +161,17 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   });
 
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
+
+  // Fetch live quotes for holdings
+  const [quotes, setQuotes] = useState<Record<string, any>>({});
+  const apiUrl = import.meta.env.VITE_API_URL;
+  React.useEffect(() => {
+    const symbols = data.holdings.map(h => h.symbol).join(',');
+    if (!symbols) return;
+    axios.get(`${apiUrl}/quotes?symbols=${symbols}`)
+      .then(res => setQuotes(res.data))
+      .catch(() => setQuotes({}));
+  }, [data.holdings]);
 
   const filteredAndSortedHoldings = [...data.holdings]
     .filter(holding =>
@@ -321,7 +333,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       )}
 
       {viewMode === 'heatmap' && (
-        <HoldingsHeatmap data={dummyHoldingsData} isValueVisible={isValueVisible} />
+        <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
       )}
     </div>
   );
