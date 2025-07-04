@@ -3,7 +3,6 @@ import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
-import { dummyHoldingsData } from './dummyHoldingsData';
 import axios from 'axios';
 
 import {
