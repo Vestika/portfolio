@@ -425,11 +425,19 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
         existing = await collection.find_one({"portfolio_name": request.portfolio_name})
         if existing:
             raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
+        
+        # Create portfolio with all required fields for Portfolio.from_dict
         portfolio_data = {
             "portfolio_name": request.portfolio_name,
             "config": {
                 "user_name": request.portfolio_name,
                 "base_currency": request.base_currency,
+                "exchange_rates": {
+                    # Add default exchange rates - these can be updated later
+                    "USD": 1.0,
+                    "ILS": 3.5,  # Default USD to ILS rate
+                    "EUR": 1.1   # Default USD to EUR rate
+                },
                 "unit_prices": {
                     "USD": 1.0,
                     "ILS": 1.0
@@ -449,11 +457,18 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
             },
             "accounts": []
         }
-        await collection.insert_one(portfolio_data)
+        
+        # Insert portfolio and get the ObjectId
+        result = await collection.insert_one(portfolio_data)
+        portfolio_id = str(result.inserted_id)
+        
         # Clear portfolios cache to force reload
-        invalidate_portfolio_cache(request.portfolio_name)
+        invalidate_portfolio_cache(portfolio_id)
 
-        return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "portfolio_id": request.portfolio_name}
+        return {
+            "message": f"Portfolio '{request.portfolio_name}' created successfully", 
+            "portfolio_id": portfolio_id  # Return the actual ObjectId, not the name
+        }
     except HTTPException:
         raise
     except Exception as e:
