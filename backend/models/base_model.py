@@ -10,6 +10,7 @@ class AuthType(str, Enum):
     BASIC = "basic"
     BEARER = "bearer"
     API_KEY = "api_key"
+    FIREBASE = "firebase"
 
 
 class NestedRelation(BaseModel):

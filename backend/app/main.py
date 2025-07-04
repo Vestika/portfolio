@@ -12,6 +12,8 @@ import yaml
 
 from core import feature_generator
 from core.database import db_manager
+from core.firebase_config import initialize_firebase, log_event, log_error
+from core.auth_middleware import get_current_user
 from models import User, Product
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
@@ -44,6 +46,10 @@ async def startup_event():
     """Initialize services on application startup"""
     try:
         logger.info("Starting up Portfolio API...")
+        
+        # Initialize Firebase
+        initialize_firebase()
+        
         # Initialize the closing price service
         await closing_price_service.initialize()
         await db_manager.connect("vestika")
@@ -58,6 +64,7 @@ async def startup_event():
 
     except Exception as e:
         logger.error(f"Failed to start Portfolio API: {e}")
+        log_error("startup", str(e))
         raise
 
 @app.on_event("shutdown")
@@ -134,25 +141,40 @@ def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> Portfol
 
 
 @app.get("/portfolios")
-async def list_portfolios() -> list[dict[str, str]]:
+async def list_portfolios(current_user: dict = Depends(get_current_user)) -> list[dict[str, str]]:
     """
     Returns a list of all portfolios in the database.
     """
-    collection = db_manager.get_collection("portfolios")
-    portfolios_cursor = collection.find({}, {"_id": 1, "portfolio_name": 1})
-    portfolios = []
-    async for doc in portfolios_cursor:
-        portfolios.append({
-            "portfolio_id": str(doc["_id"]),
-            "portfolio_name": doc["portfolio_name"],
-            "display_name": doc["portfolio_name"].title()
+    try:
+        collection = db_manager.get_collection("portfolios")
+        portfolios_cursor = collection.find({}, {"_id": 1, "portfolio_name": 1})
+        portfolios = []
+        async for doc in portfolios_cursor:
+            portfolios.append({
+                "portfolio_id": str(doc["_id"]),
+                "portfolio_name": doc["portfolio_name"],
+                "display_name": doc["portfolio_name"].title()
+            })
+        
+        # Log portfolio list access
+        log_event("portfolios_listed", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_count": len(portfolios)
         })
-    return portfolios
+        
+        return portfolios
+    except Exception as e:
+        log_error("portfolios_list_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"]
+        })
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
 @app.get("/portfolio")
-async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
+async def get_portfolio_metadata(portfolio_id: str = "demo", current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """
     Endpoint to return portfolio metadata, config and account data from MongoDB by portfolio_id.
     """
@@ -160,7 +182,14 @@ async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
+            log_event("portfolio_metadata_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "status": "not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
@@ -191,10 +220,24 @@ async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
                 if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
                     account_data["account_cash"][holding.symbol] = holding.units
             result["accounts"].append(account_data)
+        
+        # Log portfolio metadata access
+        log_event("portfolio_metadata_accessed", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_count": len(result["accounts"])
+        })
+        
         return result
     except HTTPException:
         raise
     except Exception as e:
+        log_error("portfolio_metadata_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -208,7 +251,9 @@ class BreakdownRequest:
 
 @app.get("/portfolio/breakdown")
 async def get_portfolio_aggregations(
-    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
+    request: BreakdownRequest = Depends(BreakdownRequest), 
+    portfolio_id: str = "demo",
+    current_user: dict = Depends(get_current_user)
 ) -> list[dict[str, Any]]:
     """
     Endpoint to calculate all predefined portfolio aggregations on the requested accounts.
@@ -322,16 +367,33 @@ async def get_portfolio_aggregations(
                     "chart_data": aggregation_dict["breakdown"],
                 },
             )
+        
+        # Log portfolio breakdown access
+        log_event("portfolio_breakdown_accessed", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_names": request.account_names,
+            "chart_count": len(result)
+        })
+        
         return result
     except HTTPException:
         raise
     except Exception as e:
+        log_error("portfolio_breakdown_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/portfolio/holdings")
 async def get_holdings_table(
-    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
+    request: BreakdownRequest = Depends(BreakdownRequest), 
+    portfolio_id: str = "demo",
+    current_user: dict = Depends(get_current_user)
 ) -> dict[str, Any]:
     """
     Endpoint to return detailed holdings information for the selected accounts.
@@ -391,6 +453,15 @@ async def get_holdings_table(
             holding_data["total_value"] = holding_data["value_per_unit"] * holding_data["total_units"]
             holdings.append(holding_data)
 
+        # Log holdings access
+        log_event("portfolio_holdings_accessed", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_names": request.account_names,
+            "holdings_count": len(holdings)
+        })
+
         return {
             "base_currency": portfolio.base_currency,
             "holdings": sorted(holdings, key=lambda x: x["total_value"], reverse=True),
@@ -399,6 +470,11 @@ async def get_holdings_table(
     except HTTPException:
         raise
     except Exception as e:
+        log_error("portfolio_holdings_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -414,7 +490,7 @@ class CreateAccountRequest(BaseModel):
 
 
 @app.post("/portfolio/create")
-async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
+async def create_portfolio(request: CreatePortfolioRequest, current_user: dict = Depends(get_current_user)) -> dict[str, str]:
     """
     Create a new portfolio document in MongoDB with basic structure.
     """
@@ -422,7 +498,14 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
         collection = db_manager.get_collection("portfolios")
         existing = await collection.find_one({"portfolio_name": request.portfolio_name})
         if existing:
+            log_event("portfolio_create_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_name": request.portfolio_name,
+                "status": "already_exists"
+            })
             raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
+        
         portfolio_data = {
             "portfolio_name": request.portfolio_name,
             "config": {
@@ -451,15 +534,29 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(request.portfolio_name)
 
+        # Log successful portfolio creation
+        log_event("portfolio_created", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_name": request.portfolio_name,
+            "base_currency": request.base_currency
+        })
+
         return {"message": f"Portfolio '{request.portfolio_name}' created successfully", "portfolio_id": request.portfolio_name}
     except HTTPException:
         raise
     except Exception as e:
+        log_error("portfolio_create", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_name": request.portfolio_name,
+            "base_currency": request.base_currency
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/portfolio/{portfolio_id}/accounts")
-async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequest) -> dict[str, str]:
+async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequest, current_user: dict = Depends(get_current_user)) -> dict[str, str]:
     """
     Add a new account to an existing portfolio document in MongoDB.
     """
@@ -467,11 +564,27 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
+            log_event("account_create_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": request.account_name,
+                "status": "portfolio_not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
         portfolio_data = doc
         existing_accounts = [acc['name'] for acc in portfolio_data.get('accounts', [])]
         if request.account_name in existing_accounts:
+            log_event("account_create_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": request.account_name,
+                "status": "already_exists"
+            })
             raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
+        
         if 'securities' not in portfolio_data:
             portfolio_data['securities'] = {}
         for holding in request.holdings:
@@ -496,15 +609,33 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+        
+        # Log successful account creation
+        log_event("account_created", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": request.account_name,
+            "account_type": request.account_type,
+            "holdings_count": len(request.holdings)
+        })
+        
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
     except Exception as e:
+        log_error("account_create", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": request.account_name,
+            "account_type": request.account_type
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/portfolio/{portfolio_id}")
-async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
+async def delete_portfolio(portfolio_id: str, current_user: dict = Depends(get_current_user)) -> dict[str, str]:
     """
     Delete an entire portfolio document from MongoDB.
     """
@@ -512,22 +643,48 @@ async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
         collection = db_manager.get_collection("portfolios")
         count = await collection.count_documents({})
         if count <= 1:
+            log_event("portfolio_delete_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "status": "last_portfolio"
+            })
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
+        
         result = await collection.delete_one({"_id": ObjectId(portfolio_id)})
         if result.deleted_count == 0:
+            log_event("portfolio_delete_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "status": "not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
         # Clear from portfolios cache
         invalidate_portfolio_cache(portfolio_id)
+
+        # Log successful portfolio deletion
+        log_event("portfolio_deleted", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
 
         return {"message": f"Portfolio {portfolio_id} deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
+        log_error("portfolio_delete", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/portfolio/{portfolio_id}/accounts/{account_name}")
-async def delete_account_from_portfolio(portfolio_id: str, account_name: str) -> dict[str, str]:
+async def delete_account_from_portfolio(portfolio_id: str, account_name: str, current_user: dict = Depends(get_current_user)) -> dict[str, str]:
     """
     Delete a specific account from a portfolio document in MongoDB.
     """
@@ -535,27 +692,65 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
+            log_event("account_delete_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": account_name,
+                "status": "portfolio_not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
         accounts = doc.get('accounts', [])
         account_names = [acc['name'] for acc in accounts]
         if account_name not in account_names:
+            log_event("account_delete_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": account_name,
+                "status": "account_not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+        
         if len(accounts) <= 1:
+            log_event("account_delete_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": account_name,
+                "status": "last_account"
+            })
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining account")
+        
         doc['accounts'] = [acc for acc in accounts if acc['name'] != account_name]
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
 
+        # Log successful account deletion
+        log_event("account_deleted", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": account_name
+        })
+
         return {"message": f"Account '{account_name}' deleted from {portfolio_id} successfully"}
     except HTTPException:
         raise
     except Exception as e:
+        log_error("account_delete", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": account_name
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.put("/portfolio/{portfolio_id}/accounts/{account_name}")
-async def update_account_in_portfolio(portfolio_id: str, account_name: str, request: CreateAccountRequest) -> dict[str, str]:
+async def update_account_in_portfolio(portfolio_id: str, account_name: str, request: CreateAccountRequest, current_user: dict = Depends(get_current_user)) -> dict[str, str]:
     """
     Update an existing account in a portfolio document in MongoDB.
     """
@@ -563,7 +758,15 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
         if not doc:
+            log_event("account_update_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": account_name,
+                "status": "portfolio_not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
         accounts = doc.get('accounts', [])
         account_index = None
         for i, acc in enumerate(accounts):
@@ -571,11 +774,28 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                 account_index = i
                 break
         if account_index is None:
+            log_event("account_update_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "account_name": account_name,
+                "status": "account_not_found"
+            })
             raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+        
         if request.account_name != account_name:
             existing_accounts = [acc['name'] for acc in accounts]
             if request.account_name in existing_accounts:
+                log_event("account_update_attempt", {
+                    "user_id": current_user["user_id"],
+                    "user_email": current_user["email"],
+                    "portfolio_id": portfolio_id,
+                    "account_name": account_name,
+                    "new_account_name": request.account_name,
+                    "status": "name_already_exists"
+                })
                 raise HTTPException(status_code=409, detail=f"Account '{request.account_name}' already exists")
+        
         if 'securities' not in doc:
             doc['securities'] = {}
         for holding in request.holdings:
@@ -599,10 +819,30 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+        
+        # Log successful account update
+        log_event("account_updated", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": account_name,
+            "new_account_name": request.account_name,
+            "account_type": request.account_type,
+            "holdings_count": len(request.holdings)
+        })
+        
         return {"message": f"Account '{account_name}' updated successfully"}
     except HTTPException:
         raise
     except Exception as e:
+        log_error("account_update", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id,
+            "account_name": account_name,
+            "new_account_name": request.account_name,
+            "account_type": request.account_type
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -628,20 +868,45 @@ def invalidate_portfolio_cache(portfolio_id: str):
 
 
 @app.get("/portfolio/raw")
-async def download_portfolio_raw(portfolio_id: str):
+async def download_portfolio_raw(portfolio_id: str, current_user: dict = Depends(get_current_user)):
     """
     Download the raw portfolio document as YAML.
     """
-    collection = db_manager.get_collection("portfolios")
-    doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
-    if not doc:
-        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-    doc["_id"] = str(doc["_id"])
-    yaml_str = yaml.dump(doc, allow_unicode=True)
-    return Response(content=yaml_str, media_type="application/x-yaml")
+    try:
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        if not doc:
+            log_event("portfolio_download_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "portfolio_id": portfolio_id,
+                "status": "not_found"
+            })
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
+        doc["_id"] = str(doc["_id"])
+        yaml_str = yaml.dump(doc, allow_unicode=True)
+        
+        # Log successful portfolio download
+        log_event("portfolio_downloaded", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
+        
+        return Response(content=yaml_str, media_type="application/x-yaml")
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error("portfolio_download_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "portfolio_id": portfolio_id
+        })
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/portfolio/upload")
-async def upload_portfolio(file: UploadFile = File(...)):
+async def upload_portfolio(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     """
     Upload a new portfolio as a YAML file.
     """
@@ -651,12 +916,35 @@ async def upload_portfolio(file: UploadFile = File(...)):
         try:
             portfolio_yaml = yaml.safe_load(data)
         except Exception as e:
+            log_event("portfolio_upload_attempt", {
+                "user_id": current_user["user_id"],
+                "user_email": current_user["email"],
+                "filename": file.filename,
+                "status": "invalid_yaml"
+            })
             raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+        
         collection = db_manager.get_collection("portfolios")
         # Remove _id if present
         portfolio_yaml.pop("_id", None)
         result = await collection.insert_one(portfolio_yaml)
+        
+        # Log successful portfolio upload
+        log_event("portfolio_uploaded", {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "filename": file.filename,
+            "portfolio_id": str(result.inserted_id)
+        })
+        
         return {"portfolio_id": str(result.inserted_id)}
+    except HTTPException:
+        raise
     except Exception as e:
+        log_error("portfolio_upload_error", str(e), {
+            "user_id": current_user["user_id"],
+            "user_email": current_user["email"],
+            "filename": file.filename
+        })
         raise HTTPException(status_code=500, detail=str(e))
 

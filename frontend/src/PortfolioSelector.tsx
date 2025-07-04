@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, Plus, Trash2, Download } from 'lucide-react';
+import { analytics } from './lib/firebase';
+import { logEvent } from 'firebase/analytics';
 import {
   PortfolioSelectorProps,
 } from './types';
@@ -68,14 +70,30 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
         setShowCreateModal(false);
         setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
         
+        // Track portfolio creation event
+        logEvent(analytics, 'portfolio_created', {
+          portfolio_name: newPortfolio.portfolio_name,
+          base_currency: newPortfolio.base_currency
+        });
+        
         // Use callback to refresh files and switch to new portfolio
         await onPortfolioCreated(result.filename);
       } else {
         const error = await response.json();
         alert(`Error creating portfolio: ${error.detail}`);
+        
+        // Track error event
+        logEvent(analytics, 'portfolio_creation_error', {
+          error_detail: error.detail
+        });
       }
     } catch (error) {
       alert(`Error creating portfolio: ${error}`);
+      
+      // Track error event
+      logEvent(analytics, 'portfolio_creation_error', {
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
@@ -89,14 +107,29 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
         setShowDeleteModal(false);
         setPortfolioToDelete('');
         
+        // Track portfolio deletion event
+        logEvent(analytics, 'portfolio_deleted', {
+          portfolio_id: portfolioToDelete
+        });
+        
         // Use callback to refresh files and handle portfolio switch
         await onPortfolioDeleted(portfolioToDelete);
       } else {
         const error = await response.json();
         alert(`Error deleting portfolio: ${error.detail}`);
+        
+        // Track error event
+        logEvent(analytics, 'portfolio_deletion_error', {
+          error_detail: error.detail
+        });
       }
     } catch (error) {
       alert(`Error deleting portfolio: ${error}`);
+      
+      // Track error event
+      logEvent(analytics, 'portfolio_deletion_error', {
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 

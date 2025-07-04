@@ -3,3 +3,4 @@
 **/__pycache__/
 backend/michael.yaml
 **.env
+**/firebase_credentials.json

@@ -5,6 +5,8 @@ import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
 import HoldingsTable from './HoldingsTable';
+import { analytics } from './lib/firebase';
+import { logEvent } from 'firebase/analytics';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -31,10 +33,20 @@ const App: React.FC = () => {
       const response = await axios.get(`${apiUrl}/portfolios`);
       setAvailablePortfolios(response.data || []);
       setSelectedPortfolioId(prevId => prevId || (response.data && response.data.length > 0 ? response.data[0].portfolio_id : ""));
+      
+      // Track portfolio fetch event
+      logEvent(analytics, 'portfolio_fetch', {
+        portfolio_count: response.data?.length || 0
+      });
     } catch (err) {
       console.error('Failed to fetch available portfolios:', err);
       setAvailablePortfolios([]);
       setError('Failed to fetch available portfolios');
+      
+      // Track error event
+      logEvent(analytics, 'portfolio_fetch_error', {
+        error_message: err instanceof Error ? err.message : 'Unknown error'
+      });
     }
   };
 
@@ -45,6 +57,7 @@ const App: React.FC = () => {
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
       return metadata.data;
     } catch (err) {
+      console.error('Failed to fetch portfolio metadata:', err);
       setError('Failed to fetch portfolio metadata');
       throw err;
     }
@@ -68,6 +81,7 @@ const App: React.FC = () => {
       setHoldingsData(holdingsResponse.data);
       setIsLoading(false);
     } catch (err) {
+      console.error('Failed to fetch portfolio breakdown:', err);
       setError('Failed to fetch portfolio breakdown');
       setTimeout(() => { setIsLoading(false); }, 300);
     }

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { analytics } from './lib/firebase';
+import { logEvent } from 'firebase/analytics';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -215,14 +217,31 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] } );
         holdingRefs.current = {}; // Clear refs
         
+        // Track account creation event
+        logEvent(analytics, 'account_created', {
+          account_name: newAccount.account_name,
+          account_type: newAccount.account_type,
+          holdings_count: validHoldings.length
+        });
+        
         // Trigger refresh to reload the portfolio with new account
         await onAccountAdded();
       } else {
         const error = await response.json();
         alert(`Error adding account: ${error.detail}`);
+        
+        // Track error event
+        logEvent(analytics, 'account_creation_error', {
+          error_detail: error.detail
+        });
       }
     } catch (error) {
       alert(`Error adding account: ${error}`);
+      
+      // Track error event
+      logEvent(analytics, 'account_creation_error', {
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
@@ -236,14 +255,29 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         setShowDeleteAccountModal(false);
         setAccountToDelete('');
         
+        // Track account deletion event
+        logEvent(analytics, 'account_deleted', {
+          account_name: accountToDelete
+        });
+        
         // Trigger refresh to reload the portfolio without the deleted account
         await onAccountDeleted();
       } else {
         const error = await response.json();
         alert(`Error deleting account: ${error.detail}`);
+        
+        // Track error event
+        logEvent(analytics, 'account_deletion_error', {
+          error_detail: error.detail
+        });
       }
     } catch (error) {
       alert(`Error deleting account: ${error}`);
+      
+      // Track error event
+      logEvent(analytics, 'account_deletion_error', {
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
@@ -375,14 +409,31 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
         editHoldingRefs.current = {}; // Clear refs
         
+        // Track account update event
+        logEvent(analytics, 'account_updated', {
+          account_name: editAccount.account_name,
+          account_type: editAccount.account_type,
+          holdings_count: validHoldings.length
+        });
+        
         // Trigger refresh to reload the portfolio with updated account
         await onAccountAdded();
       } else {
         const error = await response.json();
         alert(`Error updating account: ${error.detail}`);
+        
+        // Track error event
+        logEvent(analytics, 'account_update_error', {
+          error_detail: error.detail
+        });
       }
     } catch (error) {
       alert(`Error updating account: ${error}`);
+      
+      // Track error event
+      logEvent(analytics, 'account_update_error', {
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
