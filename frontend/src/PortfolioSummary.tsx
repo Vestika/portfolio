@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
-
 interface CashHoldings {
   [currency: string]: number;
 }
+
+const apiUrl = import.meta.env.VITE_API_URL;
+
 
 interface PortfolioSummaryProps {
   accounts: AccountInfo[];
@@ -38,6 +40,16 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
 
     return holdings;
   }, {} as CashHoldings);
+
+  // Market status state
+  const [marketStatus, setMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
+
+  useEffect(() => {
+    fetch(`${apiUrl}/market-status`)
+      .then(res => res.json())
+      .then(data => setMarketStatus(data.us_market_status || 'unknown'))
+      .catch(() => setMarketStatus('unknown'));
+  }, []);
 
   return (
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
@@ -85,6 +97,14 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
             )}
           </div>
         ))}
+        <div className="flex-1" />
+        {/* US Market Status */}
+        <div className={`flex items-center rounded-full px-3 py-1 ml-auto ${marketStatus === 'open' ? 'bg-green-700' : marketStatus === 'closed' ? 'bg-gray-700' : 'bg-gray-700'}`}
+             title="US Market Status">
+          <span className={`w-2 h-2 rounded-full mr-2 ${marketStatus === 'open' ? 'bg-green-400' : marketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
+          <span className="text-xs font-medium">us-market-status:</span>
+          <span className={`ml-1 text-xs ${marketStatus === 'open' ? 'text-green-400' : marketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{marketStatus}</span>
+        </div>
       </div>
     </div>
   );

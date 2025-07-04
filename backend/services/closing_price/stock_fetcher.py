@@ -78,6 +78,27 @@ class FinnhubFetcher(StockFetcher):
             logger.error(f"Error fetching price for {symbol}: {e}")
             return None
 
+    async def get_market_status(self) -> dict[str, str]:
+        """Check if the US market is open or closed using Finnhub API"""
+        if not self.api_key:
+            logger.error("Finnhub API key not configured")
+            return {"us_market_status": "unknown"}
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://finnhub.io/api/v1/stock/market-status",
+                    params={"token": self.api_key, "exchange": "US"},
+                    timeout=self.timeout
+                )
+                response.raise_for_status()
+                data = response.json()
+                # Finnhub returns 'isUSMarketOpen': true/false
+                status = "open" if data.get("isUSMarketOpen") else "closed"
+                return {"us_market_status": status}
+        except Exception as e:
+            logger.error(f"Error fetching US market status: {e}")
+            return {"us_market_status": "unknown"}
+
 
 class TaseFetcher(StockFetcher):
     """Fetcher for TASE stocks using pymaya"""

@@ -18,6 +18,7 @@ from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
 from utils import filter_security, filter_account
 from services.closing_price.service import get_global_service
+from services.closing_price.price_manager import PriceManager
 
 logger = logging.Logger(__name__)
 
@@ -659,4 +660,11 @@ async def upload_portfolio(file: UploadFile = File(...)):
         return {"portfolio_id": str(result.inserted_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/market-status")
+async def get_market_status():
+    """Return the US market open/closed status."""
+    manager = PriceManager()
+    return await manager.get_us_market_status()
 

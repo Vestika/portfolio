@@ -146,6 +146,12 @@ class PriceManager:
                 "failed_symbols": []
             }
     
+    async def get_us_market_status(self) -> dict[str, str]:
+        """Get US market open/closed status from FinnhubFetcher"""
+        from .stock_fetcher import FinnhubFetcher
+        fetcher = FinnhubFetcher(settings.finnhub_api_key)
+        return await fetcher.get_market_status()
+    
     async def _get_cached_price(self, symbol: str) -> Optional[PriceResponse]:
         """Get price from Redis cache"""
         try:
