@@ -20,6 +20,8 @@ from utils import filter_security
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
 from services.closing_price.stock_fetcher import fetch_quotes
+from core.auth import get_current_user
+from core.firebase import FirebaseAuthMiddleware
 
 logger = logging.Logger(__name__)
 
@@ -41,22 +43,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Firebase authentication middleware
+app.add_middleware(
+    FirebaseAuthMiddleware,
+    exclude_paths=["/docs", "/openapi.json", "/redoc"]
+)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on application startup"""
     try:
         logger.info("Starting up Portfolio API...")
-        # Initialize the closing price service
-        await closing_price_service.initialize()
-        await db_manager.connect("vestika")
+        
+        # Try to initialize the closing price service (optional)
+        try:
+            await closing_price_service.initialize()
+            logger.info("Closing price service initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize closing price service: {e}")
+        
+        # Try to connect to database (optional)
+        try:
+            await db_manager.connect("vestika")
+            logger.info("Database connected successfully")
+            
+            # Register feature models only if database is available
+            models_to_register = [User, Product, UserPreferences]
+            for model_class in models_to_register:
+                router = feature_generator.register_feature(model_class)
+                app.include_router(router, prefix="/api/v1")
+        except Exception as e:
+            logger.warning(f"Failed to connect to database: {e}")
 
         logger.info("Portfolio API startup completed successfully")
-
-        models_to_register = [User, Product, UserPreferences]
-
-        for model_class in models_to_register:
-            router = feature_generator.register_feature(model_class)
-            app.include_router(router, prefix="/api/v1")
 
     except Exception as e:
         logger.error(f"Failed to start Portfolio API: {e}")
@@ -136,7 +156,7 @@ def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> Portfol
 
 
 @app.get("/portfolios")
-async def list_portfolios() -> list[dict[str, str]]:
+async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]]:
     """
     Returns a list of all portfolios in the database.
     """
@@ -154,7 +174,7 @@ async def list_portfolios() -> list[dict[str, str]]:
 
 
 @app.get("/portfolio")
-async def get_portfolio_metadata(portfolio_id: str = "demo") -> dict[str, Any]:
+async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Endpoint to return portfolio metadata, config and account data from MongoDB by portfolio_id.
     """
@@ -210,7 +230,7 @@ class BreakdownRequest:
 
 @app.get("/portfolio/breakdown")
 async def get_portfolio_aggregations(
-    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
+    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo", user=Depends(get_current_user)
 ) -> list[dict[str, Any]]:
     """
     Endpoint to calculate all predefined portfolio aggregations on the requested accounts.
@@ -333,7 +353,7 @@ async def get_portfolio_aggregations(
 
 @app.get("/portfolio/holdings")
 async def get_holdings_table(
-    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo"
+    request: BreakdownRequest = Depends(BreakdownRequest), portfolio_id: str = "demo", user=Depends(get_current_user)
 ) -> dict[str, Any]:
     """
     Endpoint to return detailed holdings information for the selected accounts.
@@ -416,7 +436,7 @@ class CreateAccountRequest(BaseModel):
 
 
 @app.post("/portfolio/create")
-async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
+async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Create a new portfolio document in MongoDB with basic structure.
     """
@@ -476,7 +496,7 @@ async def create_portfolio(request: CreatePortfolioRequest) -> dict[str, str]:
 
 
 @app.post("/portfolio/{portfolio_id}/accounts")
-async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequest) -> dict[str, str]:
+async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequest, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Add a new account to an existing portfolio document in MongoDB.
     """
@@ -521,7 +541,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
 
 
 @app.delete("/portfolio/{portfolio_id}")
-async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
+async def delete_portfolio(portfolio_id: str, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Delete an entire portfolio document from MongoDB.
     """
@@ -544,7 +564,7 @@ async def delete_portfolio(portfolio_id: str) -> dict[str, str]:
 
 
 @app.delete("/portfolio/{portfolio_id}/accounts/{account_name}")
-async def delete_account_from_portfolio(portfolio_id: str, account_name: str) -> dict[str, str]:
+async def delete_account_from_portfolio(portfolio_id: str, account_name: str, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Delete a specific account from a portfolio document in MongoDB.
     """
@@ -572,7 +592,7 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str) ->
 
 
 @app.put("/portfolio/{portfolio_id}/accounts/{account_name}")
-async def update_account_in_portfolio(portfolio_id: str, account_name: str, request: CreateAccountRequest) -> dict[str, str]:
+async def update_account_in_portfolio(portfolio_id: str, account_name: str, request: CreateAccountRequest, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Update an existing account in a portfolio document in MongoDB.
     """
@@ -625,13 +645,14 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
 
 # Add a root endpoint
 @app.get("/")
-async def root():
+async def root(user=Depends(get_current_user)):
     """Root endpoint with service information"""
     return {
         "service": "Portfolio API",
         "version": "1.0.0",
         "status": "running",
-        "docs_url": "/docs"
+        "docs_url": "/docs",
+        "user": user.email
     }
 
 
@@ -645,7 +666,7 @@ def invalidate_portfolio_cache(portfolio_id: str):
 
 
 @app.get("/portfolio/raw")
-async def download_portfolio_raw(portfolio_id: str):
+async def download_portfolio_raw(portfolio_id: str, user=Depends(get_current_user)):
     """
     Download the raw portfolio document as YAML.
     """
@@ -658,7 +679,7 @@ async def download_portfolio_raw(portfolio_id: str):
     return Response(content=yaml_str, media_type="application/x-yaml")
 
 @app.post("/portfolio/upload")
-async def upload_portfolio(file: UploadFile = File(...)):
+async def upload_portfolio(file: UploadFile = File(...), user=Depends(get_current_user)):
     """
     Upload a new portfolio as a YAML file.
     """
@@ -679,14 +700,14 @@ async def upload_portfolio(file: UploadFile = File(...)):
 
 
 @app.get("/market-status")
-async def get_market_status():
+async def get_market_status(user=Depends(get_current_user)):
     """Return the US market open/closed status."""
     manager = PriceManager()
     return await manager.get_us_market_status()
 
 
 @app.get("/quotes")
-async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols")):
+async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols"), user=Depends(get_current_user)):
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
     return await fetch_quotes(symbol_list)
 
@@ -697,7 +718,7 @@ class DefaultPortfolioRequest(BaseModel):
 
 
 @app.get("/user/{user_name}/default-portfolio")
-async def get_default_portfolio(user_name: str) -> dict[str, Any]:
+async def get_default_portfolio(user_name: str, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Get the default portfolio for a specific user.
     """
@@ -717,7 +738,7 @@ async def get_default_portfolio(user_name: str) -> dict[str, Any]:
 
 
 @app.post("/user/{user_name}/default-portfolio")
-async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest) -> dict[str, str]:
+async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Set the default portfolio for a specific user.
     """

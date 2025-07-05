@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './utils/api';
 import PieChart from './PieChart';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
 import HoldingsTable from './HoldingsTable';
+import Login from './components/Login';
+import { useAuth } from './contexts/AuthContext';
+import { signOutUser } from './firebase';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -13,9 +16,22 @@ import {
   HoldingsTableData,
 } from './types';
 
-const apiUrl = import.meta.env.VITE_API_URL;
+// Type guard for axios-like errors
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
+  if (!err || typeof err !== 'object') return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const maybeResponse = (err as any).response;
+  return (
+    maybeResponse &&
+    typeof maybeResponse === 'object' &&
+    'status' in maybeResponse &&
+    maybeResponse.status === status
+  );
+}
 
 const App: React.FC = () => {
+  const { user, loading: authLoading } = useAuth();
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -30,7 +46,7 @@ const App: React.FC = () => {
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
     try {
-      const response = await axios.get(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`);
+      const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
       return response.data.default_portfolio_id;
     } catch (error) {
       console.error('Failed to fetch default portfolio:', error);
@@ -40,7 +56,7 @@ const App: React.FC = () => {
 
   const fetchAvailablePortfolios = async () => {
     try {
-      const response = await axios.get(`${apiUrl}/portfolios`);
+      const response = await api.get(`/portfolios`);
       const portfolios = response.data || [];
       setAvailablePortfolios(portfolios);
       return portfolios;
@@ -67,7 +83,7 @@ const App: React.FC = () => {
       }
 
       // Get user name from the first portfolio to determine default
-      const tempMetadata = await axios.get(`${apiUrl}/portfolio?portfolio_id=${portfolios[0].portfolio_id}`);
+      const tempMetadata = await api.get(`/portfolio?portfolio_id=${portfolios[0].portfolio_id}`);
       const userName = tempMetadata.data.user_name;
       
       // Check for default portfolio
@@ -99,12 +115,12 @@ const App: React.FC = () => {
     }
     
     try {
-      const metadata = await axios.get(`${apiUrl}/portfolio?portfolio_id=${selectedPortfolioId}`);
+      const metadata = await api.get(`/portfolio?portfolio_id=${selectedPortfolioId}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
       return metadata.data;
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 404) {
+    } catch (err: unknown) {
+      if (isAxiosErrorWithStatus(err, 404)) {
         // Portfolio not found, try to select first available portfolio
         console.error(`Portfolio ${selectedPortfolioId} not found`);
         
@@ -134,15 +150,15 @@ const App: React.FC = () => {
 
       // Make both API calls in parallel instead of sequential
       const [breakdownResponse, holdingsResponse] = await Promise.all([
-        axios.get(`${apiUrl}/portfolio/breakdown?${params}`),
-        axios.get(`${apiUrl}/portfolio/holdings?${params}`)
+        api.get(`/portfolio/breakdown?${params}`),
+        api.get(`/portfolio/holdings?${params}`)
       ]);
 
       setPortfolioData(breakdownResponse.data);
       setHoldingsData(holdingsResponse.data);
       setIsLoading(false);
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 404) {
+    } catch (err: unknown) {
+      if (isAxiosErrorWithStatus(err, 404)) {
         // Portfolio not found, try to select first available portfolio
         console.error(`Portfolio ${selectedPortfolioId} not found in breakdown`);
         
@@ -190,7 +206,7 @@ const App: React.FC = () => {
 
   const handlePortfolioCreated = async (newPortfolioId: string) => {
     // Refresh available portfolios
-    const portfolios = await fetchAvailablePortfolios();
+    await fetchAvailablePortfolios();
     // Switch to the new portfolio
     setSelectedPortfolioId(newPortfolioId);
   };
@@ -239,12 +255,35 @@ const App: React.FC = () => {
     // For now, just log the success
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  // Show loading screen while auth is loading
+  if (authLoading) return <LoadingScreen />;
+
+  // Show login screen if user is not authenticated
+  if (!user) return <Login />;
+
+  // Show loading screen while app is loading
   if (isLoading) return <LoadingScreen />;
   if (error) return <div>{error}</div>;
   if (!portfolioMetadata || !portfolioData) return null;
 
   return (
     <div className="bg-gray-900 min-h-screen text-white">
+      <div className="flex justify-end p-4">
+        <button
+          onClick={handleSignOut}
+          className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Sign Out
+        </button>
+      </div>
       <AccountSelector
         portfolioMetadata={portfolioMetadata}
         onAccountsChange={handleAccountsChange}

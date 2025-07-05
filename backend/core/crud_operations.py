@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Type
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo.asynchronous.collection import AsyncCollection
 from models.base_model import BaseFeatureModel
 
 
 class CRUDOperations:
-    def __init__(self, collection: AsyncIOMotorCollection, model_class: Type[BaseFeatureModel]):
+    def __init__(self, collection: AsyncCollection, model_class: Type[BaseFeatureModel]):
         self.collection = collection
         self.model_class = model_class
 

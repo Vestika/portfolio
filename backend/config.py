@@ -65,6 +65,11 @@ class Settings(BaseSettings):
         description="Logging level"
     )
 
+    firebase_file_path: Optional[str] = Field(
+        default="firebase_credentials.json",
+        description="Path to Firebase credentials JSON file"
+    )
+
 
 # Global settings instance
 settings = Settings() 
