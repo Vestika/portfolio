@@ -18,6 +18,7 @@ import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SymbolAutocomplete } from "@/components/ui/autocomplete";
 import {
   Dialog,
   DialogContent,
@@ -571,11 +572,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   {newAccount.holdings.map((holding, index) => (
                     <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                       <div className="flex-1 p-0">
-                        <Input
+                        <SymbolAutocomplete
                           placeholder="e.g., AAPL"
                           value={holding.symbol}
-                          onChange={(e) => {
-                            updateHolding(index, 'symbol', e.target.value);
+                          onChange={(value) => {
+                            updateHolding(index, 'symbol', value);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
@@ -721,11 +722,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   {editAccount.holdings.map((holding, index) => (
                     <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                       <div className="flex-1 p-0">
-                        <Input
+                        <SymbolAutocomplete
                           placeholder="e.g., AAPL"
                           value={holding.symbol}
-                          onChange={(e) => {
-                            updateEditHolding(index, 'symbol', e.target.value);
+                          onChange={(value) => {
+                            updateEditHolding(index, 'symbol', value);
                           }}
                           className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                           onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
