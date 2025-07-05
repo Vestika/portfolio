@@ -6,8 +6,6 @@ from typing import Optional
 class User(BaseFeatureModel):
     name: str = Field(..., min_length=1, max_length=100)
     email: str
-    age: Optional[int] = Field(None, ge=0, le=150)
-    is_active: bool = Field(default=True)
 
     @classmethod
     def get_feature_config(cls) -> FeatureConfig:

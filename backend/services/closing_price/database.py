@@ -1,7 +1,8 @@
 from loguru import logger
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+from pymongo.asynchronous.mongo_client import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import OperationFailure
-from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional
 import redis.asyncio as redis
 import fakeredis.aioredis as fakeredis
@@ -9,7 +10,7 @@ from config import settings
 
 
 class Database:
-    client: Optional[AsyncIOMotorClient] = None
+    client: Optional[AsyncMongoClient] = None
     database = None
 
 
@@ -21,7 +22,7 @@ db = Database()
 cache = Cache()
 
 async def create_index_safe(
-    collection: AsyncIOMotorCollection,
+    collection: AsyncCollection,
     keys: list[tuple[str, int]],
     *,
     name: str,
@@ -48,7 +49,7 @@ async def create_index_safe(
 async def connect_to_mongo() -> None:
     """Create database connection"""
     try:
-        db.client = AsyncIOMotorClient(settings.mongodb_url)
+        db.client = AsyncMongoClient(settings.mongodb_url)
         db.database = db.client[settings.mongodb_database]
         
         # Test the connection
