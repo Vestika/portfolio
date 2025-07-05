@@ -69,6 +69,11 @@ class Settings(BaseSettings):
         default="firebase_credentials.json",
         description="Path to Firebase credentials JSON file"
     )
+    
+    firebase_credentials: Optional[str] = Field(
+        default=None,
+        description="Firebase credentials JSON string from environment variable"
+    )
 
 
 # Global settings instance
