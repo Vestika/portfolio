@@ -12,7 +12,7 @@ import yaml
 
 from core import feature_generator
 from core.database import db_manager
-from models import User, Product
+from models import User, Product, UserPreferences
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
@@ -52,7 +52,7 @@ async def startup_event():
 
         logger.info("Portfolio API startup completed successfully")
 
-        models_to_register = [User, Product]
+        models_to_register = [User, Product, UserPreferences]
 
         for model_class in models_to_register:
             router = feature_generator.register_feature(model_class)
@@ -689,4 +689,66 @@ async def get_market_status():
 async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols")):
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
     return await fetch_quotes(symbol_list)
+
+
+class DefaultPortfolioRequest(BaseModel):
+    user_name: str
+    portfolio_id: str
+
+
+@app.get("/user/{user_name}/default-portfolio")
+async def get_default_portfolio(user_name: str) -> dict[str, Any]:
+    """
+    Get the default portfolio for a specific user.
+    """
+    try:
+        collection = db_manager.get_collection("user_preferences")
+        preferences = await collection.find_one({"user_name": user_name})
+        
+        if not preferences:
+            return {"user_name": user_name, "default_portfolio_id": None}
+        
+        return {
+            "user_name": user_name,
+            "default_portfolio_id": preferences.get("default_portfolio_id")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/user/{user_name}/default-portfolio")
+async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest) -> dict[str, str]:
+    """
+    Set the default portfolio for a specific user.
+    """
+    try:
+        # Validate that the portfolio exists
+        portfolios_collection = db_manager.get_collection("portfolios")
+        portfolio_exists = await portfolios_collection.find_one({"_id": ObjectId(request.portfolio_id)})
+        if not portfolio_exists:
+            raise HTTPException(status_code=404, detail=f"Portfolio {request.portfolio_id} not found")
+        
+        # Update or create user preferences
+        preferences_collection = db_manager.get_collection("user_preferences")
+        
+        # Try to update existing preferences
+        result = await preferences_collection.update_one(
+            {"user_name": user_name},
+            {
+                "$set": {
+                    "default_portfolio_id": request.portfolio_id,
+                    "updated_at": datetime.now()
+                }
+            },
+            upsert=True
+        )
+        
+        return {
+            "message": f"Default portfolio set successfully for user {user_name}",
+            "portfolio_id": request.portfolio_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

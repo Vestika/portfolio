@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ChevronDown, Plus, Trash2, Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronDown, Plus, Trash2, Download, Star } from 'lucide-react';
 import {
   PortfolioSelectorProps,
 } from './types';
@@ -39,6 +39,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   userName,
   onPortfolioCreated,
   onPortfolioDeleted,
+  onDefaultPortfolioSet,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -48,6 +49,55 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     base_currency: 'ILS'
   });
   const [uploadedYaml, setUploadedYaml] = useState<any | null>(null);
+  const [defaultPortfolioId, setDefaultPortfolioId] = useState<string | null>(null);
+
+  // Fetch default portfolio from backend
+  useEffect(() => {
+    const fetchDefaultPortfolio = async () => {
+      if (!userName) return;
+      
+      try {
+        const response = await fetch(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`);
+        if (response.ok) {
+          const data = await response.json();
+          setDefaultPortfolioId(data.default_portfolio_id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch default portfolio:', error);
+      }
+    };
+
+    fetchDefaultPortfolio();
+  }, [userName]);
+
+  const handleSetDefault = async (portfolioId: string) => {
+    if (!userName) return;
+    
+    try {
+      const response = await fetch(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_name: userName,
+          portfolio_id: portfolioId,
+        }),
+      });
+
+      if (response.ok) {
+        setDefaultPortfolioId(portfolioId);
+        if (onDefaultPortfolioSet) {
+          onDefaultPortfolioSet(portfolioId);
+        }
+      } else {
+        const error = await response.json();
+        alert(`Error setting default portfolio: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`Error setting default portfolio: ${error}`);
+    }
+  };
 
   if (!portfolios || portfolios.length === 0) {
     return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
@@ -197,7 +247,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
             </h1>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-80 bg-white dark:bg-gray-900 border shadow-lg">
+        <DropdownMenuContent align="start" className="w-96 bg-white dark:bg-gray-900 border shadow-lg">
           {portfolios.map((portfolio) => (
             <DropdownMenuItem
               key={portfolio.portfolio_id}
@@ -210,14 +260,36 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                 <div className={`w-2.5 h-2.5 rounded-full ${
                   selectedPortfolioId === portfolio.portfolio_id ? 'bg-primary' : 'bg-muted-foreground'
                 }`} />
-                <span className={selectedPortfolioId === portfolio.portfolio_id ? 'font-semibold' : 'font-medium'}>
-                  {portfolio.display_name}
-                </span>
-                {selectedPortfolioId === portfolio.portfolio_id && (
-                  <span className="text-xs text-muted-foreground">• Active</span>
-                )}
+                <div className="flex flex-col">
+                  <span className={selectedPortfolioId === portfolio.portfolio_id ? 'font-semibold' : 'font-medium'}>
+                    {portfolio.display_name}
+                  </span>
+                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                    {selectedPortfolioId === portfolio.portfolio_id && (
+                      <span>• Active</span>
+                    )}
+                    {defaultPortfolioId === portfolio.portfolio_id && (
+                      <span>• Default</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1">
+                <Button
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleSetDefault(portfolio.portfolio_id);
+                  }}
+                  variant="ghost"
+                  size="icon"
+                  className={`h-8 w-8 border border-transparent hover:text-yellow-500 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors ${
+                    defaultPortfolioId === portfolio.portfolio_id ? 'text-yellow-500' : ''
+                  }`}
+                  title={defaultPortfolioId === portfolio.portfolio_id ? 'Default portfolio' : 'Set as default'}
+                  disabled={defaultPortfolioId === portfolio.portfolio_id}
+                >
+                  <Star className={`h-4 w-4 ${defaultPortfolioId === portfolio.portfolio_id ? 'fill-current' : ''}`} />
+                </Button>
                 <Button
                   onClick={e => {
                     e.stopPropagation();
