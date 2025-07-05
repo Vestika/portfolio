@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from loguru import logger
 from typing import Optional, Any
 
+from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
-from .config import settings
 from .database import db, cache
 from .models import StockPrice, TrackedSymbol, PriceResponse
 
