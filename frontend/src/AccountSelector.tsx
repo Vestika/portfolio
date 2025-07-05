@@ -485,7 +485,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       {/* Add Account Modal */}
       <Dialog open={showAddAccountModal} onOpenChange={setShowAddAccountModal}>
-        <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Plus className="mr-2 h-5 w-5 text-green-500" />
@@ -495,71 +495,75 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Create a new account to manage your investments and assets.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="account-name">Account Name</Label>
-              <Input
-                id="account-name"
-                value={newAccount.account_name}
-                onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
-                placeholder="Enter account name"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="account-type">Account Type</Label>
-              <Select value={newAccount.account_type} onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bank-account">Bank Account</SelectItem>
-                  <SelectItem value="investment-account">Investment Account</SelectItem>
-                  <SelectItem value="education-fund">Education Fund</SelectItem>
-                  <SelectItem value="retirement-account">Retirement Account</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>Owners</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="owner-me"
-                    checked={newAccount.owners.includes('me')}
-                    onChange={(e) => {
-                      const owners = e.target.checked 
-                        ? [...new Set([...newAccount.owners, 'me'])]
-                        : newAccount.owners.filter(o => o !== 'me');
-                      setNewAccount({ ...newAccount, owners });
-                    }}
-                    className="rounded border-border bg-background"
-                  />
-                  <Label htmlFor="owner-me" className="text-sm font-normal">Me</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="owner-wife"
-                    checked={newAccount.owners.includes('wife')}
-                    onChange={(e) => {
-                      const owners = e.target.checked 
-                        ? [...new Set([...newAccount.owners, 'wife'])]
-                        : newAccount.owners.filter(o => o !== 'wife');
-                      setNewAccount({ ...newAccount, owners });
-                    }}
-                    className="rounded border-border bg-background"
-                  />
-                  <Label htmlFor="owner-wife" className="text-sm font-normal">Wife</Label>
+          <div className="flex gap-6 py-4 min-h-[400px]">
+            {/* Left Column - Form Fields */}
+            <div className="flex-1 space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="account-name">Account Name</Label>
+                <Input
+                  id="account-name"
+                  value={newAccount.account_name}
+                  onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
+                  placeholder="Enter account name"
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="account-type">Account Type</Label>
+                <Select value={newAccount.account_type} onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bank-account">Bank Account</SelectItem>
+                    <SelectItem value="investment-account">Investment Account</SelectItem>
+                    <SelectItem value="education-fund">Education Fund</SelectItem>
+                    <SelectItem value="retirement-account">Retirement Account</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Owners</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="owner-me"
+                      checked={newAccount.owners.includes('me')}
+                      onChange={(e) => {
+                        const owners = e.target.checked 
+                          ? [...new Set([...newAccount.owners, 'me'])]
+                          : newAccount.owners.filter(o => o !== 'me');
+                        setNewAccount({ ...newAccount, owners });
+                      }}
+                      className="rounded border-border bg-background"
+                    />
+                    <Label htmlFor="owner-me" className="text-sm font-normal">Me</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="owner-wife"
+                      checked={newAccount.owners.includes('wife')}
+                      onChange={(e) => {
+                        const owners = e.target.checked 
+                          ? [...new Set([...newAccount.owners, 'wife'])]
+                          : newAccount.owners.filter(o => o !== 'wife');
+                        setNewAccount({ ...newAccount, owners });
+                      }}
+                      className="rounded border-border bg-background"
+                    />
+                    <Label htmlFor="owner-wife" className="text-sm font-normal">Wife</Label>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label>Holdings</Label>
-              <div className="rounded-md border">
+            {/* Right Column - Holdings Table */}
+            <div className="flex-1 flex flex-col">
+              <Label className="mb-3">Holdings</Label>
+              <div className="rounded-md border flex-1 flex flex-col">
                 {/* Table Header */}
                 <div className="flex items-center border-b bg-muted/50 px-0">
                   <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
@@ -568,7 +572,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 </div>
                 
                 {/* Table Body */}
-                <div className="max-h-40 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
                   {newAccount.holdings.map((holding, index) => (
                     <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                       <div className="flex-1 p-0">
@@ -614,7 +618,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground mt-2">
                 💡 Rows are added automatically when typing and removed when cleared
               </p>
             </div>
@@ -635,7 +639,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       {/* Edit Account Modal */}
       <Dialog open={showEditAccountModal} onOpenChange={setShowEditAccountModal}>
-        <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Edit className="mr-2 h-5 w-5 text-blue-500" />
@@ -645,71 +649,75 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Update the account details and holdings.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-account-name">Account Name</Label>
-              <Input
-                id="edit-account-name"
-                value={editAccount.account_name}
-                onChange={(e) => setEditAccount({ ...editAccount, account_name: e.target.value })}
-                placeholder="Enter account name"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="edit-account-type">Account Type</Label>
-              <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bank-account">Bank Account</SelectItem>
-                  <SelectItem value="investment-account">Investment Account</SelectItem>
-                  <SelectItem value="education-fund">Education Fund</SelectItem>
-                  <SelectItem value="retirement-account">Retirement Account</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>Owners</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="edit-owner-me"
-                    checked={editAccount.owners.includes('me')}
-                    onChange={(e) => {
-                      const owners = e.target.checked 
-                        ? [...new Set([...editAccount.owners, 'me'])]
-                        : editAccount.owners.filter(o => o !== 'me');
-                      setEditAccount({ ...editAccount, owners });
-                    }}
-                    className="rounded border-border bg-background"
-                  />
-                  <Label htmlFor="edit-owner-me" className="text-sm font-normal">Me</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="edit-owner-wife"
-                    checked={editAccount.owners.includes('wife')}
-                    onChange={(e) => {
-                      const owners = e.target.checked 
-                        ? [...new Set([...editAccount.owners, 'wife'])]
-                        : editAccount.owners.filter(o => o !== 'wife');
-                      setEditAccount({ ...editAccount, owners });
-                    }}
-                    className="rounded border-border bg-background"
-                  />
-                  <Label htmlFor="edit-owner-wife" className="text-sm font-normal">Wife</Label>
+          <div className="flex gap-6 py-4 min-h-[400px]">
+            {/* Left Column - Form Fields */}
+            <div className="flex-1 space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-account-name">Account Name</Label>
+                <Input
+                  id="edit-account-name"
+                  value={editAccount.account_name}
+                  onChange={(e) => setEditAccount({ ...editAccount, account_name: e.target.value })}
+                  placeholder="Enter account name"
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label htmlFor="edit-account-type">Account Type</Label>
+                <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bank-account">Bank Account</SelectItem>
+                    <SelectItem value="investment-account">Investment Account</SelectItem>
+                    <SelectItem value="education-fund">Education Fund</SelectItem>
+                    <SelectItem value="retirement-account">Retirement Account</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Owners</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="edit-owner-me"
+                      checked={editAccount.owners.includes('me')}
+                      onChange={(e) => {
+                        const owners = e.target.checked 
+                          ? [...new Set([...editAccount.owners, 'me'])]
+                          : editAccount.owners.filter(o => o !== 'me');
+                        setEditAccount({ ...editAccount, owners });
+                      }}
+                      className="rounded border-border bg-background"
+                    />
+                    <Label htmlFor="edit-owner-me" className="text-sm font-normal">Me</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="edit-owner-wife"
+                      checked={editAccount.owners.includes('wife')}
+                      onChange={(e) => {
+                        const owners = e.target.checked 
+                          ? [...new Set([...editAccount.owners, 'wife'])]
+                          : editAccount.owners.filter(o => o !== 'wife');
+                        setEditAccount({ ...editAccount, owners });
+                      }}
+                      className="rounded border-border bg-background"
+                    />
+                    <Label htmlFor="edit-owner-wife" className="text-sm font-normal">Wife</Label>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label>Holdings</Label>
-              <div className="rounded-md border">
+            {/* Right Column - Holdings Table */}
+            <div className="flex-1 flex flex-col">
+              <Label className="mb-3">Holdings</Label>
+              <div className="rounded-md border flex-1 flex flex-col">
                 {/* Table Header */}
                 <div className="flex items-center border-b bg-muted/50 px-0">
                   <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
@@ -718,7 +726,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 </div>
                 
                 {/* Table Body */}
-                <div className="max-h-40 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
                   {editAccount.holdings.map((holding, index) => (
                     <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                       <div className="flex-1 p-0">
@@ -764,7 +772,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground mt-2">
                 💡 Rows are added automatically when typing and removed when cleared
               </p>
             </div>
