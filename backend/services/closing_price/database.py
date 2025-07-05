@@ -5,9 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional
 import redis.asyncio as redis
 import fakeredis.aioredis as fakeredis
+from config import settings
 
-
-from .config import settings
 
 class Database:
     client: Optional[AsyncIOMotorClient] = None
