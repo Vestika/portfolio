@@ -25,32 +25,106 @@ const App: React.FC = () => {
   const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Get default portfolio from backend API
+  const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
+    try {
+      const response = await axios.get(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`);
+      return response.data.default_portfolio_id;
+    } catch (error) {
+      console.error('Failed to fetch default portfolio:', error);
+      return null;
+    }
+  };
 
   const fetchAvailablePortfolios = async () => {
     try {
       const response = await axios.get(`${apiUrl}/portfolios`);
-      setAvailablePortfolios(response.data || []);
-      setSelectedPortfolioId(prevId => prevId || (response.data && response.data.length > 0 ? response.data[0].portfolio_id : ""));
+      const portfolios = response.data || [];
+      setAvailablePortfolios(portfolios);
+      return portfolios;
     } catch (err) {
       console.error('Failed to fetch available portfolios:', err);
       setAvailablePortfolios([]);
       setError('Failed to fetch available portfolios');
+      return [];
+    }
+  };
+
+  // Initialize the app with proper default portfolio logic
+  const initializeApp = async () => {
+    try {
+      setIsLoading(true);
+      
+      // First, fetch available portfolios
+      const portfolios = await fetchAvailablePortfolios();
+      
+      if (portfolios.length === 0) {
+        setError('No portfolios available');
+        setIsLoading(false);
+        return;
+      }
+
+      // Get user name from the first portfolio to determine default
+      const tempMetadata = await axios.get(`${apiUrl}/portfolio?portfolio_id=${portfolios[0].portfolio_id}`);
+      const userName = tempMetadata.data.user_name;
+      
+      // Check for default portfolio
+      const defaultPortfolioId = await getDefaultPortfolio(userName);
+      
+      let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
+      
+      if (defaultPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === defaultPortfolioId)) {
+        portfolioToSelect = defaultPortfolioId;
+        console.log(`Loading default portfolio: ${defaultPortfolioId}`);
+      } else {
+        console.log(`No default portfolio found for user ${userName}, using first portfolio`);
+      }
+      
+      setSelectedPortfolioId(portfolioToSelect);
+      setIsInitialized(true);
+      
+    } catch (err) {
+      console.error('Failed to initialize app:', err);
+      setError('Failed to initialize application');
+      setIsLoading(false);
     }
   };
 
   const fetchPortfolioMetadata = async () => {
+    if (!selectedPortfolioId) {
+      console.warn('No portfolio selected, skipping metadata fetch');
+      return;
+    }
+    
     try {
       const metadata = await axios.get(`${apiUrl}/portfolio?portfolio_id=${selectedPortfolioId}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
       return metadata.data;
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        // Portfolio not found, try to select first available portfolio
+        console.error(`Portfolio ${selectedPortfolioId} not found`);
+        
+        if (availablePortfolios.length > 0) {
+          const firstPortfolio = availablePortfolios[0];
+          setSelectedPortfolioId(firstPortfolio.portfolio_id);
+          return; // Let the useEffect handle the retry
+        }
+      }
       setError('Failed to fetch portfolio metadata');
       throw err;
     }
   };
 
   const fetchPortfolioBreakdown = async (accountNames: string[] | null = null) => {
+    if (!selectedPortfolioId) {
+      console.warn('No portfolio selected, skipping breakdown fetch');
+      return;
+    }
+    
     try {
       const params = new URLSearchParams();
       params.append('portfolio_id', selectedPortfolioId);
@@ -68,17 +142,31 @@ const App: React.FC = () => {
       setHoldingsData(holdingsResponse.data);
       setIsLoading(false);
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        // Portfolio not found, try to select first available portfolio
+        console.error(`Portfolio ${selectedPortfolioId} not found in breakdown`);
+        
+        if (availablePortfolios.length > 0) {
+          const firstPortfolio = availablePortfolios[0];
+          setSelectedPortfolioId(firstPortfolio.portfolio_id);
+          return; // Let the useEffect handle the retry
+        }
+      }
       setError('Failed to fetch portfolio breakdown');
       setTimeout(() => { setIsLoading(false); }, 300);
     }
   };
 
+  // Initialize app on mount
   useEffect(() => {
-    fetchAvailablePortfolios();
+    initializeApp();
   }, []);
 
+  // Load portfolio data when portfolio selection changes (after initialization)
   useEffect(() => {
-    const initializePortfolio = async () => {
+    const loadPortfolioData = async () => {
+      if (!selectedPortfolioId || !isInitialized) return;
+      
       try {
         setIsLoading(true);
         await fetchPortfolioMetadata();
@@ -88,10 +176,8 @@ const App: React.FC = () => {
       }
     };
 
-    if (selectedPortfolioId) {
-      initializePortfolio();
-    }
-  }, [selectedPortfolioId]);
+    loadPortfolioData();
+  }, [selectedPortfolioId, isInitialized]);
 
   const handleAccountsChange = (accountNames: string[]) => {
     setSelectedAccounts(accountNames);
@@ -104,7 +190,7 @@ const App: React.FC = () => {
 
   const handlePortfolioCreated = async (newPortfolioId: string) => {
     // Refresh available portfolios
-    await fetchAvailablePortfolios();
+    const portfolios = await fetchAvailablePortfolios();
     // Switch to the new portfolio
     setSelectedPortfolioId(newPortfolioId);
   };
@@ -122,14 +208,11 @@ const App: React.FC = () => {
 
   const handlePortfolioDeleted = async (deletedPortfolioId: string) => {
     // Refresh available portfolios
-    await fetchAvailablePortfolios();
+    const portfolios = await fetchAvailablePortfolios();
     // If the deleted portfolio was the selected one, switch to the first available
     if (deletedPortfolioId === selectedPortfolioId) {
-      const remainingPortfolios = availablePortfolios.filter(
-        p => p.portfolio_id !== deletedPortfolioId
-      );
-      if (remainingPortfolios.length > 0) {
-        setSelectedPortfolioId(remainingPortfolios[0].portfolio_id);
+      if (portfolios.length > 0) {
+        setSelectedPortfolioId(portfolios[0].portfolio_id);
       } else {
         setSelectedPortfolioId("");
       }
@@ -145,6 +228,15 @@ const App: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleDefaultPortfolioSet = (portfolioId: string) => {
+    // The backend update is already handled in the PortfolioSelector component
+    // We could add additional logic here if needed, such as showing a notification
+    console.log(`Portfolio ${portfolioId} set as default`);
+    
+    // Optionally, we could show a success notification here
+    // For now, just log the success
   };
 
   if (isLoading) return <LoadingScreen />;
@@ -164,6 +256,7 @@ const App: React.FC = () => {
         onAccountAdded={handleAccountAdded}
         onPortfolioDeleted={handlePortfolioDeleted}
         onAccountDeleted={handleAccountDeleted}
+        onDefaultPortfolioSet={handleDefaultPortfolioSet}
       />
       <PortfolioSummary
         accounts={portfolioMetadata.accounts}

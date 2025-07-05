@@ -41,10 +41,9 @@ install:
 	@echo "📦 Installing Python dependencies..."
 	@echo "🔍 Checking Python environment..."
 	@python --version || (echo "❌ Python not found. Please activate a pyenv environment (e.g., 'pyenv shell portfolio')" && exit 1)
-	@python -m pip --version || (echo "❌ pip not available. Please activate a pyenv environment with pip installed" && exit 1)
-	@python -m pip install -r requirements.txt
-	@echo "📦 Installing closing-price service dependencies..."
-	@cd backend/services/closing-price-service && python -m pip install -r requirements.txt
+	@poetry --version || (echo "❌ Poetry not available. Please install Poetry first: curl -sSL https://install.python-poetry.org | python3 -" && exit 1)
+	@echo "📦 Installing backend dependencies with Poetry..."
+	@cd backend && poetry install
 	@echo "📦 Installing UI dependencies..."
 	@cd frontend && npm install
 	@echo "✅ All dependencies installed!"

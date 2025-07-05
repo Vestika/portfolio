@@ -47,6 +47,7 @@ interface AccountSelectorProps {
   onAccountAdded: () => Promise<void>;
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
+  onDefaultPortfolioSet?: (portfolioId: string) => void;
 }
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
@@ -59,7 +60,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onPortfolioCreated,
   onAccountAdded,
   onPortfolioDeleted,
-  onAccountDeleted
+  onAccountDeleted,
+  onDefaultPortfolioSet
 }) => {
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
@@ -399,6 +401,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             userName={portfolioMetadata.user_name}
             onPortfolioCreated={onPortfolioCreated}
             onPortfolioDeleted={onPortfolioDeleted}
+            onDefaultPortfolioSet={onDefaultPortfolioSet}
           />
           <p className="text-sm text-gray-400 mt-0">
             Showing {selectedAccountsCount} of {accounts.length} accounts
