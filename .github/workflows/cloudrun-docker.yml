@@ -33,12 +33,12 @@ jobs:
         run: |
           gcloud auth configure-docker
 
-      # Create .env file from secrets
-      - name: Create .env file
+      # Create env-vars.yaml file from secrets
+      - name: Create env-vars.yaml file
         run: |
-          cat > .env << EOF
-          MONGODB_URL=${{ secrets.MONGODB_URL }}
-          FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
+          cat > env-vars.yaml << EOF
+          MONGODB_URL: "${{ secrets.MONGODB_URL }}"
+          FINNHUB_API_KEY: "${{ secrets.FINNHUB_API_KEY }}"
           EOF
 
       # Build the Docker image
@@ -54,4 +54,4 @@ jobs:
           gcloud run deploy ${{ secrets.GCP_APPLICATION }} --image gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.GCP_APPLICATION }} \
           --region us-west1 \
           --allow-unauthenticated \
-          --env-vars-file .env
+          --env-vars-file env-vars.yaml
