@@ -39,12 +39,8 @@ jobs:
           cat > env-vars.yaml << EOF
           MONGODB_URL: "${{ secrets.MONGODB_URL }}"
           FINNHUB_API_KEY: "${{ secrets.FINNHUB_API_KEY }}"
+          FIREBASE_CREDENTIALS: '${{ secrets.FIREBASE_CREDENTIALS }}'
           EOF
-
-      # Create firebase_credentials.json file from secret
-      - name: Create firebase_credentials.json file
-        run: |
-          echo '${{ secrets.FIREBASE_CREDENTIALS }}' > firebase_credentials.json
 
       # Build the Docker image
       - name: Build & Publish
@@ -59,5 +55,4 @@ jobs:
           gcloud run deploy ${{ secrets.GCP_APPLICATION }} --image gcr.io/${{ secrets.GCP_PROJECT }}/${{ secrets.GCP_APPLICATION }} \
           --region us-west1 \
           --allow-unauthenticated \
-          --env-vars-file env-vars.yaml \
-          --source .
+          --env-vars-file env-vars.yaml

@@ -1,11 +1,20 @@
 import firebase_admin
+import json
 from firebase_admin import credentials, auth
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 
-cred = credentials.Certificate(settings.firebase_file_path)
+# Initialize Firebase credentials from environment variable or file
+if settings.firebase_credentials:
+    # Use credentials from environment variable
+    cred_dict = json.loads(settings.firebase_credentials)
+    cred = credentials.Certificate(cred_dict)
+else:
+    # Use credentials from file
+    cred = credentials.Certificate(settings.firebase_file_path)
+
 firebase_admin.initialize_app(cred)
 
 
