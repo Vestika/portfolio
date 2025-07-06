@@ -173,10 +173,11 @@ const App: React.FC = () => {
     }
   };
 
-  // Initialize app on mount
-  useEffect(() => {
-    initializeApp();
-  }, []);
+    useEffect(() => {
+        if (!authLoading && user && !isInitialized) {
+            initializeApp();
+        }
+    }, [authLoading, user, isInitialized]);
 
   // Load portfolio data when portfolio selection changes (after initialization)
   useEffect(() => {
