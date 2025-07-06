@@ -15,6 +15,18 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
+import { 
+  IconButton, 
+  Menu, 
+  MenuItem, 
+  ListItemIcon, 
+  ListItemText 
+} from '@mui/material';
+import { 
+  Person, 
+  Settings, 
+  Logout 
+} from '@mui/icons-material';
 
 // Type guard for axios-like errors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,6 +54,7 @@ const App: React.FC = () => {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
@@ -264,6 +277,31 @@ const App: React.FC = () => {
     }
   };
 
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleProfileClick = () => {
+    handleMenuClose();
+    // TODO: Implement profile functionality
+    console.log('Profile clicked');
+  };
+
+  const handleSettingsClick = () => {
+    handleMenuClose();
+    // TODO: Implement settings functionality
+    console.log('Settings clicked');
+  };
+
+  const handleSignOutClick = async () => {
+    handleMenuClose();
+    await handleSignOut();
+  };
+
   // Show loading screen while auth is loading
   if (authLoading) return <LoadingScreen />;
 
@@ -277,14 +315,56 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-gray-900 min-h-screen text-white">
-      <div className="flex justify-end p-4">
-        <button
-          onClick={handleSignOut}
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+      {/* Person Icon Dropdown - Positioned at top right */}
+      <div className="fixed top-4 right-4 z-50">
+        <IconButton
+          onClick={handleMenuOpen}
+          sx={{
+            color: 'white',
+            backgroundColor: 'rgba(55, 65, 81, 0.8)',
+            backdropFilter: 'blur(8px)',
+            '&:hover': {
+              backgroundColor: 'rgba(55, 65, 81, 1)',
+            },
+          }}
         >
-          Sign Out
-        </button>
+          <Person />
+        </IconButton>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+          PaperProps={{
+            sx: {
+              backgroundColor: '#374151',
+              color: 'white',
+              '& .MuiMenuItem-root:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              },
+            },
+          }}
+        >
+          <MenuItem onClick={handleProfileClick}>
+            <ListItemIcon>
+              <Person sx={{ color: 'white' }} />
+            </ListItemIcon>
+            <ListItemText>Profile</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={handleSettingsClick}>
+            <ListItemIcon>
+              <Settings sx={{ color: 'white' }} />
+            </ListItemIcon>
+            <ListItemText>Settings</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={handleSignOutClick}>
+            <ListItemIcon>
+              <Logout sx={{ color: 'white' }} />
+            </ListItemIcon>
+            <ListItemText>Sign Out</ListItemText>
+          </MenuItem>
+        </Menu>
       </div>
+
       <AccountSelector
         portfolioMetadata={portfolioMetadata}
         onAccountsChange={handleAccountsChange}
