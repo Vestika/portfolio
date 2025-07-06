@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
+import api from './utils/api';
 interface CashHoldings {
   [currency: string]: number;
 }
-
-const apiUrl = import.meta.env.VITE_API_URL;
 
 
 interface PortfolioSummaryProps {
@@ -45,9 +44,8 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
   const [marketStatus, setMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
 
   useEffect(() => {
-    fetch(`${apiUrl}/market-status`)
-      .then(res => res.json())
-      .then(data => setMarketStatus(data.us_market_status || 'unknown'))
+    api.get('/market-status')
+      .then(res => setMarketStatus(res.data.us_market_status || 'unknown'))
       .catch(() => setMarketStatus('unknown'));
   }, []);
 

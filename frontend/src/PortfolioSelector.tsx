@@ -29,8 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import yaml from 'js-yaml';
-
-const apiUrl = import.meta.env.VITE_API_URL;
+import api from './utils/api';
 
 const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   portfolios = [],
@@ -48,7 +47,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     portfolio_name: '',
     base_currency: 'ILS'
   });
-  const [uploadedYaml, setUploadedYaml] = useState<any | null>(null);
+  const [uploadedYaml, setUploadedYaml] = useState<unknown | null>(null);
   const [defaultPortfolioId, setDefaultPortfolioId] = useState<string | null>(null);
 
   // Fetch default portfolio from backend
@@ -57,11 +56,8 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       if (!userName) return;
       
       try {
-        const response = await fetch(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`);
-        if (response.ok) {
-          const data = await response.json();
-          setDefaultPortfolioId(data.default_portfolio_id);
-        }
+        const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
+        setDefaultPortfolioId(response.data.default_portfolio_id);
       } catch (error) {
         console.error('Failed to fetch default portfolio:', error);
       }
@@ -74,28 +70,18 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     if (!userName) return;
     
     try {
-      const response = await fetch(`${apiUrl}/user/${encodeURIComponent(userName)}/default-portfolio`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_name: userName,
-          portfolio_id: portfolioId,
-        }),
+      await api.post(`/user/${encodeURIComponent(userName)}/default-portfolio`, {
+        user_name: userName,
+        portfolio_id: portfolioId,
       });
 
-      if (response.ok) {
-        setDefaultPortfolioId(portfolioId);
-        if (onDefaultPortfolioSet) {
-          onDefaultPortfolioSet(portfolioId);
-        }
-      } else {
-        const error = await response.json();
-        alert(`Error setting default portfolio: ${error.detail}`);
+      setDefaultPortfolioId(portfolioId);
+      if (onDefaultPortfolioSet) {
+        onDefaultPortfolioSet(portfolioId);
       }
-    } catch (error) {
-      alert(`Error setting default portfolio: ${error}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error setting default portfolio: ${errorMessage}`);
     }
   };
 
@@ -105,48 +91,30 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
 
   const handleCreatePortfolio = async () => {
     try {
-      const response = await fetch(`${apiUrl}/portfolio/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newPortfolio),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setShowCreateModal(false);
-        setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
-        
-        // Use callback to refresh files and switch to new portfolio
-        await onPortfolioCreated(result.portfolio_id);
-      } else {
-        const error = await response.json();
-        alert(`Error creating portfolio: ${error.detail}`);
-      }
-    } catch (error) {
-      alert(`Error creating portfolio: ${error}`);
+      const response = await api.post('/portfolio/create', newPortfolio);
+      const result = response.data;
+      setShowCreateModal(false);
+      setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
+      
+      // Use callback to refresh files and switch to new portfolio
+      await onPortfolioCreated(result.portfolio_id);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error creating portfolio: ${errorMessage}`);
     }
   };
 
   const handleDeletePortfolio = async () => {
     try {
-      const response = await fetch(`${apiUrl}/portfolio/${portfolioToDelete}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setShowDeleteModal(false);
-        setPortfolioToDelete('');
-        
-        // Use callback to refresh files and handle portfolio switch
-        await onPortfolioDeleted(portfolioToDelete);
-      } else {
-        const error = await response.json();
-        alert(`Error deleting portfolio: ${error.detail}`);
-      }
-    } catch (error) {
-      alert(`Error deleting portfolio: ${error}`);
+      await api.delete(`/portfolio/${portfolioToDelete}`);
+      setShowDeleteModal(false);
+      setPortfolioToDelete('');
+      
+      // Use callback to refresh files and handle portfolio switch
+      await onPortfolioDeleted(portfolioToDelete);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error deleting portfolio: ${errorMessage}`);
     }
   };
 
@@ -157,9 +125,10 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
 
   const handleDownloadPortfolio = async (portfolio_id: string, portfolio_name: string) => {
     try {
-      const response = await fetch(`${apiUrl}/portfolio/raw?portfolio_id=${portfolio_id}`);
-      if (!response.ok) throw new Error('Failed to fetch portfolio');
-      const yamlStr = await response.text();
+      const response = await api.get(`/portfolio/raw?portfolio_id=${portfolio_id}`, {
+        responseType: 'text'
+      });
+      const yamlStr = response.data;
       const blob = new Blob([yamlStr], { type: 'application/x-yaml' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -169,8 +138,9 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Error downloading portfolio: ' + err);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert('Error downloading portfolio: ' + errorMessage);
     }
   };
 
@@ -179,20 +149,24 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     if (!file) return;
     try {
       const text = await file.text();
-      let yamlObj: any;
+      let yamlObj: unknown;
       try {
-        yamlObj = yaml.load(text) as any;
-      } catch (e) {
+        yamlObj = yaml.load(text);
+      } catch {
         alert('Invalid YAML file.');
         return;
       }
       setUploadedYaml(yamlObj);
       // Optionally, set the portfolio name input to the uploaded name
-      if (yamlObj.portfolio_name) {
-        setNewPortfolio((prev) => ({ ...prev, portfolio_name: yamlObj.portfolio_name }));
+      if (yamlObj && typeof yamlObj === 'object' && yamlObj !== null && 'portfolio_name' in yamlObj) {
+        const portfolioName = (yamlObj as { portfolio_name?: string }).portfolio_name;
+        if (portfolioName) {
+          setNewPortfolio((prev) => ({ ...prev, portfolio_name: portfolioName }));
+        }
       }
-    } catch (err) {
-      alert('Error reading YAML: ' + err);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert('Error reading YAML: ' + errorMessage);
     }
   };
 
@@ -200,12 +174,12 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     if (!uploadedYaml) return;
     try {
       // Clone and modify the YAML object
-      const yamlToUpload = { ...uploadedYaml };
+      const yamlToUpload = { ...uploadedYaml } as Record<string, unknown>;
       delete yamlToUpload._id;
       yamlToUpload.portfolio_name = newPortfolio.portfolio_name;
-      if (yamlToUpload.config) {
-        yamlToUpload.config.user_name = newPortfolio.portfolio_name;
-        yamlToUpload.config.base_currency = newPortfolio.base_currency;
+      if (yamlToUpload.config && typeof yamlToUpload.config === 'object' && yamlToUpload.config !== null) {
+        (yamlToUpload.config as Record<string, unknown>).user_name = newPortfolio.portfolio_name;
+        (yamlToUpload.config as Record<string, unknown>).base_currency = newPortfolio.base_currency;
       }
       // Remove user_name at top level if present
       delete yamlToUpload.user_name;
@@ -214,22 +188,19 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       const blob = new Blob([yamlStr], { type: 'application/x-yaml' });
       const formData = new FormData();
       formData.append('file', new File([blob], 'portfolio.yaml', { type: 'application/x-yaml' }));
-      const response = await fetch(`${apiUrl}/portfolio/upload`, {
-        method: 'POST',
-        body: formData
+      const response = await api.post('/portfolio/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
-      if (!response.ok) {
-        const err = await response.json();
-        alert('Error uploading portfolio: ' + err.detail);
-        return;
-      }
-      const result = await response.json();
+      const result = response.data;
       setShowCreateModal(false);
       setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
       setUploadedYaml(null);
       await onPortfolioCreated(result.portfolio_id);
-    } catch (err) {
-      alert('Error creating portfolio: ' + err);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert('Error creating portfolio: ' + errorMessage);
     }
   };
 
@@ -377,7 +348,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
             {uploadedYaml && (
               <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded border mt-2">
                 <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">YAML loaded. You can now edit the portfolio name and click Create.</div>
-                <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml)}</pre>
+                <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml as Record<string, unknown>)}</pre>
               </div>
             )}
           </div>

@@ -3,7 +3,7 @@ import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
-import axios from 'axios';
+import api from './utils/api';
 
 import {
   Search,
@@ -72,9 +72,9 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'] }> = ({ d
       borderWidth: 0,
       borderRadius: 8,
       style: { color: '#fff', zIndex: 300},
-      formatter: function(this: any) {
-        const point = this.point;
-        const date = new Date(data[point.index!].date);
+      formatter: function(this: unknown) {
+        const point = (this as { point: { index: number; y: number } }).point;
+        const date = new Date(data[point.index].date);
         return `<b>${point.y?.toFixed(2)}</b>(${date.toLocaleDateString()})`;
       }
     },
@@ -162,12 +162,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
 
   // Fetch live quotes for holdings
-  const [quotes, setQuotes] = useState<Record<string, any>>({});
-  const apiUrl = import.meta.env.VITE_API_URL;
+  const [quotes, setQuotes] = useState<Record<string, unknown>>({});
   React.useEffect(() => {
     const symbols = data.holdings.map(h => h.symbol).join(',');
     if (!symbols) return;
-    axios.get(`${apiUrl}/quotes?symbols=${symbols}`)
+    api.get(`/quotes?symbols=${symbols}`)
       .then(res => setQuotes(res.data))
       .catch(() => setQuotes({}));
   }, [data.holdings]);
