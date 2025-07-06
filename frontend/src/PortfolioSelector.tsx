@@ -345,7 +345,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                 onChange={handleUploadPortfolio}
               />
             </div>
-            {uploadedYaml && (
+            {uploadedYaml !== null && (
               <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded border mt-2">
                 <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">YAML loaded. You can now edit the portfolio name and click Create.</div>
                 <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml as Record<string, unknown>)}</pre>
