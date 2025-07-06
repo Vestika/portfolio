@@ -4,6 +4,7 @@ import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import api from './utils/api';
+import { Switch, Tooltip } from '@mui/material';
 
 import {
   Search,
@@ -189,8 +190,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       return 0;
     });
 
-
-
   const handleSort = (key: keyof SecurityHolding) => {
     setSortConfig({
       key,
@@ -203,37 +202,39 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
+  const handleViewModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setViewMode(event.target.checked ? 'heatmap' : 'table');
+  };
+
   return (
     <div className="w-full rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
       {/* View Toggle Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/30">
         <h3 className="text-sm font-medium text-gray-200">Holdings Overview</h3>
-        <div className="flex items-center space-x-2">
-          <span className="text-xs text-gray-400">View:</span>
-          <div className="flex bg-gray-700/50 rounded-md p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-gray-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              Table
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('heatmap')}
-              className={`px-3 py-1 text-xs rounded-sm transition-colors ${
-                viewMode === 'heatmap'
-                  ? 'bg-gray-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              Heatmap
-            </button>
-          </div>
+        <div className="flex items-center space-x-3">
+          <Tooltip title={viewMode === 'table' ? 'Table View' : 'Heatmap View'} placement="top">
+            <Switch
+              checked={viewMode === 'heatmap'}
+              onChange={handleViewModeChange}
+              sx={{
+                '& .MuiSwitch-switchBase.Mui-checked': {
+                  color: '#60a5fa',
+                  '&:hover': {
+                    backgroundColor: 'rgba(96, 165, 250, 0.08)',
+                  },
+                },
+                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                  backgroundColor: '#60a5fa',
+                },
+                '& .MuiSwitch-track': {
+                  backgroundColor: '#4b5563',
+                },
+                '& .MuiSwitch-thumb': {
+                  backgroundColor: '#9ca3af',
+                },
+              }}
+            />
+          </Tooltip>
         </div>
       </div>
 
