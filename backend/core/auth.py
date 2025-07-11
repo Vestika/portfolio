@@ -14,13 +14,11 @@ async def create_demo_portfolio(db: AsyncDatabase, user_id: str):
 
     portfolio_yaml.pop("_id", None)
     portfolio_yaml.pop("user_id", None)
+    portfolio_yaml["user_id"] = user_id
+    portfolio_yaml["portfolio_name"] = "Demo Portfolio"
 
     # Create a demo portfolio for the new user
-    await db.portfolios.insert_one({
-        "user_id": user_id,
-        "portfolio_name": "Demo Portfolio",
-        "portfolio_data": portfolio_yaml
-    })
+    await db.portfolios.insert_one(portfolio_yaml)
 
 async def get_current_user(
     request: Request,

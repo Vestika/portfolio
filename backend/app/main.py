@@ -183,7 +183,7 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
+        portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
             "base_currency": portfolio.base_currency,
@@ -256,7 +256,7 @@ async def get_portfolio_aggregations(
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
+        portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Calculate all holding values once
@@ -364,7 +364,7 @@ async def get_holdings_table(
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
+        portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts
@@ -673,7 +673,7 @@ async def download_portfolio_raw(portfolio_id: str, user=Depends(get_current_use
     Download the raw portfolio document as YAML.
     """
     collection = db_manager.get_collection("portfolios")
-    doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
     if not doc:
         raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
     doc["_id"] = str(doc["_id"])
@@ -728,7 +728,7 @@ async def get_default_portfolio(user_name: str, user=Depends(get_current_user)) 
     """
     try:
         collection = db_manager.get_collection("user_preferences")
-        preferences = await collection.find_one({"user_name": user_name})
+        preferences = await collection.find_one({"user_name": user_name, "user_id": user.id})
         
         if not preferences:
             return {"user_name": user_name, "default_portfolio_id": None}
@@ -758,7 +758,7 @@ async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest
         
         # Try to update existing preferences
         result = await preferences_collection.update_one(
-            {"user_name": user_name},
+            {"user_name": user_name, "user_id": user.id},
             {
                 "$set": {
                     "default_portfolio_id": request.portfolio_id,
