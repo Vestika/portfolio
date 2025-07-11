@@ -161,7 +161,7 @@ async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]
     Returns a list of all portfolios in the database.
     """
     collection = db_manager.get_collection("portfolios")
-    portfolios_cursor = collection.find({}, {"_id": 1, "portfolio_name": 1})
+    portfolios_cursor = collection.find({"user_id": user.id}, {"_id": 1, "portfolio_name": 1})
     portfolios = []
     async for doc in portfolios_cursor:
         portfolios.append({
@@ -180,10 +180,10 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
             "base_currency": portfolio.base_currency,
@@ -253,10 +253,10 @@ async def get_portfolio_aggregations(
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Calculate all holding values once
@@ -361,10 +361,10 @@ async def get_holdings_table(
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts
@@ -435,20 +435,21 @@ class CreateAccountRequest(BaseModel):
     holdings: list[dict[str, Any]] = []
 
 
-@app.post("/portfolio/create")
+@app.post("/portfolio")
 async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Create a new portfolio document in MongoDB with basic structure.
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        existing = await collection.find_one({"portfolio_name": request.portfolio_name})
+        existing = await collection.find_one({"portfolio_name": request.portfolio_name, "user_id": user.id})
         if existing:
             raise HTTPException(status_code=409, detail=f"Portfolio '{request.portfolio_name}' already exists")
         
         # Create portfolio with all required fields for Portfolio.from_dict
         portfolio_data = {
             "portfolio_name": request.portfolio_name,
+            "user_id": user.id,
             "config": {
                 "user_name": request.portfolio_name,
                 "base_currency": request.base_currency,
@@ -502,7 +503,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio_data = doc
@@ -521,6 +522,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                 }
         new_account = {
             "name": request.account_name,
+            "user_id": user.id,
             "properties": {
                 "owners": request.owners,
                 "type": request.account_type
@@ -547,10 +549,10 @@ async def delete_portfolio(portfolio_id: str, user=Depends(get_current_user)) ->
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        count = await collection.count_documents({})
+        count = await collection.count_documents({"user_id": user.id})
         if count <= 1:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining portfolio")
-        result = await collection.delete_one({"_id": ObjectId(portfolio_id)})
+        result = await collection.delete_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         # Clear from portfolios cache
@@ -570,7 +572,7 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str, us
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         accounts = doc.get('accounts', [])
@@ -598,7 +600,7 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
     """
     try:
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id)})
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         accounts = doc.get('accounts', [])
@@ -693,6 +695,8 @@ async def upload_portfolio(file: UploadFile = File(...), user=Depends(get_curren
         collection = db_manager.get_collection("portfolios")
         # Remove _id if present
         portfolio_yaml.pop("_id", None)
+        portfolio_yaml.pop("user_id", None)
+        portfolio_yaml["user_id"] = user.id
         result = await collection.insert_one(portfolio_yaml)
         return {"portfolio_id": str(result.inserted_id)}
     except Exception as e:

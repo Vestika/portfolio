@@ -15,6 +15,7 @@ class Portfolio:
         self.accounts = accounts
         self.base_currency = Currency(config["base_currency"])
         self.user_name = config.get("user_name", "User")
+        self.user_id = config.get("user_id", "user_id")
         self.exchange_rates = {Currency(k): v for k, v in config["exchange_rates"].items()}
         self.unit_prices = config.get("unit_prices", {})
 
