@@ -183,7 +183,7 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
             "base_currency": portfolio.base_currency,
@@ -256,7 +256,7 @@ async def get_portfolio_aggregations(
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Calculate all holding values once
@@ -364,7 +364,7 @@ async def get_holdings_table(
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
-        portfolio = Portfolio.from_dict(doc)
+        portfolio = Portfolio.from_dict(doc.get("portfolio_data", {}))
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
         # Create a dictionary to aggregate holdings across selected accounts

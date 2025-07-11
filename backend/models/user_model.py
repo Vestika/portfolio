@@ -6,6 +6,7 @@ from typing import Optional
 class User(BaseFeatureModel):
     name: str = Field(..., min_length=1, max_length=100)
     email: str
+    firebase_uid: str
 
     @classmethod
     def get_feature_config(cls) -> FeatureConfig:
