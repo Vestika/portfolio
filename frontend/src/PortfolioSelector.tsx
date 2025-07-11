@@ -91,7 +91,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
 
   const handleCreatePortfolio = async () => {
     try {
-      const response = await api.post('/portfolio/create', newPortfolio);
+      const response = await api.post('/portfolio', newPortfolio);
       const result = response.data;
       setShowCreateModal(false);
       setNewPortfolio({ portfolio_name: '', base_currency: 'ILS' });
