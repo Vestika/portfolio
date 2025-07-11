@@ -724,7 +724,7 @@ async def get_default_portfolio(user_name: str, user=Depends(get_current_user)) 
     """
     try:
         collection = db_manager.get_collection("user_preferences")
-        preferences = await collection.find_one({"user_name": user_name})
+        preferences = await collection.find_one({"user_name": user_name, "user_id": user.id})
         
         if not preferences:
             return {"user_name": user_name, "default_portfolio_id": None}
@@ -754,7 +754,7 @@ async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest
         
         # Try to update existing preferences
         result = await preferences_collection.update_one(
-            {"user_name": user_name},
+            {"user_name": user_name, "user_id": user.id},
             {
                 "$set": {
                     "default_portfolio_id": request.portfolio_id,
