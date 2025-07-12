@@ -172,38 +172,42 @@ class PortfolioAnalyzer:
     
     def _analyze_geographical_distribution(self, portfolio: Portfolio, calculator: PortfolioCalculator) -> List[Dict[str, Any]]:
         """Analyze geographical distribution based on security tags"""
-        geographical_distribution = defaultdict(lambda: {"value": 0.0, "holdings": []})
-        total_value = 0.0
-        
-        for account in portfolio.accounts:
-            for holding in account.holdings:
-                if holding.symbol in portfolio.securities:
-                    security = portfolio.securities[holding.symbol]
-                    holding_value = calculator.calc_holding_value(security, holding.units)
-                    total_value += holding_value["total"]
-                    
-                    # Extract geographical information from tags
-                    geo_tag = security.tags.get("geographical", "Unknown") if security.tags else "Unknown"
-                    geographical_distribution[geo_tag]["value"] += holding_value["total"]
-                    geographical_distribution[geo_tag]["holdings"].append({
-                        "symbol": holding.symbol,
-                        "value": holding_value["total"]
-                    })
-        
-        # Convert to list format with percentages
-        geo_list = []
-        for geo, data in geographical_distribution.items():
-            percentage = (data["value"] / total_value * 100) if total_value > 0 else 0
-            geo_list.append({
-                "geographical_region": geo,
-                "value": round(data["value"], 2),
-                "percentage": round(percentage, 2),
-                "holdings_count": len(data["holdings"])
-            })
-        
-        # Sort by value descending
-        geo_list.sort(key=lambda x: x["value"], reverse=True)
-        return geo_list
+        try:
+            geographical_distribution = defaultdict(lambda: {"value": 0.0, "holdings": []})
+            total_value = 0.0
+
+            for account in portfolio.accounts:
+                for holding in account.holdings:
+                    if holding.symbol in portfolio.securities:
+                        security = portfolio.securities[holding.symbol]
+                        holding_value = calculator.calc_holding_value(security, holding.units)
+                        total_value += holding_value["total"]
+
+                        # Extract geographical information from tags
+                        geo_tag = security.tags.get("geographical", "Unknown") if security.tags else "Unknown"
+                        geographical_distribution[geo_tag]["value"] += holding_value["total"]
+                        geographical_distribution[geo_tag]["holdings"].append({
+                            "symbol": holding.symbol,
+                            "value": holding_value["total"]
+                        })
+
+            # Convert to list format with percentages
+            geo_list = []
+            for geo, data in geographical_distribution.items():
+                percentage = (data["value"] / total_value * 100) if total_value > 0 else 0
+                geo_list.append({
+                    "geographical_region": geo,
+                    "value": round(data["value"], 2),
+                    "percentage": round(percentage, 2),
+                    "holdings_count": len(data["holdings"])
+                })
+
+            # Sort by value descending
+            geo_list.sort(key=lambda x: x["value"], reverse=True)
+            return geo_list
+        except Exception as e:
+            logger.error(f"Error analyzing geographical distribution: {e}")
+            return []
     
     def _analyze_sector_distribution(self, portfolio: Portfolio, calculator: PortfolioCalculator) -> List[Dict[str, Any]]:
         """Analyze sector distribution based on security tags"""

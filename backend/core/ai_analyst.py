@@ -199,9 +199,8 @@ Format your response clearly and professionally.
             content = types.Content(
                 parts=[types.Part(text=prompt)]
             )
-            
-            # Generate response
-            response = await self.client.generate_content(
+
+            response = await self.client.models.generate_content(
                 model=settings.google_ai_model,
                 contents=[content]
             )

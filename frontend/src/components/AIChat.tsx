@@ -12,9 +12,16 @@ import {
 interface AIChatProps {
   portfolioId: string;
   portfolioName?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio' }) => {
+const AIChat: React.FC<AIChatProps> = ({ 
+  portfolioId, 
+  portfolioName = 'Portfolio',
+  isOpen = true,
+  onClose
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,8 +41,10 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
   }, [messages]);
 
   useEffect(() => {
-    loadChatSessions();
-  }, [portfolioId]);
+    if (isOpen) {
+      loadChatSessions();
+    }
+  }, [portfolioId, isOpen]);
 
   const loadChatSessions = async () => {
     try {
@@ -113,21 +122,6 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
     setShowSessions(false);
   };
 
-  // Function to close current session (available for future use)
-  // const closeCurrentSession = async () => {
-  //   if (currentSessionId) {
-  //     try {
-  //       await closeChatSession(portfolioId, currentSessionId);
-  //       setCurrentSessionId(null);
-  //       setMessages([]);
-  //       await loadChatSessions();
-  //     } catch (err: unknown) {
-  //       const errorMessage = err instanceof Error ? err.message : 'Failed to close session';
-  //       setError(errorMessage);
-  //     }
-  //   }
-  // };
-
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString([], { 
       hour: '2-digit', 
@@ -139,10 +133,12 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
     return new Date(timestamp).toLocaleDateString();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="bg-white rounded-lg shadow-md h-[600px] flex flex-col">
+    <div className="bg-gray-800 rounded-lg shadow-lg h-full flex flex-col border border-gray-700">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,17 +146,27 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">AI Financial Analyst</h2>
-            <p className="text-sm text-gray-600">Chat about your {portfolioName.toLowerCase()}</p>
+            <h2 className="text-lg font-semibold text-white">AI Financial Analyst</h2>
+            <p className="text-sm text-gray-400">Chat about your {portfolioName.toLowerCase()}</p>
           </div>
         </div>
         
         <div className="flex items-center space-x-2">
+          {onClose && (
+            <Button
+              onClick={onClose}
+              variant="outline"
+              size="sm"
+              className="text-gray-400 border-gray-600 hover:bg-gray-700"
+            >
+              ×
+            </Button>
+          )}
           <Button
             onClick={() => setShowSessions(!showSessions)}
             variant="outline"
             size="sm"
-            className="text-gray-600"
+            className="text-gray-400 border-gray-600 hover:bg-gray-700"
           >
             Sessions
           </Button>
@@ -168,17 +174,17 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
             onClick={startNewSession}
             variant="outline"
             size="sm"
-            className="text-blue-600"
+            className="text-blue-400 border-blue-600 hover:bg-blue-900"
           >
-            New Chat
+            New
           </Button>
         </div>
       </div>
 
       {/* Sessions Panel */}
       {showSessions && (
-        <div className="border-b border-gray-200 bg-gray-50 p-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Chat Sessions</h3>
+        <div className="border-b border-gray-700 bg-gray-900 p-4">
+          <h3 className="text-sm font-medium text-white mb-3">Chat Sessions</h3>
           <div className="space-y-2 max-h-32 overflow-y-auto">
             {sessions.length === 0 ? (
               <p className="text-sm text-gray-500">No previous sessions</p>
@@ -189,8 +195,8 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
                   onClick={() => loadSession(session._id)}
                   className={`p-2 rounded cursor-pointer text-sm ${
                     currentSessionId === session._id
-                      ? 'bg-blue-100 text-blue-900'
-                      : 'hover:bg-gray-100 text-gray-700'
+                      ? 'bg-blue-900 text-blue-100'
+                      : 'hover:bg-gray-700 text-gray-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
@@ -210,13 +216,13 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && !isLoading && (
           <div className="text-center py-8">
-            <div className="mx-auto h-12 w-12 text-gray-400 mb-4">
+            <div className="mx-auto h-12 w-12 text-gray-500 mb-4">
               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <h3 className="text-sm font-medium text-gray-900">Start a conversation</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-sm font-medium text-white">Start a conversation</h3>
+            <p className="text-sm text-gray-400 mt-1">
               Ask me anything about your portfolio analysis, diversification, risk assessment, or investment strategies.
             </p>
           </div>
@@ -231,13 +237,13 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
               className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                 message.role === 'user'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  : 'bg-gray-700 text-gray-200'
               }`}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
               <div
                 className={`text-xs mt-1 ${
-                  message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                  message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
                 }`}
               >
                 {formatTime(message.timestamp)}
@@ -248,9 +254,9 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-900 max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
+            <div className="bg-gray-700 text-gray-200 max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
               <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
                 <span className="text-sm">AI is thinking...</span>
               </div>
             </div>
@@ -262,7 +268,7 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
 
       {/* Error Message */}
       {error && (
-        <div className="mx-4 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mx-4 mb-4 p-3 bg-red-900 border border-red-700 rounded-lg">
           <div className="flex">
             <div className="flex-shrink-0">
               <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
@@ -270,14 +276,14 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-200">{error}</p>
             </div>
           </div>
         </div>
       )}
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4 border-t border-gray-700">
         <div className="flex space-x-2">
           <Input
             value={inputMessage}
@@ -285,7 +291,7 @@ const AIChat: React.FC<AIChatProps> = ({ portfolioId, portfolioName = 'Portfolio
             onKeyPress={handleKeyPress}
             placeholder="Ask about your portfolio..."
             disabled={isLoading}
-            className="flex-1"
+            className="flex-1 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
           />
           <Button
             onClick={handleSendMessage}
