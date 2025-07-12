@@ -22,6 +22,9 @@ from services.closing_price.price_manager import PriceManager
 from services.closing_price.stock_fetcher import fetch_quotes
 from core.auth import get_current_user
 from core.firebase import FirebaseAuthMiddleware
+from core.ai_analyst import ai_analyst
+from core.portfolio_analyzer import portfolio_analyzer
+from core.chat_manager import chat_manager
 
 logger = logging.Logger(__name__)
 
@@ -1003,4 +1006,180 @@ async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# AI Financial Analyst Endpoints
+
+class ChatMessageRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+
+class ChatSessionResponse(BaseModel):
+    session_id: str
+    messages: list[dict[str, Any]]
+
+
+@app.post("/portfolio/{portfolio_id}/analyze")
+async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Perform comprehensive AI analysis of a portfolio.
+    """
+    try:
+        # Get portfolio data
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
+        
+        # Analyze portfolio for AI
+        portfolio_data = portfolio_analyzer.analyze_portfolio_for_ai(portfolio, calculator)
+        
+        # Perform AI analysis
+        analysis_result = await ai_analyst.analyze_portfolio(portfolio_data)
+        
+        return {
+            "portfolio_id": portfolio_id,
+            "analysis": analysis_result["analysis"],
+            "timestamp": analysis_result["timestamp"],
+            "model_used": analysis_result["model_used"],
+            "portfolio_summary": analysis_result["portfolio_summary"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in AI portfolio analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+
+
+@app.post("/portfolio/{portfolio_id}/chat")
+async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Interactive chat with AI financial analyst about a portfolio.
+    """
+    try:
+        # Get portfolio data
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
+        
+        # Analyze portfolio for AI
+        portfolio_data = portfolio_analyzer.analyze_portfolio_for_ai(portfolio, calculator)
+        
+        # Handle chat session
+        session_id = request.session_id
+        conversation_history = []
+        
+        if session_id:
+            # Get existing session
+            session = await chat_manager.get_chat_session(session_id, user.id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Chat session not found")
+            
+            # Get conversation history
+            conversation_history = await chat_manager.get_session_messages(session_id, user.id)
+        else:
+            # Create new session
+            session_id = await chat_manager.create_chat_session(user.id, portfolio_id)
+        
+        # Add user message to session
+        await chat_manager.add_message_to_session(session_id, user.id, "user", request.message)
+        
+        # Get AI response
+        ai_response = await ai_analyst.chat_with_analyst(portfolio_data, request.message, conversation_history)
+        
+        # Add AI response to session
+        await chat_manager.add_message_to_session(session_id, user.id, "assistant", ai_response["response"])
+        
+        return {
+            "session_id": session_id,
+            "response": ai_response["response"],
+            "timestamp": ai_response["timestamp"],
+            "model_used": ai_response["model_used"],
+            "question": ai_response["question"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in AI chat: {e}")
+        raise HTTPException(status_code=500, detail=f"AI chat failed: {str(e)}")
+
+
+@app.get("/portfolio/{portfolio_id}/chat/sessions")
+async def get_chat_sessions(portfolio_id: str, user=Depends(get_current_user)) -> list[dict[str, Any]]:
+    """
+    Get all chat sessions for a portfolio.
+    """
+    try:
+        sessions = await chat_manager.get_user_chat_sessions(user.id, portfolio_id)
+        return sessions
+    except Exception as e:
+        logger.error(f"Error getting chat sessions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get chat sessions: {str(e)}")
+
+
+@app.get("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
+async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Get messages from a specific chat session.
+    """
+    try:
+        session = await chat_manager.get_chat_session(session_id, user.id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        
+        messages = await chat_manager.get_session_messages(session_id, user.id)
+        
+        return {
+            "session_id": session_id,
+            "portfolio_id": portfolio_id,
+            "messages": messages,
+            "created_at": session["created_at"],
+            "last_activity": session["last_activity"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat session messages: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get chat session messages: {str(e)}")
+
+
+@app.delete("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
+async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, str]:
+    """
+    Close a chat session.
+    """
+    try:
+        success = await chat_manager.close_chat_session(session_id, user.id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        
+        return {"message": "Chat session closed successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error closing chat session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to close chat session: {str(e)}")
+
+
+@app.get("/portfolio/{portfolio_id}/chat/search")
+async def search_chat_history(portfolio_id: str, query: str = Query(..., description="Search query"), user=Depends(get_current_user)) -> list[dict[str, Any]]:
+    """
+    Search chat history for a portfolio.
+    """
+    try:
+        results = await chat_manager.search_chat_history(user.id, query, portfolio_id)
+        return results
+    except Exception as e:
+        logger.error(f"Error searching chat history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to search chat history: {str(e)}")
 

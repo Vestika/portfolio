@@ -74,6 +74,16 @@ class Settings(BaseSettings):
         default=None,
         description="Firebase credentials JSON string from environment variable"
     )
+    
+    # Google AI Configuration
+    google_ai_api_key: str = Field(
+        default="",
+        description="Google AI API key for Gemini integration"
+    )
+    google_ai_model: str = Field(
+        default="gemini-2.5-flash-preview-04-17",
+        description="Google AI model to use for analysis"
+    )
 
 
 # Global settings instance

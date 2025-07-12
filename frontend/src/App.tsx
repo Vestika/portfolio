@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from './utils/api';
 import PieChart from './PieChart';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
 import HoldingsTable from './HoldingsTable';
+import AIChat from './components/AIChat';
 import Login from './components/Login';
 import { useAuth } from './contexts/AuthContext';
 import { signOutUser } from './firebase';
@@ -25,7 +26,9 @@ import {
 import { 
   Person, 
   Settings, 
-  Logout 
+  Logout,
+  Chat,
+  Close
 } from '@mui/icons-material';
 
 // Type guard for axios-like errors
@@ -42,6 +45,8 @@ function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   );
 }
 
+const HEADER_HEIGHT = 128; // px, adjust if needed
+
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
@@ -55,6 +60,10 @@ const App: React.FC = () => {
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [chatWidth, setChatWidth] = useState(500);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
@@ -302,6 +311,40 @@ const App: React.FC = () => {
     await handleSignOut();
   };
 
+  const toggleAIChat = () => {
+    setIsAIChatOpen(!isAIChatOpen);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth >= 280 && newWidth <= 600) { // Min 280px, Max 600px
+        setChatWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   // Show loading screen while auth is loading
   if (authLoading) return <LoadingScreen />;
 
@@ -365,55 +408,117 @@ const App: React.FC = () => {
         </Menu>
       </div>
 
-      <AccountSelector
-        portfolioMetadata={portfolioMetadata}
-        onAccountsChange={handleAccountsChange}
-        onToggleVisibility={handleToggleVisibility}
-        availableFiles={availablePortfolios}
-        selectedFile={selectedPortfolioId}
-        onPortfolioChange={setSelectedPortfolioId}
-        onPortfolioCreated={handlePortfolioCreated}
-        onAccountAdded={handleAccountAdded}
-        onPortfolioDeleted={handlePortfolioDeleted}
-        onAccountDeleted={handleAccountDeleted}
-        onDefaultPortfolioSet={handleDefaultPortfolioSet}
-      />
-      <PortfolioSummary
-        accounts={portfolioMetadata.accounts}
-        selectedAccountNames={selectedAccounts}
-        baseCurrency={portfolioMetadata.base_currency}
-        isValueVisible={isValueVisible}
-      />
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-          {portfolioData.map(chart => (
-            <PieChart
-              key={chart.chart_title}
-              title={`<b>${chart.chart_title}</b>${
-                  isValueVisible
-                    ? ` <span class="text-xs text-gray-400 ml-1">
-                        ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
-                          chart.chart_total
-                        )}
-                        (${portfolioMetadata.base_currency})
-                        </span>`
-                    : ''
-              }`}
-              data={chart.chart_data}
-              total={chart.chart_total}
-              baseCurrency={portfolioMetadata.base_currency}
-              hideValues={!isValueVisible}
-            />
-          ))}
+      {/* AI Chat Toggle Button - Positioned at top right, next to person icon */}
+      <div className="fixed top-4 right-16 z-50">
+        <IconButton
+          onClick={toggleAIChat}
+          sx={{
+            color: 'white',
+            backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
+            backdropFilter: 'blur(8px)',
+            '&:hover': {
+              backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
+            },
+          }}
+        >
+          {isAIChatOpen ? <Close /> : <Chat />}
+        </IconButton>
+      </div>
+
+      {/* Sticky Header Section */}
+      <div
+        className="sticky top-0 z-30 bg-gray-900"
+        style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
+      >
+        <AccountSelector
+          portfolioMetadata={portfolioMetadata}
+          onAccountsChange={handleAccountsChange}
+          onToggleVisibility={handleToggleVisibility}
+          availableFiles={availablePortfolios}
+          selectedFile={selectedPortfolioId}
+          onPortfolioChange={setSelectedPortfolioId}
+          onPortfolioCreated={handlePortfolioCreated}
+          onAccountAdded={handleAccountAdded}
+          onPortfolioDeleted={handlePortfolioDeleted}
+          onAccountDeleted={handleAccountDeleted}
+          onDefaultPortfolioSet={handleDefaultPortfolioSet}
+        />
+        <PortfolioSummary
+          accounts={portfolioMetadata.accounts}
+          selectedAccountNames={selectedAccounts}
+          baseCurrency={portfolioMetadata.base_currency}
+          isValueVisible={isValueVisible}
+        />
+      </div>
+
+      {/* Main Content Area - Adjusts based on chat visibility */}
+      <div className="flex">
+        {/* Portfolio Data Section */}
+        <div
+          className="flex-1 transition-all duration-300"
+          style={{
+            marginRight: isAIChatOpen ? `${chatWidth}px` : '0px',
+          }}
+        >
+          <div className="container mx-auto px-4 py-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+              {portfolioData.map(chart => (
+                <PieChart
+                  key={chart.chart_title}
+                  title={`<b>${chart.chart_title}</b>${
+                    isValueVisible
+                      ? ` <span class="text-xs text-gray-400 ml-1">
+                          ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+                            chart.chart_total
+                          )}
+                          (${portfolioMetadata.base_currency})
+                          </span>`
+                      : ''
+                  }`}
+                  data={chart.chart_data}
+                  total={chart.chart_total}
+                  baseCurrency={portfolioMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                />
+              ))}
+            </div>
+            {holdingsData && (
+              <div className="mt-8">
+                <HoldingsTable
+                  data={holdingsData}
+                  isValueVisible={isValueVisible}
+                />
+              </div>
+            )}
+          </div>
         </div>
-        {holdingsData && (
-          <div className="mt-8">
-            <HoldingsTable
-              data={holdingsData}
-              isValueVisible={isValueVisible}
+
+        {/* AI Chat Sidebar */}
+        <div
+          className={`fixed right-0 transition-transform duration-300 transform ${
+            isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
+          } z-40`}
+          style={{
+            width: `${chatWidth}px`,
+            top: HEADER_HEIGHT,
+            height: `calc(100vh - ${HEADER_HEIGHT}px)`
+          }}
+        >
+          {/* Resize Handle */}
+          <div
+            ref={resizeRef}
+            className="absolute left-0 top-0 w-1 h-full bg-gray-600 cursor-col-resize hover:bg-blue-500 transition-colors"
+            onMouseDown={handleMouseDown}
+          />
+          <div className="h-full p-4">
+            <AIChat
+              portfolioId={selectedPortfolioId}
+              portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
+              isOpen={isAIChatOpen}
+              onClose={() => setIsAIChatOpen(false)}
             />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
