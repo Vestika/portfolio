@@ -9,6 +9,7 @@ import AIChat from './components/AIChat';
 import Login from './components/Login';
 import { useAuth } from './contexts/AuthContext';
 import { signOutUser } from './firebase';
+import { useAIChatFlag } from './hooks/useFeatureFlag';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -49,6 +50,7 @@ const HEADER_HEIGHT = 128; // px, adjust if needed
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
+  const aiChatEnabled = useAIChatFlag();
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -409,21 +411,23 @@ const App: React.FC = () => {
       </div>
 
       {/* AI Chat Toggle Button - Positioned at top right, next to person icon */}
-      <div className="fixed top-4 right-16 z-50">
-        <IconButton
-          onClick={toggleAIChat}
-          sx={{
-            color: 'white',
-            backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
-            backdropFilter: 'blur(8px)',
-            '&:hover': {
-              backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
-            },
-          }}
-        >
-          {isAIChatOpen ? <Close /> : <Chat />}
-        </IconButton>
-      </div>
+      {aiChatEnabled && (
+        <div className="fixed top-4 right-16 z-50">
+          <IconButton
+            onClick={toggleAIChat}
+            sx={{
+              color: 'white',
+              backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
+              backdropFilter: 'blur(8px)',
+              '&:hover': {
+                backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
+              },
+            }}
+          >
+            {isAIChatOpen ? <Close /> : <Chat />}
+          </IconButton>
+        </div>
+      )}
 
       {/* Sticky Header Section */}
       <div
@@ -457,7 +461,7 @@ const App: React.FC = () => {
         <div
           className="flex-1 transition-all duration-300"
           style={{
-            marginRight: isAIChatOpen ? `${chatWidth}px` : '0px',
+            marginRight: aiChatEnabled && isAIChatOpen ? `${chatWidth}px` : '0px',
           }}
         >
           <div className="container mx-auto px-4 py-6">
@@ -494,31 +498,33 @@ const App: React.FC = () => {
         </div>
 
         {/* AI Chat Sidebar */}
-        <div
-          className={`fixed right-0 transition-transform duration-300 transform ${
-            isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
-          } z-40`}
-          style={{
-            width: `${chatWidth}px`,
-            top: HEADER_HEIGHT,
-            height: `calc(100vh - ${HEADER_HEIGHT}px)`
-          }}
-        >
-          {/* Resize Handle */}
+        {aiChatEnabled && (
           <div
-            ref={resizeRef}
-            className="absolute left-0 top-0 w-1 h-full bg-gray-600 cursor-col-resize hover:bg-blue-500 transition-colors"
-            onMouseDown={handleMouseDown}
-          />
-          <div className="h-full p-4">
-            <AIChat
-              portfolioId={selectedPortfolioId}
-              portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
-              isOpen={isAIChatOpen}
-              onClose={() => setIsAIChatOpen(false)}
+            className={`fixed right-0 transition-transform duration-300 transform ${
+              isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
+            } z-40`}
+            style={{
+              width: `${chatWidth}px`,
+              top: HEADER_HEIGHT,
+              height: `calc(100vh - ${HEADER_HEIGHT}px)`
+            }}
+          >
+            {/* Resize Handle */}
+            <div
+              ref={resizeRef}
+              className="absolute left-0 top-0 w-1 h-full bg-gray-600 cursor-col-resize hover:bg-blue-500 transition-colors"
+              onMouseDown={handleMouseDown}
             />
+            <div className="h-full p-4">
+              <AIChat
+                portfolioId={selectedPortfolioId}
+                portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
+                isOpen={isAIChatOpen}
+                onClose={() => setIsAIChatOpen(false)}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

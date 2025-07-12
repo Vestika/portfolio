@@ -11,6 +11,9 @@ dependencies:
   '@emotion/styled':
     specifier: ^11.14.1
     version: 11.14.1(@emotion/react@11.14.0)(@types/react@18.3.23)(react@18.3.1)
+  '@growthbook/growthbook-react':
+    specifier: ^1.6.0
+    version: 1.6.0(react@18.3.1)
   '@mui/icons-material':
     specifier: ^7.2.0
     version: 7.2.0(@mui/material@7.2.0)(@types/react@18.3.23)(react@18.3.1)
@@ -1236,6 +1239,23 @@ packages:
 
   /@floating-ui/utils@0.2.9:
     resolution: {integrity: sha512-MDWhGtE+eHw5JW7lq4qhc5yRLS11ERl1c7Z6Xd0a58DozHES6EnNNwUWbMiG4J9Cgj053Bhk8zvlhFYKVhULwg==}
+    dev: false
+
+  /@growthbook/growthbook-react@1.6.0(react@18.3.1):
+    resolution: {integrity: sha512-B1zSLfjRKfDlXNXMCvDLBGRAEslNDu2acUgCtHLvtGm/ZeiXtT4TuSG6dy9U2XcXczMFHoDtDln3skGb6mbo7g==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: ^16.8.0-0 || ^17.0.0-0 || ^18.0.0-0 || ^19.0.0-0
+    dependencies:
+      '@growthbook/growthbook': 1.6.0
+      react: 18.3.1
+    dev: false
+
+  /@growthbook/growthbook@1.6.0:
+    resolution: {integrity: sha512-0aMB8j1lVLob4uXpFpTmylMEzlMsaaeFZiXgtaveCQwF+vwdKZG+aCOX/XQyLEvdsU1x3M4s/kZSiFM1lRMgQw==}
+    engines: {node: '>=10'}
+    dependencies:
+      dom-mutator: 0.6.0
     dev: false
 
   /@grpc/grpc-js@1.9.15:
@@ -2846,6 +2866,11 @@ packages:
     dependencies:
       '@babel/runtime': 7.27.6
       csstype: 3.1.3
+    dev: false
+
+  /dom-mutator@0.6.0:
+    resolution: {integrity: sha512-iCt9o0aYfXMUkz/43ZOAUFQYotjGB+GNbYJiJdz4TgXkyToXbbRy5S6FbTp72lRBtfpUMwEc1KmpFEU4CZeoNg==}
+    engines: {node: '>=10'}
     dev: false
 
   /dunder-proto@1.0.1:
