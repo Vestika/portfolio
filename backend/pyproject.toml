@@ -23,6 +23,7 @@ PyYAML = "^6.0"
 python-multipart = "^0.0.20"
 pydantic-settings = "^2.2.1"
 firebase-admin = "^6.9.0"
+google-adk = "^1.6.1"
 
 
 [build-system]

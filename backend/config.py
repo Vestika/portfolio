@@ -74,6 +74,24 @@ class Settings(BaseSettings):
         default=None,
         description="Firebase credentials JSON string from environment variable"
     )
+    
+    # Google AI Configuration
+    google_ai_api_key: str = Field(
+        default="",
+        description="Google AI API key for Gemini integration"
+    )
+    google_ai_model: str = Field(
+        default="gemini-1.5-flash",
+        description="Google AI model to use for analysis"
+    )
+    ai_analysis_rate_limit: int = Field(
+        default=10,
+        description="Rate limit for AI analysis requests per minute"
+    )
+    ai_chat_rate_limit: int = Field(
+        default=30,
+        description="Rate limit for AI chat requests per minute"
+    )
 
 
 # Global settings instance
