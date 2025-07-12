@@ -23,6 +23,7 @@ PyYAML = "^6.0"
 python-multipart = "^0.0.20"
 pydantic-settings = "^2.2.1"
 firebase-admin = "^6.9.0"
+finnhub-python = "^2.4.24"
 google-genai = "^0.3.0"
 
 
