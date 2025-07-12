@@ -755,14 +755,46 @@ async def get_symbol_autocomplete(q: str = Query(..., min_length=2, max_length=5
 
             # Check if query is numeric (for Israeli securities)
             is_numeric = q.isdigit()
-
-            # Use regex queries for more targeted manual filtering
+            
+            # Create multiple search conditions for better coverage
             manual_query_conditions = [
                 {"symbol": {"$regex": q_lower, "$options": "i"}},
                 {"name": {"$regex": q_lower, "$options": "i"}},
                 {"short_name": {"$regex": q_lower, "$options": "i"}},
-                {"search_terms": {"$regex": q_lower, "$options": "i"}}
+                {"search_terms": q_lower}  # Exact match in array
             ]
+
+            # Add search terms with regex for partial matches
+            # Check for each array element individually
+            search_terms_regex_conditions = []
+            for term_regex in [q_lower, q_lower.replace(":", ""), q_lower.replace("nasdaq:", ""), q_lower.replace("nyse:", "")]:
+                if term_regex:
+                    search_terms_regex_conditions.append({"search_terms": {"$regex": term_regex, "$options": "i"}})
+
+            if search_terms_regex_conditions:
+                manual_query_conditions.extend(search_terms_regex_conditions)
+
+            # Add simple fuzzy matching for common cases
+            if len(q_lower) >= 3:
+                # For queries like "msf" -> also search for "msft"
+                fuzzy_variants = []
+
+                # Add one character at the end (most common typo)
+                for char in 'abcdefghijklmnopqrstuvwxyz':
+                    fuzzy_variant = q_lower + char
+                    if len(fuzzy_variant) <= 6:
+                        fuzzy_variants.append(fuzzy_variant)
+
+                # Remove last character (if query might be too long)
+                if len(q_lower) > 3:
+                    fuzzy_variants.append(q_lower[:-1])
+
+                # Add fuzzy conditions for the most likely variants
+                for variant in fuzzy_variants[:5]:  # Limit to top 5 variants
+                    manual_query_conditions.extend([
+                        {"search_terms": variant},
+                        {"symbol": {"$regex": f":{variant}$", "$options": "i"}}
+                    ])
 
             # Add numeric search for Israeli securities if query is numeric
             if is_numeric:
@@ -806,24 +838,51 @@ async def get_symbol_autocomplete(q: str = Query(..., min_length=2, max_length=5
             q_lower = q.lower()
 
             # Extract base symbol for comparison (remove prefixes/suffixes)
-            base_symbol = symbol_lower.replace("nyse:", "").replace(".ta", "")
+            base_symbol = symbol_lower.replace("nyse:", "").replace("nasdaq:", "").replace(".ta", "")
 
-            # Priority scoring with multi-exchange awareness
+            # Calculate edit distance for fuzzy matching
+            def edit_distance(s1, s2):
+                if len(s1) > len(s2):
+                    s1, s2 = s2, s1
+                distances = list(range(len(s1) + 1))
+                for i2, c2 in enumerate(s2):
+                    distances_ = [i2 + 1]
+                    for i1, c1 in enumerate(s1):
+                        if c1 == c2:
+                            distances_.append(distances[i1])
+                        else:
+                            distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
+                    distances = distances_
+                return distances[-1]
+
+            # Calculate similarity scores
+            base_edit_distance = edit_distance(q_lower, base_symbol)
+            symbol_edit_distance = edit_distance(q_lower, symbol_lower)
+
+            # Priority scoring with fuzzy matching
             if symbol_lower == q_lower:
-                return (0, symbol_lower)  # Exact symbol match
+                return (0, 0, symbol_lower)  # Exact symbol match
             elif base_symbol == q_lower:
-                return (1, symbol_lower)  # Base symbol exact match (e.g., "TEVA" matches both "NYSE:TEVA" and "TEVA.TA")
+                return (1, 0, symbol_lower)  # Base symbol exact match
             elif symbol_lower.startswith(q_lower):
-                return (2, symbol_lower)  # Symbol starts with query
+                return (2, 0, symbol_lower)  # Symbol starts with query
+            elif base_symbol.startswith(q_lower):
+                return (3, 0, symbol_lower)  # Base symbol starts with query
             elif name_lower.startswith(q_lower):
-                return (3, name_lower)  # Name starts with query
+                return (4, 0, name_lower)  # Name starts with query
             elif q_lower in base_symbol:
-                return (4, symbol_lower)  # Base symbol contains query
+                return (5, 0, symbol_lower)  # Base symbol contains query
             elif q_lower in symbol_lower:
-                return (5, symbol_lower)  # Symbol contains query
+                return (6, 0, symbol_lower)  # Symbol contains query
+            elif q_lower in name_lower:
+                return (7, 0, name_lower)  # Name contains query
+            elif base_edit_distance <= 2:  # Fuzzy match on base symbol (up to 2 edits)
+                return (8, base_edit_distance, symbol_lower)  # Fuzzy match on base symbol
+            elif symbol_edit_distance <= 2:  # Fuzzy match on full symbol (up to 2 edits)
+                return (9, symbol_edit_distance, symbol_lower)  # Fuzzy match on symbol
             else:
-                return (6, name_lower)  # Name contains query
-
+                return (10, symbol_edit_distance, name_lower)  # Fallback with edit distance
+        
         results.sort(key=sort_key)
 
         return results
@@ -833,241 +892,50 @@ async def get_symbol_autocomplete(q: str = Query(..., min_length=2, max_length=5
 
 
 @app.post("/symbols/populate")
-async def populate_symbols_api() -> dict[str, Any]:
+async def populate_symbols_api(
+    force: bool = Query(False, description="Force update all symbols, bypassing checksum validation"),
+    symbol_types: Optional[List[str]] = Query(None, description="Specific symbol types to update (US, TASE, CURRENCY, CRYPTO)")
+) -> dict[str, Any]:
     """
     API endpoint to populate the symbols collection using live APIs.
-    - Uses Finnhub.io API for NYSE securities
+    - Uses Finnhub.io API for NYSE and NASDAQ securities
     - Uses PyMaya API for TASE securities
     - Includes currencies and crypto
+    - Supports checksum-based incremental updates
     """
     try:
-        import finnhub
-        from pymaya.maya import Maya
-        from datetime import datetime
-        from models.symbol import SymbolType
-        from services.closing_price.config import settings
+        # Import the consolidated populate_symbols function
+        from populate_symbols import populate_symbols
 
-        collection = db_manager.get_collection("symbols")
+        # Call the consolidated function
+        result = await populate_symbols(force=force, symbol_types=symbol_types)
 
-        # Clear existing data
-        delete_result = await collection.delete_many({})
-        logger.info(f"Cleared {delete_result.deleted_count} existing symbols")
-
-        symbols_to_insert = []
-
-        # Currencies and crypto - keep hardcoded as they're standards
-        CURRENCIES = [
-            {"symbol": "USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar"]},
-            {"symbol": "ILS", "name": "Israeli New Shekel", "search_terms": ["shekel", "nis", "israeli shekel"]},
-            {"symbol": "EUR", "name": "Euro", "search_terms": ["euro", "eur", "european euro"]},
-            {"symbol": "GBP", "name": "British Pound Sterling", "search_terms": ["pound", "sterling", "british pound"]},
-            {"symbol": "JPY", "name": "Japanese Yen", "search_terms": ["yen", "japanese yen"]},
-            {"symbol": "CAD", "name": "Canadian Dollar", "search_terms": ["canadian dollar", "cad"]},
-            {"symbol": "AUD", "name": "Australian Dollar", "search_terms": ["australian dollar", "aud"]},
-            {"symbol": "CHF", "name": "Swiss Franc", "search_terms": ["swiss franc", "chf"]},
-            {"symbol": "CNY", "name": "Chinese Yuan", "search_terms": ["yuan", "chinese yuan", "renminbi"]},
-            {"symbol": "BTC", "name": "Bitcoin", "search_terms": ["bitcoin", "btc", "crypto"]},
-            {"symbol": "ETH", "name": "Ethereum", "search_terms": ["ethereum", "eth", "crypto"]},
-            {"symbol": "ADA", "name": "Cardano", "search_terms": ["cardano", "ada", "crypto"]},
-            {"symbol": "SOL", "name": "Solana", "search_terms": ["solana", "sol", "crypto"]},
-        ]
-
-        # Fetch NYSE securities from Finnhub
-        nyse_count = 0
-        try:
-            if settings.finnhub_api_key:
-                logger.info("Fetching NYSE securities from Finnhub...")
-                finnhub_client = finnhub.Client(api_key=settings.finnhub_api_key)
-                us_stocks = finnhub_client.stock_symbols('US')
-                logger.info(f"Found {len(us_stocks)} US stocks from Finnhub")
-
-                for stock in us_stocks:
-                    # Filter for NYSE stocks only
-                    if not stock.get('mic') or stock['mic'] not in ['XNYS', 'ARCX']:
-                        continue
-
-                    symbol = stock.get('symbol', '')
-                    description = stock.get('description', stock.get('displaySymbol', ''))
-
-                    # Skip invalid symbols
-                    if not symbol or len(symbol) > 10 or '.' in symbol or symbol.startswith('TEST'):
-                        continue
-
-                    display_symbol = f"NYSE:{symbol}"
-                    symbol_doc = {
-                        "symbol": display_symbol,
-                        "name": description,
-                        "symbol_type": SymbolType.NYSE.value,
-                        "currency": "USD",
-                        "search_terms": [
-                            description.lower(),
-                            symbol.lower(),
-                            display_symbol.lower()
-                        ],
-                        "market": "NYSE",
-                        "figi": stock.get("figi", ""),
-                        "mic": stock.get("mic", ""),
-                        "security_type": stock.get("type", ""),
-                        "is_active": True,
-                        "created_at": datetime.now(),
-                        "updated_at": datetime.now()
-                    }
-                    symbols_to_insert.append(symbol_doc)
-                    nyse_count += 1
-
-                logger.info(f"Processed {nyse_count} NYSE securities")
-            else:
-                logger.warning("FINNHUB_API_KEY not found, skipping NYSE securities")
-        except Exception as e:
-            logger.error(f"Error fetching NYSE securities: {e}")
-
-        # Fetch TASE securities from PyMaya
-        tase_count = 0
-        try:
-            logger.info("Fetching TASE securities from PyMaya...")
-            maya = Maya()
-            all_securities = maya.get_all_securities()
-            logger.info(f"Found {len(all_securities)} securities from PyMaya")
-
-            for security in all_securities:
-                # Extract relevant information from PyMaya response
-                security_id = security.get('Id', '')
-                name = security.get('Name', '')
-                symbol = security.get('Smb', '') or security.get('SubId', '')
-
-                # Skip if essential data is missing
-                if not security_id or not name:
-                    continue
-
-                # Filter to only include relevant security types
-                security_type = security.get('Type', 0)
-                if security_type not in [1, 2, 3, 4, 5, 6]:
-                    continue
-
-                # Create symbol in TASE format
-                if symbol and not symbol.endswith('.TA'):
-                    formatted_symbol = f"{symbol}.TA"
-                else:
-                    formatted_symbol = f"{security_id}.TA"
-
-                # Extract numeric ID for search purposes
-                numeric_id = str(security_id) if security_id else ""
-
-                # Create search terms including numeric ID
-                search_terms = [
-                    name.lower(),
-                    numeric_id,
-                    formatted_symbol.lower(),
-                    formatted_symbol.replace('.TA', '').lower(),
-                    symbol.lower() if symbol else ""
-                ]
-                search_terms = list(set([term for term in search_terms if term]))
-
-                symbol_doc = {
-                    "symbol": formatted_symbol,
-                    "name": name,
-                    "symbol_type": SymbolType.TASE.value,
-                    "currency": "ILS",
-                    "search_terms": search_terms,
-                    "tase_id": security_id,
-                    "numeric_id": numeric_id,
-                    "short_name": name,
-                    "market": "TASE",
-                    "security_type": security_type,
-                    "subtype_desc": security.get('SubTypeDesc', ''),
-                    "is_active": True,
-                    "created_at": datetime.now(),
-                    "updated_at": datetime.now()
-                }
-                symbols_to_insert.append(symbol_doc)
-                tase_count += 1
-
-            logger.info(f"Processed {tase_count} TASE securities")
-
-        except Exception as e:
-            logger.error(f"Error fetching TASE securities from PyMaya: {e}")
-            # Fallback to JSON file
-            try:
-                import json
-                from pathlib import Path
-                logger.info("Falling back to TASE JSON file...")
-                tase_file = Path(__file__).parent.parent / "data" / "tase_securities.json"
-                if tase_file.exists():
-                    with open(tase_file, 'r', encoding='utf-8') as f:
-                        tase_data = json.load(f)
-
-                    for tase_symbol in tase_data:
-                        symbol_doc = {
-                            "symbol": tase_symbol["symbol"],
-                            "name": tase_symbol["short_name"],
-                            "symbol_type": SymbolType.TASE.value,
-                            "currency": "ILS",
-                            "search_terms": [
-                                tase_symbol["short_name"].lower(),
-                                tase_symbol["tase_id"],
-                                tase_symbol["symbol"].lower(),
-                                tase_symbol["symbol"].replace(".TA", "").lower()
-                            ],
-                            "tase_id": tase_symbol["tase_id"],
-                            "numeric_id": tase_symbol["tase_id"],
-                            "short_name": tase_symbol["short_name"],
-                            "market": "TASE",
-                            "is_active": True,
-                            "created_at": datetime.now(),
-                            "updated_at": datetime.now()
-                        }
-                        symbols_to_insert.append(symbol_doc)
-                        tase_count += 1
-
-                    logger.info(f"Loaded {tase_count} TASE securities from JSON fallback")
-            except Exception as fallback_e:
-                logger.error(f"JSON fallback also failed: {fallback_e}")
-
-        # Add currencies and crypto
-        for currency in CURRENCIES:
-            symbol_type = SymbolType.CRYPTO if any("crypto" in term for term in currency["search_terms"]) else SymbolType.CURRENCY
-
-            symbol_doc = {
-                "symbol": currency["symbol"],
-                "name": currency["name"],
-                "symbol_type": symbol_type.value,
-                "currency": currency["symbol"],
-                "search_terms": currency["search_terms"],
-                "market": "CURRENCY" if symbol_type == SymbolType.CURRENCY else "CRYPTO",
-                "is_active": True,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
-            }
-            symbols_to_insert.append(symbol_doc)
-
-        # Insert all symbols
-        insert_result = None
-        if symbols_to_insert:
-            insert_result = await collection.insert_many(symbols_to_insert)
-
-            # Create indexes for better search performance
-            await collection.create_index("symbol")
-            await collection.create_index("name")
-            await collection.create_index("symbol_type")
-            await collection.create_index("search_terms")
-            await collection.create_index("numeric_id")  # For Israeli numeric search
-            await collection.create_index([("symbol", "text"), ("name", "text"), ("search_terms", "text")])
-
+        # Get sample symbols for response
+        sample_symbols = []
+        if result["total_symbols"] > 0:
+            collection = db_manager.get_collection("symbols")
+            sample_cursor = collection.find({"is_active": True}).limit(5)
+            async for doc in sample_cursor:
+                sample_symbols.append({
+                    "symbol": doc["symbol"],
+                    "name": doc["name"],
+                    "symbol_type": doc["symbol_type"],
+                    "currency": doc["currency"],
+                    "market": doc.get("market", ""),
+                    "search_terms": doc.get("search_terms", [])[:3]  # Limit to first 3 terms
+                })
+        
         return {
             "success": True,
-            "message": "Symbols populated successfully using live APIs",
+            "message": f"Symbols population completed. Updated: {result['updated_types']}, Skipped: {result['skipped_types']}",
             "stats": {
-                "total_inserted": len(symbols_to_insert),
-                "nyse_symbols": nyse_count,
-                "tase_symbols": tase_count,
-                "currencies": len(CURRENCIES),
-                "deleted_existing": delete_result.deleted_count
+                "total_symbols": result["total_symbols"],
+                "updated_types": result["updated_types"],
+                "skipped_types": result["skipped_types"],
+                "error_types": result["error_types"]
             },
-            "apis_used": {
-                "finnhub_used": nyse_count > 0,
-                "pymaya_used": "PyMaya API" if tase_count > 0 else "JSON fallback"
-            },
-            "sample_symbols": symbols_to_insert[:5] if symbols_to_insert else []
+            "details": result["details"],
+            "sample_symbols": sample_symbols
         }
 
     except Exception as e:

@@ -114,10 +114,6 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     onChange(suggestion.symbol);
     setIsOpen(false);
     setHighlightedIndex(-1);
-    // Small delay to ensure the value is set before focus moves
-    setTimeout(() => {
-      // Focus will naturally move to next cell via parent's key handling
-    }, 0);
   };
 
   const handleInputFocus = () => {
@@ -125,17 +121,6 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     if (value.trim() && value.trim().length >= 2) {
       fetchSuggestions(value.trim());
     }
-  };
-
-  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Use setTimeout to allow click events on suggestions to fire first
-    setTimeout(() => {
-      // Only close if focus didn't move to the dropdown
-      if (dropdownRef.current && !dropdownRef.current.contains(document.activeElement)) {
-        setIsOpen(false);
-        setHighlightedIndex(-1);
-      }
-    }, 150);
   };
 
   const getSymbolTypeColor = (type: string) => {
@@ -171,13 +156,12 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   return (
     <div ref={containerRef} className="relative w-full">
       <Input
-        ref={ref || inputRef}
+        ref={ref}
         placeholder={placeholder}
         value={value}
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
         onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
         className={className}
         autoComplete="off"
       />
@@ -186,15 +170,37 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         <div
           ref={dropdownRef}
           className={cn(
-            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-0 text-popover-foreground shadow-md outline-none animate-in",
-            "min-w-[350px] max-h-60 overflow-y-auto"
+            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-0 text-popover-foreground shadow-lg outline-none animate-in fade-in-0 zoom-in-95",
+            "max-h-80 overflow-y-auto"
           )}
+          style={{
+            minWidth: '350px',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent'
+          }}
         >
+          <style dangerouslySetInnerHTML={{
+            __html: `
+              .autocomplete-dropdown::-webkit-scrollbar {
+                width: 8px;
+              }
+              .autocomplete-dropdown::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .autocomplete-dropdown::-webkit-scrollbar-thumb {
+                background-color: rgba(155, 155, 155, 0.5);
+                border-radius: 4px;
+              }
+              .autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
+                background-color: rgba(155, 155, 155, 0.7);
+              }
+            `
+          }} />
           {suggestions.map((suggestion, index) => (
             <div
               key={`${suggestion.symbol}-${suggestion.symbol_type}`}
               className={cn(
-                "relative flex cursor-pointer select-none items-center px-4 py-3 text-sm outline-none",
+                "relative flex cursor-pointer select-none items-center px-4 py-3 text-sm outline-none autocomplete-dropdown",
                 "hover:bg-accent hover:text-accent-foreground",
                 "border-b border-border/50 last:border-b-0",
                 index === highlightedIndex && "bg-accent text-accent-foreground"
@@ -240,7 +246,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
       {isLoading && value.trim().length >= 2 && (
         <div 
           className={cn(
-            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-4 text-popover-foreground shadow-md",
+            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-4 text-popover-foreground shadow-lg",
             "min-w-[350px]"
           )}
         >

@@ -6,6 +6,7 @@ from enum import Enum
 
 class SymbolType(str, Enum):
     NYSE = "nyse"
+    NASDAQ = "nasdaq"
     TASE = "tase"
     CURRENCY = "currency"
     CRYPTO = "crypto"
