@@ -790,11 +790,11 @@ class ChatMessageRequest(BaseModel):
 
 class ChatSessionResponse(BaseModel):
     session_id: str
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
 
 
 @app.post("/portfolio/{portfolio_id}/analyze")
-async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)) -> Dict[str, Any]:
+async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Perform comprehensive AI analysis of a portfolio.
     """
@@ -830,7 +830,7 @@ async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)
 
 
 @app.post("/portfolio/{portfolio_id}/chat")
-async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, user=Depends(get_current_user)) -> Dict[str, Any]:
+async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Interactive chat with AI financial analyst about a portfolio.
     """
@@ -888,7 +888,7 @@ async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, u
 
 
 @app.get("/portfolio/{portfolio_id}/chat/sessions")
-async def get_chat_sessions(portfolio_id: str, user=Depends(get_current_user)) -> List[Dict[str, Any]]:
+async def get_chat_sessions(portfolio_id: str, user=Depends(get_current_user)) -> list[dict[str, Any]]:
     """
     Get all chat sessions for a portfolio.
     """
@@ -901,7 +901,7 @@ async def get_chat_sessions(portfolio_id: str, user=Depends(get_current_user)) -
 
 
 @app.get("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
-async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> Dict[str, Any]:
+async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Get messages from a specific chat session.
     """
@@ -927,7 +927,7 @@ async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Dep
 
 
 @app.delete("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
-async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> Dict[str, str]:
+async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Close a chat session.
     """
@@ -945,7 +945,7 @@ async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(ge
 
 
 @app.get("/portfolio/{portfolio_id}/chat/search")
-async def search_chat_history(portfolio_id: str, query: str = Query(..., description="Search query"), user=Depends(get_current_user)) -> List[Dict[str, Any]]:
+async def search_chat_history(portfolio_id: str, query: str = Query(..., description="Search query"), user=Depends(get_current_user)) -> list[dict[str, Any]]:
     """
     Search chat history for a portfolio.
     """

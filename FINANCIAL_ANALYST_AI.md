@@ -5,7 +5,7 @@ Integration of Google AI (Gemini) as a financial analyst endpoint that provides 
 ## Completed Tasks
 
 - [x] Task list created
-- [x] Google AI SDK already installed (google-adk)
+- [x] Updated to use new Google Generative AI SDK (google-genai)
 - [x] Set up Google AI (Gemini) integration
 - [x] Design AI analyst prompt engineering with disclaimer
 - [x] Create portfolio analysis endpoint
@@ -84,7 +84,7 @@ Create a new endpoint that uses Google AI (Gemini) to act as a financial analyst
 ### Relevant Files
 
 - ✅ `backend/config.py` - Added Google AI configuration
-- ✅ `backend/core/ai_analyst.py` - AI integration service with disclaimer system
+- ✅ `backend/core/ai_analyst.py` - AI integration service with disclaimer system (updated to use official Google Gen AI SDK)
 - ✅ `backend/core/portfolio_analyzer.py` - Portfolio data preprocessing
 - ✅ `backend/core/chat_manager.py` - Chat session and conversation management using MongoDB
 - ✅ `backend/app/main.py` - Added new AI endpoints (analyze and chat)

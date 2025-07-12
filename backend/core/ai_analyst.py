@@ -3,8 +3,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 
-from google.generativeai import GenerativeModel
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google import genai
+from google.genai import types
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,31 +27,21 @@ class AIAnalyst:
     """AI Financial Analyst using Google Gemini for portfolio analysis"""
     
     def __init__(self):
-        self.model = None
-        self._initialize_model()
+        self.client = None
+        self._initialize_client()
     
-    def _initialize_model(self):
-        """Initialize the Google AI model with safety settings"""
+    def _initialize_client(self):
+        """Initialize the Google AI client"""
         try:
             if not settings.google_ai_api_key:
                 raise ValueError("Google AI API key not configured")
             
-            # Configure safety settings for financial analysis
-            safety_settings = {
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            }
-            
-            self.model = GenerativeModel(
-                model_name=settings.google_ai_model,
-                safety_settings=safety_settings
-            )
+            # Create client instance
+            self.client = genai.Client(api_key=settings.google_ai_api_key)
             logger.info(f"AI Analyst initialized with model: {settings.google_ai_model}")
             
         except Exception as e:
-            logger.error(f"Failed to initialize AI model: {e}")
+            logger.error(f"Failed to initialize AI client: {e}")
             raise
     
     def _format_portfolio_data(self, portfolio_data: Dict[str, Any]) -> str:
@@ -157,17 +147,28 @@ Format your response clearly and professionally.
     async def analyze_portfolio(self, portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
         """Perform comprehensive portfolio analysis"""
         try:
-            if not self.model:
-                raise ValueError("AI model not initialized")
+            if not self.client:
+                raise ValueError("AI client not initialized")
             
             formatted_data = self._format_portfolio_data(portfolio_data)
             prompt = self._create_analysis_prompt(formatted_data)
             
+            # Create content for generation
+            content = types.Content(
+                parts=[types.Part(text=prompt)]
+            )
+            
             # Generate analysis
-            response = await self.model.generate_content_async(prompt)
+            response = await self.client.generate_content(
+                model=settings.google_ai_model,
+                contents=[content]
+            )
+            
+            # Extract response text
+            response_text = response.candidates[0].content.parts[0].text
             
             # Add disclaimer
-            full_response = response.text + "\n\n" + MANDATORY_DISCLAIMER
+            full_response = response_text + "\n\n" + MANDATORY_DISCLAIMER
             
             return {
                 "analysis": full_response,
@@ -188,17 +189,28 @@ Format your response clearly and professionally.
     async def chat_with_analyst(self, portfolio_data: Dict[str, Any], user_question: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """Interactive chat with AI analyst"""
         try:
-            if not self.model:
-                raise ValueError("AI model not initialized")
+            if not self.client:
+                raise ValueError("AI client not initialized")
             
             formatted_data = self._format_portfolio_data(portfolio_data)
             prompt = self._create_chat_prompt(formatted_data, user_question, conversation_history)
             
+            # Create content for generation
+            content = types.Content(
+                parts=[types.Part(text=prompt)]
+            )
+            
             # Generate response
-            response = await self.model.generate_content_async(prompt)
+            response = await self.client.generate_content(
+                model=settings.google_ai_model,
+                contents=[content]
+            )
+            
+            # Extract response text
+            response_text = response.candidates[0].content.parts[0].text
             
             # Add disclaimer
-            full_response = response.text + "\n\n" + MANDATORY_DISCLAIMER
+            full_response = response_text + "\n\n" + MANDATORY_DISCLAIMER
             
             return {
                 "response": full_response,

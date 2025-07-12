@@ -39,9 +39,9 @@ async def test_ai_integration():
     # Test 2: Test AI Analyst initialization
     print("\n2. Testing AI Analyst initialization...")
     try:
-        # This will test the model initialization
-        if ai_analyst.model is None:
-            print("❌ AI model not initialized")
+        # This will test the client initialization
+        if ai_analyst.client is None:
+            print("❌ AI client not initialized")
             return False
         else:
             print("✅ AI Analyst initialized successfully")
@@ -94,11 +94,11 @@ async def test_ai_integration():
     try:
         # Note: This will only work if you have a valid API key
         # For testing purposes, we'll just check if the method exists
-        if hasattr(ai_analyst, 'analyze_portfolio'):
-            print("✅ AI analysis method available")
+        if hasattr(ai_analyst, 'analyze_portfolio') and hasattr(ai_analyst, 'chat_with_analyst'):
+            print("✅ AI analysis methods available")
             print("   (Full analysis test requires valid API key)")
         else:
-            print("❌ AI analysis method not found")
+            print("❌ AI analysis methods not found")
             return False
     except Exception as e:
         print(f"❌ Error testing AI Analysis: {e}")
@@ -119,9 +119,10 @@ async def test_ai_integration():
     print("\n" + "=" * 50)
     print("🎉 AI Integration Test Completed Successfully!")
     print("\nNext steps:")
-    print("1. Set your Google AI API key in the environment")
-    print("2. Start the backend server")
-    print("3. Test the endpoints via the frontend or API")
+    print("1. Install the new Google Generative AI SDK: pip install google-genai")
+    print("2. Set your Google AI API key in the environment")
+    print("3. Start the backend server")
+    print("4. Test the endpoints via the frontend or API")
     
     return True
 
