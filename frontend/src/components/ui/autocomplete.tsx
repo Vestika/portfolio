@@ -17,9 +17,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   value,
   onChange,
   onKeyDown,
-  className,
-  inputRef
-}, ref) => {
+  className}, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   
