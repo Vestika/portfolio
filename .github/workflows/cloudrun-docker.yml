@@ -20,13 +20,6 @@ jobs:
         uses: 'google-github-actions/auth@v1'
         with:
           credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-          
-      # Setup gcloud CLI
-#       - uses: google-github-actions/setup-gcloud@v1
-#         with:
-#           service_account_email: ${{ secrets.GCP_EMAIL }}
-#           service_account_key: ${{ secrets.GCP_CREDENTIALS }}
-#           export_default_credentials: true
 
       # Configure Docker with Credentials
       - name: Configure Docker
@@ -40,6 +33,7 @@ jobs:
           MONGODB_URL: "${{ secrets.MONGODB_URL }}"
           FINNHUB_API_KEY: "${{ secrets.FINNHUB_API_KEY }}"
           FIREBASE_CREDENTIALS: '${{ secrets.FIREBASE_CREDENTIALS }}'
+          GOOGLE_AI_API_KEY: "${{ secrets.GOOGLE_AI_API_KEY }}"
           EOF
 
       # Build the Docker image
