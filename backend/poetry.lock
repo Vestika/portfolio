@@ -512,6 +512,21 @@ all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "httpx (>
 standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "httpx (>=0.23.0)", "jinja2 (>=3.1.5)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
 
 [[package]]
+name = "finnhub-python"
+version = "2.4.24"
+description = "Finnhub API"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "finnhub_python-2.4.24-py3-none-any.whl", hash = "sha256:beebd4c31d0792a4b30fb5d2c81176072fa8638a89dd152fc0676f507e594789"},
+    {file = "finnhub_python-2.4.24.tar.gz", hash = "sha256:cc505a344b8e73a7ba8174fe9646340493b028c94c6ad4bfe15ae9c078aa2458"},
+]
+
+[package.dependencies]
+requests = ">=2.22.0"
+
+[[package]]
 name = "firebase-admin"
 version = "6.9.0"
 description = "Firebase Admin Python SDK"
@@ -2163,4 +2178,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "1b0829a2b2ed1d46a5433c49f239eddb412ce14b72ff39b8a8fd91d6d9baf2fa"
+content-hash = "b17b6d0b12fc88c292b9479fb0b4ea3f601acc32dc01a6ed68b004a3234311c5"
