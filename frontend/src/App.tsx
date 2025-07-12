@@ -61,7 +61,7 @@ const App: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [chatWidth, setChatWidth] = useState(320); // Default width in pixels
+  const [chatWidth, setChatWidth] = useState(500);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
 
@@ -458,7 +458,6 @@ const App: React.FC = () => {
           className="flex-1 transition-all duration-300"
           style={{
             marginRight: isAIChatOpen ? `${chatWidth}px` : '0px',
-            marginTop: HEADER_HEIGHT,
           }}
         >
           <div className="container mx-auto px-4 py-6">
