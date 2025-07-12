@@ -33,8 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const apiUrl = import.meta.env.VITE_API_URL;
+import api from './utils/api';
 
 interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
@@ -204,48 +203,32 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: validHoldings
       };
 
-      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(accountData),
-      });
+      await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
-      if (response.ok) {
-        setShowAddAccountModal(false);
-        setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] } );
-        holdingRefs.current = {}; // Clear refs
-        
-        // Trigger refresh to reload the portfolio with new account
-        await onAccountAdded();
-      } else {
-        const error = await response.json();
-        alert(`Error adding account: ${error.detail}`);
-      }
+      setShowAddAccountModal(false);
+      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] } );
+      holdingRefs.current = {}; // Clear refs
+      
+      // Trigger refresh to reload the portfolio with new account
+      await onAccountAdded();
     } catch (error) {
-      alert(`Error adding account: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : 'Error adding account';
+      alert(`Error adding account: ${errorMessage}`);
     }
   };
 
   const handleDeleteAccount = async () => {
     try {
-      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToDelete)}`, {
-        method: 'DELETE',
-      });
+      await api.delete(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToDelete)}`);
 
-      if (response.ok) {
-        setShowDeleteAccountModal(false);
-        setAccountToDelete('');
-        
-        // Trigger refresh to reload the portfolio without the deleted account
-        await onAccountDeleted();
-      } else {
-        const error = await response.json();
-        alert(`Error deleting account: ${error.detail}`);
-      }
+      setShowDeleteAccountModal(false);
+      setAccountToDelete('');
+      
+      // Trigger refresh to reload the portfolio without the deleted account
+      await onAccountDeleted();
     } catch (error) {
-      alert(`Error deleting account: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : 'Error deleting account';
+      alert(`Error deleting account: ${errorMessage}`);
     }
   };
 
@@ -363,28 +346,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: validHoldings
       };
 
-      const response = await fetch(`${apiUrl}/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(accountData),
-      });
+      await api.put(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, accountData);
 
-      if (response.ok) {
-        setShowEditAccountModal(false);
-        setAccountToEdit('');
-        setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
-        editHoldingRefs.current = {}; // Clear refs
-        
-        // Trigger refresh to reload the portfolio with updated account
-        await onAccountAdded();
-      } else {
-        const error = await response.json();
-        alert(`Error updating account: ${error.detail}`);
-      }
+      setShowEditAccountModal(false);
+      setAccountToEdit('');
+      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
+      editHoldingRefs.current = {}; // Clear refs
+      
+      // Trigger refresh to reload the portfolio with updated account
+      await onAccountAdded();
     } catch (error) {
-      alert(`Error updating account: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : 'Error updating account';
+      alert(`Error updating account: ${errorMessage}`);
     }
   };
 
