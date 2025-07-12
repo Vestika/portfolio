@@ -200,7 +200,7 @@ Format your response clearly and professionally.
                 parts=[types.Part(text=prompt)]
             )
 
-            response = await self.client.models.generate_content(
+            response = self.client.models.generate_content(
                 model=settings.google_ai_model,
                 contents=[content]
             )
