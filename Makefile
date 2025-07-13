@@ -43,7 +43,7 @@ install:
 	@python --version || (echo "❌ Python not found. Please activate a pyenv environment (e.g., 'pyenv shell portfolio')" && exit 1)
 	@poetry --version || (echo "❌ Poetry not available. Please install Poetry first: curl -sSL https://install.python-poetry.org | python3 -" && exit 1)
 	@echo "📦 Installing backend dependencies with Poetry..."
-	@cd backend && poetry install
+	@cd backend && poetry lock && poetry install
 	@echo "📦 Installing UI dependencies..."
 	@cd frontend && npm install
 	@echo "✅ All dependencies installed!"

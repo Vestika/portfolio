@@ -1,29 +1,31 @@
-from pathlib import Path
+from fastapi import HTTPException, Request, Depends
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from models.user_model import User
+from core.database import get_db
+from config import settings
 
-from fastapi import Depends, HTTPException, Request
-from pymongo.asynchronous.database import AsyncDatabase
-from yaml import safe_load
+# Development mode default user
+DEV_USER = User(
+    id="dev-user-123",
+    name="Development User",
+    email="dev@example.com",
+    firebase_uid="dev-user-123"
+)
 
-from models import User
-from .database import get_db
+async def create_demo_portfolio(db: AsyncIOMotorDatabase, user_id: str):
+    """Create a demo portfolio for a new user"""
+    # Implementation for creating demo portfolio
+    pass
 
-async def create_demo_portfolio(db: AsyncDatabase, user_id: str):
-
-    with open(Path("demo.yaml"), "rt") as f:
-        portfolio_yaml = safe_load(f)
-
-    portfolio_yaml.pop("_id", None)
-    portfolio_yaml.pop("user_id", None)
-    portfolio_yaml["user_id"] = user_id
-    portfolio_yaml["portfolio_name"] = "Demo Portfolio"
-
-    # Create a demo portfolio for the new user
-    await db.portfolios.insert_one(portfolio_yaml)
 
 async def get_current_user(
     request: Request,
-    db: AsyncDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db)
 ) -> User:
+    # If in development mode, return mock user
+    if settings.development_mode:
+        return DEV_USER
+    
     # Get Firebase user from request state (set by FirebaseAuthMiddlewareMiddleware)
     try:
         firebase_user = request.state.user
@@ -54,7 +56,7 @@ async def get_current_user(
 
 async def get_current_user_or_anonymous(
     request: Request,
-    db: AsyncDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db)
 ) -> User:
     try:
         return await get_current_user(request, db)
@@ -65,3 +67,4 @@ async def get_current_user_or_anonymous(
                 email="",
                 name="Anonymous",
             )
+        raise

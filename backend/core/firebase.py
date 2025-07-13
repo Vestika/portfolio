@@ -6,16 +6,39 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 
-# Initialize Firebase credentials from environment variable or file
-if settings.firebase_credentials:
-    # Use credentials from environment variable
-    cred_dict = json.loads(settings.firebase_credentials)
-    cred = credentials.Certificate(cred_dict)
-else:
-    # Use credentials from file
-    cred = credentials.Certificate(settings.firebase_file_path)
+# Global variable to track if Firebase has been initialized
+_firebase_initialized = False
 
-firebase_admin.initialize_app(cred)
+def _initialize_firebase():
+    """Initialize Firebase lazily, only when actually needed"""
+    global _firebase_initialized
+    
+    if _firebase_initialized:
+        return
+        
+    if settings.development_mode:
+        # Skip Firebase initialization in development mode
+        _firebase_initialized = True
+        return
+    
+    try:
+        # Initialize Firebase credentials from environment variable or file
+        if settings.firebase_credentials:
+            # Use credentials from environment variable
+            cred_dict = json.loads(settings.firebase_credentials)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            # Use credentials from file
+            cred = credentials.Certificate(settings.firebase_file_path)
+
+        firebase_admin.initialize_app(cred)
+        _firebase_initialized = True
+    except Exception as e:
+        if settings.development_mode:
+            # In development mode, don't fail if Firebase can't be initialized
+            _firebase_initialized = True
+            return
+        raise e
 
 
 class FirebaseAuthMiddleware(BaseHTTPMiddleware):
@@ -26,6 +49,19 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         self.exclude_paths = exclude_paths or ["/docs", "/openapi.json", "/redoc"]
     
     async def dispatch(self, request: Request, call_next):
+        # Skip authentication entirely if in development mode
+        if settings.development_mode:
+            # Set a mock user for development
+            request.state.user = {
+                "uid": "dev-user-123",
+                "email": "dev@example.com", 
+                "name": "Development User"
+            }
+            return await call_next(request)
+        
+        # Initialize Firebase if not already done (only in production)
+        _initialize_firebase()
+        
         # Skip authentication for excluded paths
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
             return await call_next(request)
