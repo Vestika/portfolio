@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Configuration settings for the closing price module"""
     
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).parent.parent.parent / ".env",
+        env_file=Path(__file__).parent / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     log_level: str = Field(
         default="INFO",
         description="Logging level"
+    )
+
+    # Development Configuration
+    development_mode: bool = Field(
+        default=False,
+        description="Skip Firebase authentication when in development mode"
     )
 
     firebase_file_path: Optional[str] = Field(
