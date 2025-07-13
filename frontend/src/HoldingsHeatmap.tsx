@@ -16,7 +16,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
   const chartOptions = useMemo(() => {
     // Filter to only include stocks and securities with historical data
     const stockHoldings = data.holdings.filter(holding =>
-      holding.security_type.toLowerCase() === 'stock'
+      holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf'
     );
 
     const holdingsWithPerformance = stockHoldings.map(holding => {
@@ -190,7 +190,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
 
   // Filter to only include stocks with historical data
   const stockHoldings = data.holdings.filter(holding =>
-    holding.security_type.toLowerCase() === 'stock' &&
+    (holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf') &&
     holding.historical_prices &&
     holding.historical_prices.length >= 2
   );
