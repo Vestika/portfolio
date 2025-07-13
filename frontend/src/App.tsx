@@ -101,9 +101,27 @@ const App: React.FC = () => {
       const portfolios = await fetchAvailablePortfolios();
       
       if (portfolios.length === 0) {
-        setError('No portfolios available');
-        setIsLoading(false);
-        return;
+        // Instead of setting an error, trigger demo portfolio creation
+        try {
+          console.log('No portfolios found, creating demo portfolio...');
+          await api.post('/onboarding/demo-portfolio');
+          
+          // Re-fetch portfolios after creating demo
+          const newPortfolios = await fetchAvailablePortfolios();
+          if (newPortfolios.length === 0) {
+            setError('Unable to create initial portfolio. Please try creating one manually.');
+            setIsLoading(false);
+            return;
+          }
+          
+          // Continue with the new portfolios
+          portfolios.splice(0, portfolios.length, ...newPortfolios);
+        } catch (demoError) {
+          console.error('Failed to create demo portfolio:', demoError);
+          setError('No portfolios available. Please create your first portfolio to get started.');
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Get user name from the first portfolio to determine default
@@ -355,7 +373,57 @@ const App: React.FC = () => {
 
   // Show loading screen while app is loading
   if (isLoading) return <LoadingScreen />;
-  if (error) return <div>{error}</div>;
+  
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
+          <div className="text-4xl mb-4">📊</div>
+          <h2 className="text-xl font-bold text-white mb-4">Getting Started</h2>
+          <p className="text-gray-300 mb-6">{error}</p>
+          
+          <div className="space-y-3">
+            <button
+              onClick={async () => {
+                setIsLoading(true);
+                setError(null);
+                try {
+                  await api.post('/onboarding/demo-portfolio');
+                  // Restart initialization
+                  await initializeApp();
+                } catch (err) {
+                  console.error('Failed to create demo portfolio:', err);
+                  setError('Failed to create demo portfolio. Please try again.');
+                  setIsLoading(false);
+                }
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Create Demo Portfolio
+            </button>
+            
+            <button
+              onClick={() => {
+                setError(null);
+                setIsLoading(true);
+                initializeApp();
+              }}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-gray-700">
+            <p className="text-xs text-gray-400">
+              Need help? The demo portfolio includes sample data to get you started.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   if (!portfolioMetadata || !portfolioData) return null;
 
   return (

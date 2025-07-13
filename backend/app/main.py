@@ -162,6 +162,7 @@ def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> Portfol
 async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]]:
     """
     Returns a list of all portfolios in the database.
+    If user has no portfolios, automatically creates a demo portfolio.
     """
     collection = db_manager.get_collection("portfolios")
     portfolios_cursor = collection.find({"user_id": user.id}, {"_id": 1, "portfolio_name": 1})
@@ -172,6 +173,25 @@ async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]
             "portfolio_name": doc["portfolio_name"],
             "display_name": doc["portfolio_name"].title()
         })
+    
+    # If user has no portfolios, automatically create a demo portfolio
+    if not portfolios:
+        try:
+            from core.auth import create_demo_portfolio
+            await create_demo_portfolio(db_manager.database, user.id)
+            
+            # Re-fetch portfolios after creating demo
+            portfolios_cursor = collection.find({"user_id": user.id}, {"_id": 1, "portfolio_name": 1})
+            async for doc in portfolios_cursor:
+                portfolios.append({
+                    "portfolio_id": str(doc["_id"]),
+                    "portfolio_name": doc["portfolio_name"],
+                    "display_name": doc["portfolio_name"].title()
+                })
+        except Exception as e:
+            logger.error(f"Failed to create demo portfolio for user {user.id}: {e}")
+            # Return empty list - don't crash the endpoint
+    
     return portfolios
 
 
@@ -185,7 +205,31 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
         if not doc:
-            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+            # Check if user has any portfolios at all
+            user_portfolio_count = await collection.count_documents({"user_id": user.id})
+            if user_portfolio_count == 0:
+                # User has no portfolios, suggest creating one
+                raise HTTPException(
+                    status_code=404, 
+                    detail={
+                        "error": "No portfolios found",
+                        "message": "You don't have any portfolios yet. Please create your first portfolio to get started.",
+                        "action": "create_portfolio",
+                        "user_has_portfolios": False
+                    }
+                )
+            else:
+                # User has portfolios but this specific one doesn't exist
+                raise HTTPException(
+                    status_code=404, 
+                    detail={
+                        "error": f"Portfolio {portfolio_id} not found",
+                        "message": "The requested portfolio doesn't exist. Please select a different portfolio.",
+                        "action": "select_different_portfolio", 
+                        "user_has_portfolios": True
+                    }
+                )
+        
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
@@ -660,6 +704,61 @@ async def root(user=Depends(get_current_user)):
         "user": user.email
     }
 
+@app.get("/ai/status")
+async def get_ai_status(user=Depends(get_current_user)):
+    """Check AI service availability status"""
+    return {
+        "available": ai_analyst.is_available,
+        "error_message": ai_analyst.error_message if not ai_analyst.is_available else None,
+        "features": {
+            "portfolio_analysis": ai_analyst.is_available,
+            "ai_chat": ai_analyst.is_available
+        }
+    }
+
+@app.post("/onboarding/demo-portfolio")
+async def create_demo_portfolio_endpoint(user=Depends(get_current_user)):
+    """Create a demo portfolio for new users"""
+    try:
+        from core.auth import create_demo_portfolio
+        
+        # Check if user already has portfolios
+        collection = db_manager.get_collection("portfolios")
+        existing_portfolios = await collection.count_documents({"user_id": user.id})
+        
+        if existing_portfolios > 0:
+            return {"message": "User already has portfolios", "portfolios_count": existing_portfolios}
+        
+        # Create demo portfolio
+        await create_demo_portfolio(db_manager.database, user.id)
+        
+        return {"message": "Demo portfolio created successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create demo portfolio: {str(e)}")
+
+@app.get("/onboarding/status")
+async def get_onboarding_status(user=Depends(get_current_user)):
+    """Check if user needs onboarding (i.e., has no portfolios)"""
+    try:
+        collection = db_manager.get_collection("portfolios")
+        portfolio_count = await collection.count_documents({"user_id": user.id})
+        
+        return {
+            "needs_onboarding": portfolio_count == 0,
+            "portfolio_count": portfolio_count,
+            "user_id": user.id,
+            "user_name": user.name,
+            "user_email": user.email
+        }
+        
+    except Exception as e:
+        return {
+            "needs_onboarding": True,
+            "portfolio_count": 0,
+            "error": str(e)
+        }
+
 
 def invalidate_portfolio_cache(portfolio_id: str):
     """Invalidate calculator cache for a given portfolio_id"""
@@ -1027,6 +1126,13 @@ async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)
     Perform comprehensive AI analysis of a portfolio.
     """
     try:
+        # Check if AI service is available
+        if not ai_analyst.is_available:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"AI analysis service is currently unavailable: {ai_analyst.error_message}"
+            )
+        
         # Get portfolio data
         collection = db_manager.get_collection("portfolios")
         doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
@@ -1063,6 +1169,13 @@ async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_cur
     Interactive chat with AI financial analyst about portfolios.
     """
     try:
+        # Check if AI service is available
+        if not ai_analyst.is_available:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"AI chat service is currently unavailable: {ai_analyst.error_message}"
+            )
+        
         # Get user's portfolios for context
         collection = db_manager.get_collection("portfolios")
         user_portfolios = []
