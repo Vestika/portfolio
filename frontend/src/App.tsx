@@ -517,7 +517,6 @@ const App: React.FC = () => {
             />
             <div className="h-full p-4">
               <AIChat
-                portfolioId={selectedPortfolioId}
                 portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
                 isOpen={isAIChatOpen}
                 onClose={() => setIsAIChatOpen(false)}

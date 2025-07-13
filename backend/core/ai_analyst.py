@@ -113,13 +113,23 @@ IMPORTANT GUIDELINES:
 Format your response in clear sections with appropriate headings.
 """
     
-    def _create_chat_prompt(self, portfolio_data: str, user_question: str, conversation_history: List[Dict[str, str]] = None) -> str:
+    def _create_chat_prompt(self, portfolio_data: str, user_question: str, conversation_history: List[Dict[str, str]] = None, tagged_entities: List[Any] = None) -> str:
         """Create a prompt for interactive chat with context"""
         history_context = ""
         if conversation_history:
             history_context = "\n\nCONVERSATION HISTORY:\n"
             for msg in conversation_history[-5:]:  # Last 5 messages for context
                 history_context += f"{msg['role']}: {msg['content']}\n"
+        
+        # Add tagged entities context
+        tagged_context = ""
+        if tagged_entities:
+            tagged_context = "\n\nTAGGED ENTITIES:\n"
+            for entity in tagged_entities:
+                if entity.tag_type == '@':
+                    tagged_context += f"- Portfolio/Account: {entity.entity_name} (ID: {entity.entity_id})\n"
+                elif entity.tag_type == '$':
+                    tagged_context += f"- Symbol: {entity.entity_name} ({entity.entity_id})\n"
         
         return f"""
 You are a professional financial analyst AI assistant. Answer the user's question about their portfolio based on the provided data.
@@ -128,6 +138,8 @@ PORTFOLIO DATA:
 {portfolio_data}
 
 {history_context}
+
+{tagged_context}
 
 USER QUESTION: {user_question}
 
@@ -140,6 +152,9 @@ IMPORTANT GUIDELINES:
 - Always include the mandatory disclaimer at the end
 - Keep responses concise but comprehensive
 - If the question cannot be answered with available data, explain why
+- Pay special attention to any tagged entities mentioned in the question
+- When analyzing tagged symbols, provide specific insights about those securities
+- When analyzing tagged portfolios/accounts, focus on those specific components
 
 Format your response clearly and professionally.
 """
@@ -186,14 +201,14 @@ Format your response clearly and professionally.
             logger.error(f"Error in portfolio analysis: {e}")
             raise
     
-    async def chat_with_analyst(self, portfolio_data: Dict[str, Any], user_question: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+    async def chat_with_analyst(self, portfolio_data: Dict[str, Any], user_question: str, conversation_history: List[Dict[str, str]] = None, tagged_entities: List[Any] = None) -> Dict[str, Any]:
         """Interactive chat with AI analyst"""
         try:
             if not self.client:
                 raise ValueError("AI client not initialized")
             
             formatted_data = self._format_portfolio_data(portfolio_data)
-            prompt = self._create_chat_prompt(formatted_data, user_question, conversation_history)
+            prompt = self._create_chat_prompt(formatted_data, user_question, conversation_history, tagged_entities)
             
             # Create content for generation
             content = types.Content(
@@ -221,6 +236,139 @@ Format your response clearly and professionally.
         except Exception as e:
             logger.error(f"Error in AI chat: {e}")
             raise
+    
+    async def chat_with_analyst_multi_portfolio(
+        self, 
+        portfolio_contexts: List[Dict[str, Any]], 
+        user_question: str, 
+        conversation_history: List[Dict[str, str]] = None, 
+        tagged_entities: List[Any] = None
+    ) -> Dict[str, Any]:
+        """Interactive chat with AI analyst for multiple portfolios"""
+        try:
+            if not self.client:
+                raise ValueError("AI client not initialized")
+            
+            # Format multiple portfolio data
+            formatted_data = self._format_multi_portfolio_data(portfolio_contexts)
+            prompt = self._create_multi_portfolio_chat_prompt(formatted_data, user_question, conversation_history, tagged_entities)
+            
+            # Create content for generation
+            content = types.Content(
+                parts=[types.Part(text=prompt)]
+            )
+
+            response = self.client.models.generate_content(
+                model=settings.google_ai_model,
+                contents=[content]
+            )
+            
+            # Extract response text
+            response_text = response.candidates[0].content.parts[0].text
+            
+            # Add disclaimer
+            full_response = response_text + "\n\n" + MANDATORY_DISCLAIMER
+            
+            return {
+                "response": full_response,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model_used": settings.google_ai_model,
+                "question": user_question
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in multi-portfolio AI chat: {e}")
+            raise
+    
+    def _format_multi_portfolio_data(self, portfolio_contexts: List[Dict[str, Any]]) -> str:
+        """Format multiple portfolio data for AI analysis"""
+        try:
+            formatted_portfolios = []
+            
+            for i, context in enumerate(portfolio_contexts):
+                portfolio_data = context["data"]
+                portfolio_name = context["name"]
+                
+                formatted_data = {
+                    "portfolio_name": portfolio_name,
+                    "portfolio_id": context["id"],
+                    "portfolio_summary": {
+                        "total_value": portfolio_data.get("total_value", 0),
+                        "base_currency": portfolio_data.get("base_currency", "USD"),
+                        "number_of_accounts": len(portfolio_data.get("accounts", [])),
+                        "number_of_holdings": portfolio_data.get("total_holdings", 0)
+                    },
+                    "accounts": portfolio_data.get("accounts", []),
+                    "holdings_breakdown": portfolio_data.get("holdings_breakdown", []),
+                    "asset_allocation": portfolio_data.get("asset_allocation", []),
+                    "geographical_distribution": portfolio_data.get("geographical_distribution", []),
+                    "sector_distribution": portfolio_data.get("sector_distribution", [])
+                }
+                
+                formatted_portfolios.append(formatted_data)
+            
+            return json.dumps(formatted_portfolios, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error formatting multi-portfolio data: {e}")
+            return str(portfolio_contexts)
+    
+    def _create_multi_portfolio_chat_prompt(
+        self, 
+        portfolio_data: str, 
+        user_question: str, 
+        conversation_history: List[Dict[str, str]] = None, 
+        tagged_entities: List[Any] = None
+    ) -> str:
+        """Create a prompt for interactive chat with multiple portfolio context"""
+        history_context = ""
+        if conversation_history:
+            history_context = "\n\nCONVERSATION HISTORY:\n"
+            for msg in conversation_history[-5:]:  # Last 5 messages for context
+                history_context += f"{msg['role']}: {msg['content']}\n"
+        
+        # Add tagged entities context
+        tagged_context = ""
+        if tagged_entities:
+            tagged_context = "\n\nTAGGED ENTITIES:\n"
+            for entity in tagged_entities:
+                if entity.tag_type == '@':
+                    tagged_context += f"- Portfolio/Account: {entity.entity_name} (ID: {entity.entity_id})\n"
+                elif entity.tag_type == '$':
+                    tagged_context += f"- Symbol: {entity.entity_name} ({entity.entity_id})\n"
+        
+        portfolio_count = len(json.loads(portfolio_data)) if portfolio_data else 0
+        portfolio_context = "multiple portfolios" if portfolio_count > 1 else "portfolio"
+        
+        return f"""
+You are a professional financial analyst AI assistant. Answer the user's question about their {portfolio_context} based on the provided data.
+
+PORTFOLIO DATA:
+{portfolio_data}
+
+{history_context}
+
+{tagged_context}
+
+USER QUESTION: {user_question}
+
+IMPORTANT GUIDELINES:
+- Provide helpful, informative responses based on the portfolio data
+- Focus on factual analysis and observations
+- Do not provide specific investment advice
+- Be clear about limitations of the analysis
+- Use professional, accessible language
+- Always include the mandatory disclaimer at the end
+- Keep responses concise but comprehensive
+- If the question cannot be answered with available data, explain why
+- Pay special attention to any tagged entities mentioned in the question
+- When analyzing tagged symbols, provide specific insights about those securities
+- When analyzing tagged portfolios/accounts, focus on those specific components
+- When comparing multiple portfolios, highlight key differences and similarities
+- Provide portfolio-specific insights when relevant
+
+Format your response clearly and professionally.
+"""
 
 # Global AI analyst instance
 ai_analyst = AIAnalyst() 

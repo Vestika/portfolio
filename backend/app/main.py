@@ -1013,6 +1013,7 @@ async def set_default_portfolio(user_name: str, request: DefaultPortfolioRequest
 class ChatMessageRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    tagged_entities: Optional[list[dict[str, Any]]] = None
 
 
 class ChatSessionResponse(BaseModel):
@@ -1056,27 +1057,79 @@ async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
 
-@app.post("/portfolio/{portfolio_id}/chat")
-async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+@app.post("/chat")
+async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
-    Interactive chat with AI financial analyst about a portfolio.
+    Interactive chat with AI financial analyst about portfolios.
     """
     try:
-        # Get portfolio data
+        # Get user's portfolios for context
         collection = db_manager.get_collection("portfolios")
-        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
-        if not doc:
-            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+        user_portfolios = []
+        all_portfolio_data = {}
         
-        portfolio = Portfolio.from_dict(doc)
-        calculator = get_or_create_calculator(portfolio_id, portfolio)
+        async for doc in collection.find({"user_id": user.id}):
+            portfolio = Portfolio.from_dict(doc)
+            portfolio_id = str(doc["_id"])
+            
+            # Create portfolio data for AI analysis
+            calculator = get_or_create_calculator(portfolio_id, portfolio)
+            portfolio_data = portfolio_analyzer.analyze_portfolio_for_ai(portfolio, calculator)
+            
+            user_portfolios.append({
+                "id": portfolio_id,
+                "name": portfolio.portfolio_name,
+                "data": portfolio_data
+            })
+            
+            # Store portfolio data for tag validation
+            all_portfolio_data[portfolio_id] = {
+                "config": {"portfolio_name": portfolio.portfolio_name},
+                "accounts": [{"name": acc.name} for acc in portfolio.accounts],
+                "securities": portfolio.securities
+            }
         
-        # Analyze portfolio for AI
-        portfolio_data = portfolio_analyzer.analyze_portfolio_for_ai(portfolio, calculator)
+        if not user_portfolios:
+            raise HTTPException(status_code=404, detail="No portfolios found for user")
         
-        # Handle chat session
+        # Determine portfolio context from tagged entities or use default
+        portfolio_context = None
+        if request.tagged_entities:
+            # Extract portfolio IDs from tagged entities
+            portfolio_ids = set()
+            for entity in request.tagged_entities:
+                if entity.get('type') == 'portfolio':
+                    portfolio_ids.add(entity['id'])
+                elif entity.get('type') == 'account':
+                    # Account tag: portfolio_id:account_name
+                    portfolio_ids.add(entity['id'].split(':')[0])
+            
+            # Use tagged portfolios as context
+            portfolio_context = [p for p in user_portfolios if p["id"] in portfolio_ids]
+        
+        # If no tagged portfolios, use default (first portfolio)
+        if not portfolio_context:
+            portfolio_context = [user_portfolios[0]]
+        
+        # Convert tagged entities to TaggedEntity objects for AI
+        validated_tags = []
+        if request.tagged_entities:
+            for entity in request.tagged_entities:
+                from core.tag_parser import TaggedEntity
+                tag = TaggedEntity(
+                    tag_type='@' if entity['type'] in ['portfolio', 'account'] else '$',
+                    tag_value=entity['name'],
+                    start_pos=0,  # Not needed for backend processing
+                    end_pos=0,    # Not needed for backend processing
+                    entity_id=entity['id'],
+                    entity_name=entity['name']
+                )
+                validated_tags.append(tag)
+        
+        # Handle chat session (use first portfolio as session context)
         session_id = request.session_id
         conversation_history = []
+        session_portfolio_id = portfolio_context[0]["id"]
         
         if session_id:
             # Get existing session
@@ -1088,13 +1141,18 @@ async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, u
             conversation_history = await chat_manager.get_session_messages(session_id, user.id)
         else:
             # Create new session
-            session_id = await chat_manager.create_chat_session(user.id, portfolio_id)
+            session_id = await chat_manager.create_chat_session(user.id, session_portfolio_id)
         
         # Add user message to session
         await chat_manager.add_message_to_session(session_id, user.id, "user", request.message)
         
-        # Get AI response
-        ai_response = await ai_analyst.chat_with_analyst(portfolio_data, request.message, conversation_history)
+        # Get AI response with enhanced context from tags and multiple portfolios
+        ai_response = await ai_analyst.chat_with_analyst_multi_portfolio(
+            portfolio_context, 
+            request.message, 
+            conversation_history, 
+            validated_tags
+        )
         
         # Add AI response to session
         await chat_manager.add_message_to_session(session_id, user.id, "assistant", ai_response["response"])
@@ -1104,7 +1162,8 @@ async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, u
             "response": ai_response["response"],
             "timestamp": ai_response["timestamp"],
             "model_used": ai_response["model_used"],
-            "question": ai_response["question"]
+            "question": ai_response["question"],
+            "portfolio_context": [p["id"] for p in portfolio_context]
         }
         
     except HTTPException:
@@ -1114,21 +1173,21 @@ async def chat_with_ai_analyst(portfolio_id: str, request: ChatMessageRequest, u
         raise HTTPException(status_code=500, detail=f"AI chat failed: {str(e)}")
 
 
-@app.get("/portfolio/{portfolio_id}/chat/sessions")
-async def get_chat_sessions(portfolio_id: str, user=Depends(get_current_user)) -> list[dict[str, Any]]:
+@app.get("/chat/sessions")
+async def get_chat_sessions(user=Depends(get_current_user)) -> list[dict[str, Any]]:
     """
-    Get all chat sessions for a portfolio.
+    Get all chat sessions for a user.
     """
     try:
-        sessions = await chat_manager.get_user_chat_sessions(user.id, portfolio_id)
+        sessions = await chat_manager.get_user_chat_sessions(user.id)
         return sessions
     except Exception as e:
         logger.error(f"Error getting chat sessions: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get chat sessions: {str(e)}")
 
 
-@app.get("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
-async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
+@app.get("/chat/sessions/{session_id}")
+async def get_chat_session_messages(session_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Get messages from a specific chat session.
     """
@@ -1141,7 +1200,7 @@ async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Dep
         
         return {
             "session_id": session_id,
-            "portfolio_id": portfolio_id,
+            "portfolio_id": session.get("portfolio_id", "unknown"),
             "messages": messages,
             "created_at": session["created_at"],
             "last_activity": session["last_activity"]
@@ -1153,8 +1212,8 @@ async def get_chat_session_messages(portfolio_id: str, session_id: str, user=Dep
         raise HTTPException(status_code=500, detail=f"Failed to get chat session messages: {str(e)}")
 
 
-@app.delete("/portfolio/{portfolio_id}/chat/sessions/{session_id}")
-async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(get_current_user)) -> dict[str, str]:
+@app.delete("/chat/sessions/{session_id}")
+async def close_chat_session(session_id: str, user=Depends(get_current_user)) -> dict[str, str]:
     """
     Close a chat session.
     """
@@ -1171,15 +1230,100 @@ async def close_chat_session(portfolio_id: str, session_id: str, user=Depends(ge
         raise HTTPException(status_code=500, detail=f"Failed to close chat session: {str(e)}")
 
 
-@app.get("/portfolio/{portfolio_id}/chat/search")
-async def search_chat_history(portfolio_id: str, query: str = Query(..., description="Search query"), user=Depends(get_current_user)) -> list[dict[str, Any]]:
+@app.get("/chat/search")
+async def search_chat_history(query: str = Query(..., description="Search query"), user=Depends(get_current_user)) -> list[dict[str, Any]]:
     """
-    Search chat history for a portfolio.
+    Search chat history for a user.
     """
     try:
-        results = await chat_manager.search_chat_history(user.id, query, portfolio_id)
+        results = await chat_manager.search_chat_history(user.id, query)
         return results
     except Exception as e:
         logger.error(f"Error searching chat history: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to search chat history: {str(e)}")
+
+
+@app.get("/chat/autocomplete")
+async def get_chat_autocomplete(
+    query: str = Query(..., description="Autocomplete query"), 
+    tag_type: str = Query(..., description="Tag type (@ or $)"),
+    user=Depends(get_current_user)
+) -> list[dict[str, Any]]:
+    """
+    Get autocomplete suggestions for chat tags across all user portfolios.
+    """
+    try:
+        if tag_type == '@':
+            # Get all user portfolios and accounts for @ tags
+            collection = db_manager.get_collection("portfolios")
+            suggestions = []
+            
+            async for doc in collection.find({"user_id": user.id}):
+                portfolio = Portfolio.from_dict(doc)
+                portfolio_name = portfolio.portfolio_name
+                portfolio_id = str(doc["_id"])
+                
+                # Add portfolio suggestion if it matches query
+                if query.lower() in portfolio_name.lower():
+                    suggestions.append({
+                        "id": portfolio_id,
+                        "name": portfolio_name,
+                        "type": "portfolio",
+                        "symbol": None
+                    })
+                
+                # Add account suggestions if they match query
+                for i, account in enumerate(portfolio.accounts):
+                    account_name = account.name
+                    if query.lower() in account_name.lower():
+                        # Check if there are multiple accounts with same name
+                        same_name_accounts = [acc for acc in portfolio.accounts if acc.name == account_name]
+                        if len(same_name_accounts) > 1:
+                            # Add indexed version
+                            suggestions.append({
+                                "id": f"{portfolio_id}:{account_name}[{i}]",
+                                "name": f"{portfolio_name}({account_name}[{i}])",
+                                "type": "account",
+                                "symbol": None
+                            })
+                        else:
+                            # Add simple version
+                            suggestions.append({
+                                "id": f"{portfolio_id}:{account_name}",
+                                "name": f"{portfolio_name}({account_name})",
+                                "type": "account",
+                                "symbol": None
+                            })
+            
+            return suggestions[:20]  # Limit to 20 suggestions
+            
+        elif tag_type == '$':
+            # Get all symbols across all user portfolios for $ tags
+            collection = db_manager.get_collection("portfolios")
+            all_symbols = set()
+            
+            async for doc in collection.find({"user_id": user.id}):
+                portfolio = Portfolio.from_dict(doc)
+                for symbol in portfolio.securities.keys():
+                    if query.upper() in symbol.upper():
+                        all_symbols.add(symbol)
+            
+            suggestions = []
+            for symbol in sorted(all_symbols):
+                suggestions.append({
+                    "id": symbol,
+                    "name": symbol,
+                    "type": "symbol",
+                    "symbol": symbol
+                })
+            
+            return suggestions[:20]  # Limit to 20 suggestions
+        
+        return []
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat autocomplete: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get autocomplete suggestions: {str(e)}")
 

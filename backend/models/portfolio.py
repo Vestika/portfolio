@@ -9,7 +9,8 @@ from models.security import Security
 
 
 class Portfolio:
-    def __init__(self, config: dict[str, Any], securities: dict[str, Security], accounts: list[Account]):
+    def __init__(self, portfolio_name: str, config: dict[str, Any], securities: dict[str, Security], accounts: list[Account]):
+        self.portfolio_name = portfolio_name
         self.config = config
         self.securities = securities
         self.accounts = accounts
@@ -25,6 +26,7 @@ class Portfolio:
             data = yaml.safe_load(f)
 
         return cls(
+            portfolio_name=data.get("portfolio_name", "Unknown Portfolio"),
             config=data["config"],
             securities={
                 symbol: Security.from_dict(symbol, security_data)
@@ -36,6 +38,7 @@ class Portfolio:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(
+            portfolio_name=data.get("portfolio_name", "Unknown Portfolio"),
             config=data["config"],
             securities={
                 symbol: Security.from_dict(symbol, security_data)

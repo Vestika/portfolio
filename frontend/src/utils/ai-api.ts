@@ -16,6 +16,7 @@ export interface AIAnalysisResponse {
 export interface ChatMessageRequest {
   message: string;
   session_id?: string;
+  tagged_entities?: AutocompleteSuggestion[];
 }
 
 export interface ChatResponse {
@@ -63,17 +64,18 @@ export const analyzePortfolio = async (portfolioId: string): Promise<AIAnalysisR
 
 // AI Chat Functions
 export const chatWithAnalyst = async (
-  portfolioId: string, 
   message: string, 
-  sessionId?: string
+  sessionId?: string,
+  taggedEntities?: AutocompleteSuggestion[]
 ): Promise<ChatResponse> => {
   try {
     const request: ChatMessageRequest = {
       message,
-      session_id: sessionId
+      session_id: sessionId,
+      tagged_entities: taggedEntities
     };
     
-    const response = await api.post(`/portfolio/${portfolioId}/chat`, request);
+    const response = await api.post(`/chat`, request);
     return response.data;
   } catch (error) {
     console.error('Error chatting with AI analyst:', error);
@@ -82,9 +84,9 @@ export const chatWithAnalyst = async (
 };
 
 // Chat Session Management
-export const getChatSessions = async (portfolioId: string): Promise<ChatSession[]> => {
+export const getChatSessions = async (): Promise<ChatSession[]> => {
   try {
-    const response = await api.get(`/portfolio/${portfolioId}/chat/sessions`);
+    const response = await api.get(`/chat/sessions`);
     return response.data;
   } catch (error) {
     console.error('Error getting chat sessions:', error);
@@ -93,11 +95,10 @@ export const getChatSessions = async (portfolioId: string): Promise<ChatSession[
 };
 
 export const getChatSessionMessages = async (
-  portfolioId: string, 
   sessionId: string
 ): Promise<ChatSessionMessages> => {
   try {
-    const response = await api.get(`/portfolio/${portfolioId}/chat/sessions/${sessionId}`);
+    const response = await api.get(`/chat/sessions/${sessionId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting chat session messages:', error);
@@ -105,9 +106,9 @@ export const getChatSessionMessages = async (
   }
 };
 
-export const closeChatSession = async (portfolioId: string, sessionId: string): Promise<void> => {
+export const closeChatSession = async (sessionId: string): Promise<void> => {
   try {
-    await api.delete(`/portfolio/${portfolioId}/chat/sessions/${sessionId}`);
+    await api.delete(`/chat/sessions/${sessionId}`);
   } catch (error) {
     console.error('Error closing chat session:', error);
     throw error;
@@ -115,16 +116,37 @@ export const closeChatSession = async (portfolioId: string, sessionId: string): 
 };
 
 export const searchChatHistory = async (
-  portfolioId: string, 
   query: string
 ): Promise<ChatSession[]> => {
   try {
-    const response = await api.get(`/portfolio/${portfolioId}/chat/search`, {
+    const response = await api.get(`/chat/search`, {
       params: { query }
     });
     return response.data;
   } catch (error) {
     console.error('Error searching chat history:', error);
+    throw error;
+  }
+};
+
+export interface AutocompleteSuggestion {
+  id: string;
+  name: string;
+  type: string;
+  symbol?: string;
+}
+
+export const getChatAutocomplete = async (
+  query: string,
+  tagType: string
+): Promise<AutocompleteSuggestion[]> => {
+  try {
+    const response = await api.get(`/chat/autocomplete`, {
+      params: { query, tag_type: tagType }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error getting chat autocomplete:', error);
     throw error;
   }
 }; 

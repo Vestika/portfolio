@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
+import TaggingInput from './TaggingInput';
+import TaggedMessage from './TaggedMessage';
 import { 
   chatWithAnalyst, 
   getChatSessions, 
   getChatSessionMessages,
   ChatSession,
-  ChatMessage
+  ChatMessage,
+  AutocompleteSuggestion
 } from '../utils/ai-api';
 
 interface AIChatProps {
-  portfolioId: string;
   portfolioName?: string;
   isOpen?: boolean;
   onClose?: () => void;
 }
 
 const AIChat: React.FC<AIChatProps> = ({ 
-  portfolioId, 
   portfolioName = 'Portfolio',
   isOpen = true,
   onClose
@@ -29,6 +29,7 @@ const AIChat: React.FC<AIChatProps> = ({
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showSessions, setShowSessions] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<AutocompleteSuggestion[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -44,11 +45,11 @@ const AIChat: React.FC<AIChatProps> = ({
     if (isOpen) {
       loadChatSessions();
     }
-  }, [portfolioId, isOpen]);
+  }, [isOpen]);
 
   const loadChatSessions = async () => {
     try {
-      const sessionsData = await getChatSessions(portfolioId);
+      const sessionsData = await getChatSessions();
       setSessions(sessionsData);
     } catch (err: unknown) {
       console.error('Failed to load chat sessions:', err);
@@ -72,7 +73,7 @@ const AIChat: React.FC<AIChatProps> = ({
     setMessages(prev => [...prev, newUserMessage]);
 
     try {
-      const response = await chatWithAnalyst(portfolioId, userMessage, currentSessionId || undefined);
+      const response = await chatWithAnalyst(userMessage, currentSessionId || undefined, selectedTags);
       
       // Update session ID if this is a new session
       if (!currentSessionId) {
@@ -87,6 +88,9 @@ const AIChat: React.FC<AIChatProps> = ({
       };
       setMessages(prev => [...prev, aiMessage]);
 
+      // Clear selected tags after sending
+      setSelectedTags([]);
+
       // Reload sessions to get the new one
       await loadChatSessions();
     } catch (err: unknown) {
@@ -97,16 +101,11 @@ const AIChat: React.FC<AIChatProps> = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
+
 
   const loadSession = async (sessionId: string) => {
     try {
-      const sessionData = await getChatSessionMessages(portfolioId, sessionId);
+      const sessionData = await getChatSessionMessages(sessionId);
       setMessages(sessionData.messages);
       setCurrentSessionId(sessionId);
       setShowSessions(false);
@@ -240,7 +239,7 @@ const AIChat: React.FC<AIChatProps> = ({
                   : 'bg-gray-700 text-gray-200'
               }`}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <TaggedMessage content={message.content} />
               <div
                 className={`text-xs mt-1 ${
                   message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
@@ -285,13 +284,13 @@ const AIChat: React.FC<AIChatProps> = ({
       {/* Input */}
       <div className="p-4 border-t border-gray-700">
         <div className="flex space-x-2">
-          <Input
+          <TaggingInput
             value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask about your portfolio..."
+            onChange={setInputMessage}
+            onSend={handleSendMessage}
+            onTagSelect={(tag) => setSelectedTags(prev => [...prev, tag])}
             disabled={isLoading}
-            className="flex-1 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+            placeholder="Ask about your portfolio... Use @ for portfolios/accounts, $ for symbols"
           />
           <Button
             onClick={handleSendMessage}
