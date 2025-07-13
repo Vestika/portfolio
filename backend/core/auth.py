@@ -14,8 +14,79 @@ DEV_USER = User(
 
 async def create_demo_portfolio(db: AsyncIOMotorDatabase, user_id: str):
     """Create a demo portfolio for a new user"""
-    # Implementation for creating demo portfolio
-    pass
+    try:
+        from pathlib import Path
+        import yaml
+        
+        # Read the demo portfolio YAML file
+        demo_file = Path(__file__).parent.parent / "demo.yaml"
+        
+        if demo_file.exists():
+            with open(demo_file, 'r') as f:
+                demo_data = yaml.safe_load(f)
+            
+            # Prepare the portfolio for the new user
+            portfolio_data = {
+                "portfolio_name": "Demo Portfolio",
+                "user_id": user_id,
+                "config": demo_data["config"],
+                "securities": demo_data["securities"],
+                "accounts": demo_data["accounts"]
+            }
+            
+            # Insert into database
+            collection = db.portfolios
+            await collection.insert_one(portfolio_data)
+            print(f"Created demo portfolio for user {user_id}")
+        else:
+            # Fallback: create a minimal portfolio if demo.yaml doesn't exist
+            portfolio_data = {
+                "portfolio_name": "My First Portfolio",
+                "user_id": user_id,
+                "config": {
+                    "user_name": "Demo User",
+                    "base_currency": "USD",
+                    "exchange_rates": {
+                        "USD": 1.0,
+                        "ILS": 3.5,
+                        "EUR": 1.1
+                    },
+                    "unit_prices": {
+                        "USD": 1.0,
+                        "ILS": 1.0
+                    }
+                },
+                "securities": {
+                    "USD": {
+                        "name": "USD",
+                        "type": "cash",
+                        "currency": "USD"
+                    }
+                },
+                "accounts": [
+                    {
+                        "name": "Cash Account",
+                        "properties": {
+                            "owners": ["me"],
+                            "type": "bank-account"
+                        },
+                        "holdings": [
+                            {
+                                "symbol": "USD",
+                                "units": 1000
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            collection = db.portfolios
+            await collection.insert_one(portfolio_data)
+            print(f"Created minimal starter portfolio for user {user_id}")
+            
+    except Exception as e:
+        print(f"Failed to create demo portfolio for user {user_id}: {e}")
+        # Don't raise - let the user continue without a demo portfolio
 
 
 async def get_current_user(
@@ -46,7 +117,8 @@ async def get_current_user(
         )
         result = await db.users.insert_one(new_user.dict(exclude={'id'}))
         new_user.id = str(result.inserted_id)
-        await create_demo_portfolio(db, new_user.id)
+        # Note: No longer automatically creating demo portfolio
+        # Users will create their own portfolios manually
 
         return new_user
 
