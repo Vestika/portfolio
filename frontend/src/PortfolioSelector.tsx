@@ -208,7 +208,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     <div className="relative">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="p-0 h-auto hover:bg-transparent cursor-pointer">
+          <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
             <h1 className="text-2xl font-bold flex items-center">
               {userName}'s Portfolio
               <ChevronDown
@@ -253,7 +253,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                   }}
                   variant="ghost"
                   size="icon"
-                  className={`h-8 w-8 border border-transparent hover:text-yellow-500 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors ${
+                  className={`h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-yellow-500 hover:bg-gray-800 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors ${
                     defaultPortfolioId === portfolio.portfolio_id ? 'text-yellow-500' : ''
                   }`}
                   title={defaultPortfolioId === portfolio.portfolio_id ? 'Default portfolio' : 'Set as default'}
@@ -268,7 +268,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                   }}
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 border border-transparent hover:text-blue-500 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                  className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-blue-500 hover:bg-gray-800 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
                   title="Download portfolio"
                 >
                   <Download className="h-4 w-4" />
@@ -281,7 +281,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                     }}
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 border border-transparent hover:text-red-500 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                    className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-red-500 hover:bg-gray-800 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
                     title="Delete portfolio"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -353,7 +353,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)} className="bg-gray-900 text-white hover:bg-gray-800">
               Cancel
             </Button>
             <Button
@@ -389,10 +389,10 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+            <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="bg-gray-900 text-white hover:bg-gray-800">
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeletePortfolio}>
+            <Button variant="destructive" onClick={handleDeletePortfolio} className="bg-red-700 text-white hover:bg-red-800">
               Delete Portfolio
             </Button>
           </DialogFooter>

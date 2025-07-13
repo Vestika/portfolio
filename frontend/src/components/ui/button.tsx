@@ -1,3 +1,4 @@
+// All button variants must use explicit Tailwind or MUI color classes for background, text, and hover states. Do NOT rely on OS or browser theme defaults.
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
