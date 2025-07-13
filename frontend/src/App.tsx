@@ -101,27 +101,10 @@ const App: React.FC = () => {
       const portfolios = await fetchAvailablePortfolios();
       
       if (portfolios.length === 0) {
-        // Instead of setting an error, trigger demo portfolio creation
-        try {
-          console.log('No portfolios found, creating demo portfolio...');
-          await api.post('/onboarding/demo-portfolio');
-          
-          // Re-fetch portfolios after creating demo
-          const newPortfolios = await fetchAvailablePortfolios();
-          if (newPortfolios.length === 0) {
-            setError('Unable to create initial portfolio. Please try creating one manually.');
-            setIsLoading(false);
-            return;
-          }
-          
-          // Continue with the new portfolios
-          portfolios.splice(0, portfolios.length, ...newPortfolios);
-        } catch (demoError) {
-          console.error('Failed to create demo portfolio:', demoError);
-          setError('No portfolios available. Please create your first portfolio to get started.');
-          setIsLoading(false);
-          return;
-        }
+        // No portfolios found - this is fine, user will create one manually
+        console.log('No portfolios found - showing empty state');
+        setIsLoading(false);
+        return;
       }
 
       // Get user name from the first portfolio to determine default
@@ -248,10 +231,21 @@ const App: React.FC = () => {
   };
 
   const handlePortfolioCreated = async (newPortfolioId: string) => {
-    // Refresh available portfolios
-    await fetchAvailablePortfolios();
-    // Switch to the new portfolio
-    setSelectedPortfolioId(newPortfolioId);
+    try {
+      // Refresh available portfolios
+      await fetchAvailablePortfolios();
+      
+      // If this was the first portfolio, initialize the app
+      if (!isInitialized) {
+        setIsInitialized(true);
+      }
+      
+      // Switch to the new portfolio - the useEffect will handle loading the data
+      setSelectedPortfolioId(newPortfolioId);
+      
+    } catch (err) {
+      console.error('Failed to handle portfolio creation:', err);
+    }
   };
 
   const handleAccountAdded = async () => {
@@ -378,53 +372,40 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
-          <div className="text-4xl mb-4">📊</div>
-          <h2 className="text-xl font-bold text-white mb-4">Getting Started</h2>
+          <div className="text-4xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold text-white mb-4">Error</h2>
           <p className="text-gray-300 mb-6">{error}</p>
           
-          <div className="space-y-3">
-            <button
-              onClick={async () => {
-                setIsLoading(true);
-                setError(null);
-                try {
-                  await api.post('/onboarding/demo-portfolio');
-                  // Restart initialization
-                  await initializeApp();
-                } catch (err) {
-                  console.error('Failed to create demo portfolio:', err);
-                  setError('Failed to create demo portfolio. Please try again.');
-                  setIsLoading(false);
-                }
-              }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Create Demo Portfolio
-            </button>
-            
-            <button
-              onClick={() => {
-                setError(null);
-                setIsLoading(true);
-                initializeApp();
-              }}
-              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-          
-          <div className="mt-6 pt-4 border-t border-gray-700">
-            <p className="text-xs text-gray-400">
-              Need help? The demo portfolio includes sample data to get you started.
-            </p>
-          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              setIsLoading(true);
+              initializeApp();
+            }}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
   }
   
-  if (!portfolioMetadata || !portfolioData) return null;
+  // When no portfolios exist, still show the normal layout with topbar
+  // but display empty content areas instead of hiding everything
+  const showEmptyState = availablePortfolios.length === 0;
+  
+  // Create mock metadata for empty state to keep UI working
+  const mockMetadata: PortfolioMetadata = {
+    base_currency: 'USD',
+    user_name: user?.displayName || user?.email || 'User',
+    accounts: []
+  };
+  
+  const displayMetadata = showEmptyState ? mockMetadata : portfolioMetadata;
+  const displayData = showEmptyState ? [] : portfolioData;
+  
+  if (!displayMetadata || (!showEmptyState && !displayData)) return null;
 
   return (
     <div className="bg-gray-900 min-h-screen text-white">
@@ -503,7 +484,7 @@ const App: React.FC = () => {
         style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
       >
         <AccountSelector
-          portfolioMetadata={portfolioMetadata}
+          portfolioMetadata={displayMetadata}
           onAccountsChange={handleAccountsChange}
           onToggleVisibility={handleToggleVisibility}
           availableFiles={availablePortfolios}
@@ -516,9 +497,9 @@ const App: React.FC = () => {
           onDefaultPortfolioSet={handleDefaultPortfolioSet}
         />
         <PortfolioSummary
-          accounts={portfolioMetadata.accounts}
+          accounts={displayMetadata.accounts}
           selectedAccountNames={selectedAccounts}
-          baseCurrency={portfolioMetadata.base_currency}
+          baseCurrency={displayMetadata.base_currency}
           isValueVisible={isValueVisible}
         />
       </div>
@@ -533,28 +514,49 @@ const App: React.FC = () => {
           }}
         >
           <div className="container mx-auto px-4 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-              {portfolioData.map(chart => (
-                <PieChart
-                  key={chart.chart_title}
-                  title={`<b>${chart.chart_title}</b>${
-                    isValueVisible
-                      ? ` <span class="text-xs text-gray-400 ml-1">
-                          ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
-                            chart.chart_total
-                          )}
-                          (${portfolioMetadata.base_currency})
-                          </span>`
-                      : ''
-                  }`}
-                  data={chart.chart_data}
-                  total={chart.chart_total}
-                  baseCurrency={portfolioMetadata.base_currency}
-                  hideValues={!isValueVisible}
-                />
-              ))}
-            </div>
-            {holdingsData && (
+            {showEmptyState ? (
+              // Empty state content
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="text-center max-w-md">
+                  <div className="text-6xl mb-6">📊</div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Welcome to Your Portfolio Dashboard</h2>
+                  <p className="text-gray-300 mb-6">
+                    You don't have any portfolios yet. Create your first portfolio using the dropdown menu above to start tracking your investments.
+                  </p>
+                  <div className="text-left space-y-2 text-sm text-gray-400 bg-gray-800 p-4 rounded-lg">
+                    <p className="font-medium text-white mb-2">Getting Started:</p>
+                    <p>• Click the dropdown above to create a portfolio</p>
+                    <p>• Add accounts (bank, brokerage, retirement)</p>
+                    <p>• Track stocks, bonds, ETFs, and cash holdings</p>
+                    <p>• View performance analytics and breakdowns</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Normal portfolio content
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                {displayData && displayData.map(chart => (
+                  <PieChart
+                    key={chart.chart_title}
+                    title={`<b>${chart.chart_title}</b>${
+                      isValueVisible
+                        ? ` <span class="text-xs text-gray-400 ml-1">
+                            ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+                              chart.chart_total
+                            )}
+                            (${displayMetadata.base_currency})
+                            </span>`
+                        : ''
+                    }`}
+                    data={chart.chart_data}
+                    total={chart.chart_total}
+                    baseCurrency={displayMetadata.base_currency}
+                    hideValues={!isValueVisible}
+                  />
+                ))}
+              </div>
+            )}
+            {holdingsData && !showEmptyState && (
               <div className="mt-8">
                 <HoldingsTable
                   data={holdingsData}

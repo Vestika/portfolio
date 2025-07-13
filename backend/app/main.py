@@ -162,7 +162,6 @@ def get_or_create_calculator(portfolio_id: str, portfolio: Portfolio) -> Portfol
 async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]]:
     """
     Returns a list of all portfolios in the database.
-    If user has no portfolios, automatically creates a demo portfolio.
     """
     collection = db_manager.get_collection("portfolios")
     portfolios_cursor = collection.find({"user_id": user.id}, {"_id": 1, "portfolio_name": 1})
@@ -173,24 +172,6 @@ async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]
             "portfolio_name": doc["portfolio_name"],
             "display_name": doc["portfolio_name"].title()
         })
-    
-    # If user has no portfolios, automatically create a demo portfolio
-    if not portfolios:
-        try:
-            from core.auth import create_demo_portfolio
-            await create_demo_portfolio(db_manager.database, user.id)
-            
-            # Re-fetch portfolios after creating demo
-            portfolios_cursor = collection.find({"user_id": user.id}, {"_id": 1, "portfolio_name": 1})
-            async for doc in portfolios_cursor:
-                portfolios.append({
-                    "portfolio_id": str(doc["_id"]),
-                    "portfolio_name": doc["portfolio_name"],
-                    "display_name": doc["portfolio_name"].title()
-                })
-        except Exception as e:
-            logger.error(f"Failed to create demo portfolio for user {user.id}: {e}")
-            # Return empty list - don't crash the endpoint
     
     return portfolios
 

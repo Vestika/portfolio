@@ -85,10 +85,6 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     }
   };
 
-  if (!portfolios || portfolios.length === 0) {
-    return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
-  }
-
   const handleCreatePortfolio = async () => {
     try {
       const response = await api.post('/portfolio', newPortfolio);
@@ -203,6 +199,86 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       alert('Error creating portfolio: ' + errorMessage);
     }
   };
+
+  // Check if we should show empty state after all functions are defined
+  const showEmptyState = !portfolios || portfolios.length === 0;
+
+  if (showEmptyState) {
+    return (
+      <div className="relative">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
+              <h1 className="text-2xl font-bold flex items-center">
+                {userName}'s Portfolio
+                <ChevronDown
+                  size={16}
+                  className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"
+                />
+              </h1>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-96 bg-white dark:bg-gray-900 border shadow-lg">
+            <div className="p-3 text-center text-gray-500">
+              <p>No portfolios yet</p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onSelect={() => setShowCreateModal(true)}
+              className="cursor-pointer hover:bg-green-50 hover:dark:bg-green-950 hover:text-green-900 hover:dark:text-green-100 p-3 transition-colors"
+            >
+              <Plus className="mr-3 h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Create Your First Portfolio</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Create Portfolio Modal - needs to be here even when no portfolios */}
+        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Plus className="mr-2 h-5 w-5 text-green-500" />
+                Create New Portfolio
+              </DialogTitle>
+              <DialogDescription>
+                Create a new portfolio to manage your investments and assets.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-name">Portfolio Name</Label>
+                <Input
+                  id="portfolio-name"
+                  value={newPortfolio.portfolio_name}
+                  onChange={(e) => setNewPortfolio({ ...newPortfolio, portfolio_name: e.target.value })}
+                  placeholder="Enter portfolio name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="base-currency">Base Currency</Label>
+                <Select value={newPortfolio.base_currency} onValueChange={(value) => setNewPortfolio({ ...newPortfolio, base_currency: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ILS">ILS</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" onClick={handleCreatePortfolio}>
+                Create Portfolio
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

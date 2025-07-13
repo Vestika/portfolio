@@ -117,7 +117,8 @@ async def get_current_user(
         )
         result = await db.users.insert_one(new_user.dict(exclude={'id'}))
         new_user.id = str(result.inserted_id)
-        await create_demo_portfolio(db, new_user.id)
+        # Note: No longer automatically creating demo portfolio
+        # Users will create their own portfolios manually
 
         return new_user
 
