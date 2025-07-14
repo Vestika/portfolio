@@ -405,75 +405,6 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-gray-900 min-h-screen text-white">
-      {/* Person Icon Dropdown - Positioned at top right */}
-      <div className="fixed top-4 right-4 z-50">
-        <IconButton
-          onClick={handleMenuOpen}
-          sx={{
-            color: 'white',
-            backgroundColor: 'rgba(55, 65, 81, 0.8)',
-            backdropFilter: 'blur(8px)',
-            '&:hover': {
-              backgroundColor: 'rgba(55, 65, 81, 1)',
-            },
-          }}
-        >
-          <Person />
-        </IconButton>
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleMenuClose}
-          PaperProps={{
-            sx: {
-              backgroundColor: '#374151',
-              color: 'white',
-              '& .MuiMenuItem-root:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              },
-            },
-          }}
-        >
-          <MenuItem onClick={handleProfileClick}>
-            <ListItemIcon>
-              <Person sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Profile</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleSettingsClick}>
-            <ListItemIcon>
-              <Settings sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Settings</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleSignOutClick}>
-            <ListItemIcon>
-              <Logout sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Sign Out</ListItemText>
-          </MenuItem>
-        </Menu>
-      </div>
-
-      {/* AI Chat Toggle Button - Positioned at top right, next to person icon */}
-      {aiChatEnabled && (
-        <div className="fixed top-4 right-16 z-50">
-          <IconButton
-            onClick={toggleAIChat}
-            sx={{
-              color: 'white',
-              backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
-              backdropFilter: 'blur(8px)',
-              '&:hover': {
-                backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
-              },
-            }}
-          >
-            {isAIChatOpen ? <Close /> : <Chat />}
-          </IconButton>
-        </div>
-      )}
-
       {/* Sticky Header Section */}
       <div
         className="sticky top-0 z-30 bg-gray-900"
@@ -491,6 +422,17 @@ const App: React.FC = () => {
           onPortfolioDeleted={handlePortfolioDeleted}
           onAccountDeleted={handleAccountDeleted}
           onDefaultPortfolioSet={handleDefaultPortfolioSet}
+          // New props for the moved buttons
+          user={user}
+          aiChatEnabled={aiChatEnabled}
+          isAIChatOpen={isAIChatOpen}
+          onToggleAIChat={toggleAIChat}
+          anchorEl={anchorEl}
+          onMenuOpen={handleMenuOpen}
+          onMenuClose={handleMenuClose}
+          onProfileClick={handleProfileClick}
+          onSettingsClick={handleSettingsClick}
+          onSignOutClick={handleSignOutClick}
         />
         <PortfolioSummary
           accounts={displayMetadata.accounts}

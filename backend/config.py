@@ -65,11 +65,7 @@ class Settings(BaseSettings):
         description="Logging level"
     )
 
-    # Development Configuration
-    development_mode: bool = Field(
-        default=False,
-        description="Skip Firebase authentication when in development mode"
-    )
+
 
     firebase_file_path: Optional[str] = Field(
         default="firebase_credentials.json",

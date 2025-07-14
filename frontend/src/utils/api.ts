@@ -3,8 +3,7 @@ import { auth } from '../firebase';
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
-// Check if we're in development mode
-const isDevelopmentMode = import.meta.env.VITE_DEVELOPMENT_MODE === 'true';
+
 
 // Create axios instance
 const api = axios.create({
@@ -13,11 +12,6 @@ const api = axios.create({
 
 // Function to get auth token with proper error handling
 const getAuthToken = async (): Promise<string | null> => {
-  // Skip Firebase authentication in development mode
-  if (isDevelopmentMode) {
-    console.log('🔧 Development mode: Skipping Firebase token');
-    return null;
-  }
 
   try {
     const user = auth.currentUser;
@@ -60,15 +54,13 @@ const getAuthToken = async (): Promise<string | null> => {
 // Request interceptor to add Firebase auth token
 api.interceptors.request.use(
   async (config) => {
-    if (!isDevelopmentMode) {
-      try {
-        const token = await getAuthToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-      } catch (error) {
-        console.error('Error getting auth token:', error);
+    try {
+      const token = await getAuthToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
       }
+    } catch (error) {
+      console.error('Error getting auth token:', error);
     }
     return config;
   },
@@ -81,8 +73,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && !isDevelopmentMode) {
-      // Handle unauthorized access in production only
+    if (error.response?.status === 401) {
+      // Handle unauthorized access
       console.error('Unauthorized access');
       // You could redirect to login here if needed
     }

@@ -15,11 +15,6 @@ def _initialize_firebase():
     
     if _firebase_initialized:
         return
-        
-    if settings.development_mode:
-        # Skip Firebase initialization in development mode
-        _firebase_initialized = True
-        return
     
     try:
         # Initialize Firebase credentials from environment variable or file
@@ -34,10 +29,6 @@ def _initialize_firebase():
         firebase_admin.initialize_app(cred)
         _firebase_initialized = True
     except Exception as e:
-        if settings.development_mode:
-            # In development mode, don't fail if Firebase can't be initialized
-            _firebase_initialized = True
-            return
         raise e
 
 
@@ -49,15 +40,6 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         self.exclude_paths = exclude_paths or ["/docs", "/openapi.json", "/redoc"]
     
     async def dispatch(self, request: Request, call_next):
-        # Skip authentication entirely if in development mode
-        if settings.development_mode:
-            # Set a mock user for development
-            request.state.user = {
-                "uid": "dev-user-123",
-                "email": "dev@example.com", 
-                "name": "Development User"
-            }
-            return await call_next(request)
         
         # Initialize Firebase if not already done (only in production)
         _initialize_firebase()
