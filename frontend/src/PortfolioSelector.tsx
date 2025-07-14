@@ -263,9 +263,30 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-upload">Upload Portfolio (YAML)</Label>
+                <Input
+                  id="portfolio-upload"
+                  type="file"
+                  accept=".yaml,application/x-yaml,text/yaml"
+                  onChange={handleUploadPortfolio}
+                />
+              </div>
+              {uploadedYaml !== null && (
+                <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded border mt-2">
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">YAML loaded. You can now edit the portfolio name and click Create.</div>
+                  <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml as Record<string, unknown>)}</pre>
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button type="submit" onClick={handleCreatePortfolio}>
+              <Button variant="outline" onClick={() => setShowCreateModal(false)} className="bg-gray-900 text-white hover:bg-gray-800">
+                Cancel
+              </Button>
+              <Button
+                onClick={uploadedYaml ? handleCreatePortfolioFromYaml : handleCreatePortfolio}
+                disabled={!newPortfolio.portfolio_name}
+              >
                 Create Portfolio
               </Button>
             </DialogFooter>
