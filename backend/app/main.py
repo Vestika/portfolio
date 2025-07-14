@@ -788,9 +788,9 @@ async def upload_portfolio(file: UploadFile = File(...), user=Depends(get_curren
 
 @app.get("/market-status")
 async def get_market_status(user=Depends(get_current_user)):
-    """Return the US market open/closed status."""
+    """Return both US and TASE market open/closed status."""
     manager = PriceManager()
-    return await manager.get_us_market_status()
+    return await manager.get_market_status()
 
 
 @app.get("/quotes")

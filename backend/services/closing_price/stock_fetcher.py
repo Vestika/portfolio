@@ -186,6 +186,43 @@ class TaseFetcher(StockFetcher):
         except Exception as e:
             logger.error(f"Error in async TASE fetch for {symbol}: {e}")
             return None
+    
+    async def get_market_status(self) -> dict[str, str]:
+        """Check if the TASE market is open or closed based on local time"""
+        try:
+            # Run time check in a thread since it involves timezone calculations
+            def _get_tase_status() -> str:
+                from datetime import datetime, timezone
+                import pytz
+                
+                # Get current time in Israel timezone
+                israel_tz = pytz.timezone('Asia/Jerusalem')
+                now_israel = datetime.now(israel_tz)
+                
+                # Check if it's a weekend (TASE is closed on weekends)
+                # Sunday = 6, Monday = 0, ..., Saturday = 5
+                weekday = now_israel.weekday()
+                if weekday >= 5:  # Saturday (5) or Sunday (6)
+                    return "closed"
+                
+                # Check trading hours (9:00 AM - 5:30 PM Israel time)
+                current_time = now_israel.time()
+                market_open = now_israel.replace(hour=9, minute=0, second=0, microsecond=0).time()
+                market_close = now_israel.replace(hour=17, minute=30, second=0, microsecond=0).time()
+                
+                if market_open <= current_time <= market_close:
+                    return "open"
+                else:
+                    return "closed"
+            
+            # Run in thread pool
+            loop = asyncio.get_event_loop()
+            status = await loop.run_in_executor(None, _get_tase_status)
+            return {"tase_market_status": status}
+            
+        except Exception as e:
+            logger.error(f"Error fetching TASE market status: {e}")
+            return {"tase_market_status": "unknown"}
 
 
 async def fetch_quotes(symbols: list[str]) -> dict[str, dict]:
