@@ -84,7 +84,7 @@ async def create_demo_portfolio(db: AsyncDatabase, user_id: str):
 
 async def get_current_user(
     request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncDatabase = Depends(get_db)
 ) -> User:
     # Get Firebase user from request state (set by FirebaseAuthMiddlewareMiddleware)
     try:
@@ -117,7 +117,7 @@ async def get_current_user(
 
 async def get_current_user_or_anonymous(
     request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncDatabase = Depends(get_db)
 ) -> User:
     try:
         return await get_current_user(request, db)
