@@ -1,12 +1,11 @@
 from fastapi import HTTPException, Request, Depends
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from models.user_model import User
 from core.database import get_db
-from config import settings
 
 
 
-async def create_demo_portfolio(db: AsyncIOMotorDatabase, user_id: str):
+async def create_demo_portfolio(db: AsyncDatabase, user_id: str):
     """Create a demo portfolio for a new user"""
     try:
         from pathlib import Path
