@@ -53,10 +53,8 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   // Fetch default portfolio from backend
   useEffect(() => {
     const fetchDefaultPortfolio = async () => {
-      if (!userName) return;
-      
       try {
-        const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
+        const response = await api.get(`/default-portfolio`);
         setDefaultPortfolioId(response.data.default_portfolio_id);
       } catch (error) {
         console.error('Failed to fetch default portfolio:', error);
@@ -64,14 +62,11 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     };
 
     fetchDefaultPortfolio();
-  }, [userName]);
+  }, []);
 
   const handleSetDefault = async (portfolioId: string) => {
-    if (!userName) return;
-    
     try {
-      await api.post(`/user/${encodeURIComponent(userName)}/default-portfolio`, {
-        user_name: userName,
+      await api.post(`/default-portfolio`, {
         portfolio_id: portfolioId,
       });
 
