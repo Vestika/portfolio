@@ -17,22 +17,8 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
-import { 
-  IconButton, 
-  Menu, 
-  MenuItem, 
-  ListItemIcon, 
-  ListItemText 
-} from '@mui/material';
-import { 
-  Person, 
-  Settings, 
-  Logout,
-  Chat,
-  Close
-} from '@mui/icons-material';
 
-// Type guard for axios-like errors
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;
