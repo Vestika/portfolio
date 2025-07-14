@@ -68,9 +68,9 @@ const App: React.FC = () => {
   const resizeRef = useRef<HTMLDivElement>(null);
 
   // Get default portfolio from backend API
-  const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
+  const getDefaultPortfolio = async (): Promise<string | null> => {
     try {
-      const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
+      const response = await api.get(`/default-portfolio`);
       return response.data.default_portfolio_id;
     } catch (error) {
       console.error('Failed to fetch default portfolio:', error);
@@ -106,13 +106,9 @@ const App: React.FC = () => {
         setIsLoading(false);
         return;
       }
-
-      // Get user name from the first portfolio to determine default
-      const tempMetadata = await api.get(`/portfolio?portfolio_id=${portfolios[0].portfolio_id}`);
-      const userName = tempMetadata.data.user_name;
       
       // Check for default portfolio
-      const defaultPortfolioId = await getDefaultPortfolio(userName);
+      const defaultPortfolioId = await getDefaultPortfolio();
       
       let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
       
@@ -120,7 +116,7 @@ const App: React.FC = () => {
         portfolioToSelect = defaultPortfolioId;
         console.log(`Loading default portfolio: ${defaultPortfolioId}`);
       } else {
-        console.log(`No default portfolio found for user ${userName}, using first portfolio`);
+        console.log(`No default portfolio found for user, using first portfolio`);
       }
       
       setSelectedPortfolioId(portfolioToSelect);
