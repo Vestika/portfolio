@@ -34,6 +34,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { 
+  IconButton, 
+  Menu, 
+  MenuItem, 
+  ListItemIcon, 
+  ListItemText 
+} from '@mui/material';
+import { 
+  Person, 
+  Settings, 
+  Logout,
+  Chat,
+  Close
+} from '@mui/icons-material';
+import { User } from 'firebase/auth';
 import api from './utils/api';
 
 interface AccountSelectorProps {
@@ -48,6 +63,17 @@ interface AccountSelectorProps {
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
+  // New props for the moved buttons
+  user: User | null;
+  aiChatEnabled: boolean;
+  isAIChatOpen: boolean;
+  onToggleAIChat: () => void;
+  anchorEl: null | HTMLElement;
+  onMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
+  onMenuClose: () => void;
+  onProfileClick: () => void;
+  onSettingsClick: () => void;
+  onSignOutClick: () => Promise<void>;
 }
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
@@ -61,7 +87,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onAccountAdded,
   onPortfolioDeleted,
   onAccountDeleted,
-  onDefaultPortfolioSet
+  onDefaultPortfolioSet,
+  // New props for the moved buttons
+  user,
+  aiChatEnabled,
+  isAIChatOpen,
+  onToggleAIChat,
+  anchorEl,
+  onMenuOpen,
+  onMenuClose,
+  onProfileClick,
+  onSettingsClick,
+  onSignOutClick
 }) => {
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
@@ -480,6 +517,71 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           >
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
+
+          {/* AI Chat Toggle Button */}
+          {aiChatEnabled && (
+            <IconButton
+              onClick={onToggleAIChat}
+              sx={{
+                color: 'white',
+                backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
+                backdropFilter: 'blur(8px)',
+                '&:hover': {
+                  backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
+                },
+              }}
+            >
+              {isAIChatOpen ? <Close /> : <Chat />}
+            </IconButton>
+          )}
+
+          {/* Person Icon Dropdown */}
+          <IconButton
+            onClick={onMenuOpen}
+            sx={{
+              color: 'white',
+              backgroundColor: 'rgba(55, 65, 81, 0.8)',
+              backdropFilter: 'blur(8px)',
+              '&:hover': {
+                backgroundColor: 'rgba(55, 65, 81, 1)',
+              },
+            }}
+          >
+            <Person />
+          </IconButton>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={onMenuClose}
+            PaperProps={{
+              sx: {
+                backgroundColor: '#374151',
+                color: 'white',
+                '& .MuiMenuItem-root:hover': {
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                },
+              },
+            }}
+          >
+            <MenuItem onClick={onProfileClick}>
+              <ListItemIcon>
+                <Person sx={{ color: 'white' }} />
+              </ListItemIcon>
+              <ListItemText>Profile</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={onSettingsClick}>
+              <ListItemIcon>
+                <Settings sx={{ color: 'white' }} />
+              </ListItemIcon>
+              <ListItemText>Settings</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={onSignOutClick}>
+              <ListItemIcon>
+                <Logout sx={{ color: 'white' }} />
+              </ListItemIcon>
+              <ListItemText>Sign Out</ListItemText>
+            </MenuItem>
+          </Menu>
         </div>
       </div>
       
