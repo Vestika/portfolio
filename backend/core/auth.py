@@ -1,5 +1,5 @@
 from fastapi import HTTPException, Request, Depends
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from models.user_model import User
 from core.database import get_db
 from config import settings
@@ -12,7 +12,7 @@ DEV_USER = User(
     firebase_uid="dev-user-123"
 )
 
-async def create_demo_portfolio(db: AsyncIOMotorDatabase, user_id: str):
+async def create_demo_portfolio(db: AsyncDatabase, user_id: str):
     """Create a demo portfolio for a new user"""
     try:
         from pathlib import Path
@@ -91,7 +91,7 @@ async def create_demo_portfolio(db: AsyncIOMotorDatabase, user_id: str):
 
 async def get_current_user(
     request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncDatabase = Depends(get_db)
 ) -> User:
     # If in development mode, return mock user
     if settings.development_mode:
@@ -128,7 +128,7 @@ async def get_current_user(
 
 async def get_current_user_or_anonymous(
     request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncDatabase = Depends(get_db)
 ) -> User:
     try:
         return await get_current_user(request, db)
