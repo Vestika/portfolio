@@ -207,10 +207,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   };
 
   return (
-    <div className="w-full rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
-      {/* View Toggle Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/30">
-        <h3 className="text-sm font-medium text-gray-200">Holdings Overview</h3>
+    <div className="w-full">
+      {/* Title and Toggle Header */}
+      <div className="flex items-center justify-between px-0 py-3 mb-4">
+        <h3 className="text-lg font-bold text-white">Holdings Overview</h3>
         <div className="flex items-center space-x-3">
           <Tooltip title={viewMode === 'table' ? 'Table View' : 'Heatmap View'} placement="top">
             <Switch
@@ -239,12 +239,12 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       </div>
 
       {viewMode === 'table' && (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-blue-400/30 rounded-md">
           <table className="min-w-full">
-            <thead className="bg-gray-700/50">
-              <tr className="h-8">
-                <th className="px-3 text-left text-xs font-medium">Type</th>
-                <th className="px-3 text-left text-xs font-medium">
+            <thead>
+              <tr className="h-14 bg-blue-500/10 backdrop-blur-sm border-b border-blue-400/30">
+                <th className="px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md">Type</th>
+                <th className="px-4 text-left text-sm font-medium text-gray-200">
                   <div className="flex items-center gap-2">
                     <SortableHeader
                       label="Symbol"
@@ -257,16 +257,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       <input
                         type="text"
                         placeholder="Filter..."
-                        className="pl-7 pr-2 py-0.5 bg-gray-700/50 rounded text-xs w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="pl-7 pr-2 py-1 bg-gray-700/30 backdrop-blur-sm rounded-md text-xs w-24 border border-gray-600/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-400/50"
                         value={filters.symbol}
                         onChange={(e) => setFilters(prev => ({ ...prev, symbol: e.target.value }))}
                       />
                     </div>
                   </div>
                 </th>
-                <th className="px-3 text-left text-xs font-medium">Name</th>
-                <th className="px-3 text-left text-xs font-medium">Tags</th>
-                <th className="px-3 text-right text-xs font-medium">
+                <th className="px-4 text-left text-sm font-medium text-gray-200">Name</th>
+                <th className="px-4 text-left text-sm font-medium text-gray-200">Tags</th>
+                <th className="px-4 text-right text-sm font-medium text-gray-200">
                   <SortableHeader
                     label="Price (Original)"
                     sortKey="original_price"
@@ -276,7 +276,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                 </th>
                 {isValueVisible && (
                   <>
-                    <th className="px-3 text-right text-xs font-medium">
+                    <th className="px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
                         label="Units"
                         sortKey="total_units"
@@ -284,7 +284,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                         onSort={handleSort}
                       />
                     </th>
-                    <th className="px-3 text-right text-xs font-medium">
+                    <th className="px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
                         label={`Total Value (${data.base_currency})`}
                         sortKey="total_value"
@@ -294,26 +294,26 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                     </th>
                   </>
                 )}
-                <th className="px-3 text-center text-xs font-medium">30d Trend</th>
+                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md">30d Trend</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700/30">
+            <tbody>
               {filteredAndSortedHoldings.map((holding) => (
-                <tr key={holding.symbol} className="h-10 hover:bg-gray-750/50">
-                  <td className="px-3">{getSecurityTypeIcon(holding.security_type)}</td>
-                  <td className="px-3 font-medium text-blue-400">{holding.symbol}</td>
-                  <td className="px-3 text-sm text-gray-300">{holding.name}</td>
-                  <td className="px-3 text-sm">{renderTags(holding.tags)}</td>
-                  <td className="px-3 text-right text-sm">
+                <tr key={holding.symbol} className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors">
+                  <td className="px-4">{getSecurityTypeIcon(holding.security_type)}</td>
+                  <td className="px-4 font-medium text-blue-400">{holding.symbol}</td>
+                  <td className="px-4 text-sm text-gray-300">{holding.name}</td>
+                  <td className="px-4 text-sm">{renderTags(holding.tags)}</td>
+                  <td className="px-4 text-right text-sm text-gray-200">
                     {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
                     <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
                   </td>
                   {isValueVisible && (
                     <>
-                      <td className="px-3 text-right text-sm">
+                      <td className="px-4 text-right text-sm text-gray-200">
                         {Math.round(holding.total_units).toLocaleString()}
                       </td>
-                      <td className="px-3 text-right text-sm whitespace-nowrap">
+                      <td className="px-4 text-right text-sm whitespace-nowrap text-gray-200">
                         {Math.round(holding.total_value).toLocaleString()}
                         <span className="text-xs text-gray-400 ml-1">
                           ({calculatePercentage(holding)}%)
@@ -321,7 +321,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </td>
                     </>
                   )}
-                  <td className="px-3">
+                  <td className="px-4">
                     <MiniChart data={holding.historical_prices} />
                   </td>
                 </tr>

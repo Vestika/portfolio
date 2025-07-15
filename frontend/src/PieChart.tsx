@@ -88,6 +88,10 @@ const PieChart: React.FC<PieChartProps> = ({
     },
     title: {
       text: title,
+      align: 'left',
+      verticalAlign: 'top',
+      x: 0,
+      y: 20,
       style: {
         fontWeight: 'normal',
         fontSize: '18px',
