@@ -4,7 +4,6 @@ import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import api from './utils/api';
-import { Switch, Tooltip } from '@mui/material';
 
 import {
   Search,
@@ -15,6 +14,8 @@ import {
   CircleDollarSign,
   Banknote,
   ChartNoAxesCombined,
+  Table,
+  Flame,
 } from 'lucide-react';
 
 interface HoldingsTableProps {
@@ -202,39 +203,33 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
-  const handleViewModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setViewMode(event.target.checked ? 'heatmap' : 'table');
-  };
-
   return (
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
         <h3 className="text-lg font-bold text-white">Holdings Overview</h3>
-        <div className="flex items-center space-x-3">
-          <Tooltip title={viewMode === 'table' ? 'Table View' : 'Heatmap View'} placement="top">
-            <Switch
-              checked={viewMode === 'heatmap'}
-              onChange={handleViewModeChange}
-              sx={{
-                '& .MuiSwitch-switchBase.Mui-checked': {
-                  color: '#60a5fa',
-                  '&:hover': {
-                    backgroundColor: 'rgba(96, 165, 250, 0.08)',
-                  },
-                },
-                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                  backgroundColor: '#60a5fa',
-                },
-                '& .MuiSwitch-track': {
-                  backgroundColor: '#4b5563',
-                },
-                '& .MuiSwitch-thumb': {
-                  backgroundColor: '#9ca3af',
-                },
-              }}
-            />
-          </Tooltip>
+        
+        {/* View Toggle */}
+        <div 
+          onClick={() => setViewMode(viewMode === 'table' ? 'heatmap' : 'table')}
+          className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
+        >
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+            viewMode === 'table'
+              ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+              : 'text-gray-400'
+          }`}>
+            <Table size={16} />
+            Table
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+            viewMode === 'heatmap'
+              ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+              : 'text-gray-400'
+          }`}>
+            <Flame size={16} />
+            Heatmap
+          </div>
         </div>
       </div>
 
