@@ -34,21 +34,21 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
       let color;
       const performance = holding.performance;
 
-      if (performance > 6) {
+      if (performance > 3) {
         color = '#087C42';
-      } else if (performance > 4) {
-        color = '#16683F';
       } else if (performance > 2) {
+        color = '#16683F';
+      } else if (performance > 1) {
         color = '#23543B';
       } else if (performance > 0) {
         color = '#223F3A';
       } else if (performance == 0) {
         color = '#202939';
-      } else if (performance > -2) {
+      } else if (performance > -1) {
         color = '#3C1F2B';
-      } else if (performance > -4) {
+      } else if (performance > -2) {
         color = '#58151D';
-      } else if (performance > -6) {
+      } else if (performance > -3) {
         color = '#740B0F';
       } else {
         color = '#8F0000';
@@ -92,8 +92,13 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
 
     const options: Highcharts.Options = {
       chart: {
-        backgroundColor: '#1f2937',
-        height: 600
+        backgroundColor: 'transparent',
+        height: 600,
+        margin: [2, 2, 2, 2],
+        spacing: [0,0,0,0]
+      },
+      credits: {
+        enabled: false
       },
       series: [{
         name: 'Holdings',
@@ -101,18 +106,19 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
         layoutAlgorithm: 'squarified',
         animationLimit: 1000,
         colorByPoint: true,
-                  dataLabels: {
-            enabled: true,
-            align: 'center',
-            format: '{point.name}<br><span style="font-size: 0.7em">' +
-              '{point.custom.performance}</span>',
-            style: {
-              color: '#ffffff',
-            }
-          },
+        dataLabels: {
+          enabled: true,
+          align: 'center',
+          format: '{point.name}<br><span style="font-size: 0.7em">' +
+            '{point.custom.performance}</span>',
+          style: {
+            color: '#ffffff',
+          }
+        },
         levels: [{
           level: 1,
-
+          borderColor: '#111827',
+          borderWidth: 2,
           dataLabels: {
             enabled: true,
             align: 'center',
@@ -214,7 +220,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full border border-blue-400/30 rounded-md overflow-hidden">
       <HighchartsReact highcharts={Highcharts} options={chartOptions} />
     </div>
   );

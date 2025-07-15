@@ -207,7 +207,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
-        <h3 className="text-lg font-bold text-white">Holdings Overview</h3>
+        <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
         
         {/* View Toggle */}
         <div 
