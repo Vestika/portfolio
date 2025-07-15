@@ -432,10 +432,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <div
                     className={`
                   group cursor-pointer flex items-center space-x-2 
-                  pl-3 pr-4 py-2 rounded-lg transition-all duration-300 transform hover:scale-105 
+                  pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105 
                   ${account.isSelected
-                        ? 'bg-gradient-to-br from-sky-600 to-sky-800 border border-sky-500/50 shadow-sky-500/25' 
-                        : 'bg-gradient-to-br from-gray-700 to-gray-800 border border-gray-600/50 shadow-gray-700/25 hover:from-gray-600 hover:to-gray-700'}
+                        ? 'bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 shadow-blue-500/10' 
+                        : 'bg-gray-500/10 backdrop-blur-sm border border-gray-400/20 shadow-gray-500/5 hover:bg-gray-400/15 hover:border-gray-300/30'}
                 `}
                     onClick={() => toggleAccountSelection(account.account_name)}
                   >
@@ -475,7 +475,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           }}
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-blue-500 hover:bg-gray-800 hover:border-blue-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                          className="h-8 w-8 border border-transparent bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 hover:border-blue-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
                           title="Edit account"
                         >
                           <Edit className="h-4 w-4" />
@@ -488,7 +488,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             }}
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-red-500 hover:bg-gray-800 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                            className="h-8 w-8 border border-transparent bg-red-500/20 backdrop-blur-sm text-red-200 hover:text-red-100 hover:bg-red-500/30 hover:border-red-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
                             title="Delete account"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -503,10 +503,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             {/* Add New Account Button */}
             <button
               onClick={() => setShowAddAccountModal(true)}
-              className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl border border-green-600 group"
+              className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group"
             >
-              <Plus size={16} className="text-green-100 group-hover:text-white" />
-              <span className="text-xs font-medium">Add Account</span>
+              <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
+              <span className="text-xs font-medium text-emerald-100">Add Account</span>
             </button>
           </div>
 
