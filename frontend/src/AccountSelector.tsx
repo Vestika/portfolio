@@ -12,7 +12,11 @@ import {
   Plus,
   Trash2,
   X,
-  Edit
+  Edit,
+  User,
+  MessageCircle,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -34,20 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  IconButton, 
-  Menu, 
-  MenuItem, 
-  ListItemIcon, 
-  ListItemText 
-} from '@mui/material';
-import { 
-  Person, 
-  Settings, 
-  Logout,
-  Chat,
-  Close
-} from '@mui/icons-material';
+
 
 import api from './utils/api';
 
@@ -125,7 +116,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   });
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
-  console.log(user);
 
   useEffect(() => {
     setAccounts(
@@ -519,68 +509,58 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
           {/* AI Chat Toggle Button */}
           {aiChatEnabled && (
-            <IconButton
+            <button
               onClick={onToggleAIChat}
-              sx={{
-                color: 'white',
-                backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
-                backdropFilter: 'blur(8px)',
-                '&:hover': {
-                  backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
-                },
-              }}
+              className={`p-2 rounded-full text-white backdrop-blur-md transition-colors ${
+                isAIChatOpen 
+                  ? 'bg-blue-500/80 hover:bg-blue-500' 
+                  : 'bg-gray-600/80 hover:bg-gray-600'
+              }`}
             >
-              {isAIChatOpen ? <Close /> : <Chat />}
-            </IconButton>
+              {isAIChatOpen ? <X size={20} /> : <MessageCircle size={20} />}
+            </button>
           )}
 
           {/* Person Icon Dropdown */}
-          <IconButton
-            onClick={onMenuOpen}
-            sx={{
-              color: 'white',
-              backgroundColor: 'rgba(55, 65, 81, 0.8)',
-              backdropFilter: 'blur(8px)',
-              '&:hover': {
-                backgroundColor: 'rgba(55, 65, 81, 1)',
-              },
-            }}
-          >
-            <Person />
-          </IconButton>
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={onMenuClose}
-            PaperProps={{
-              sx: {
-                backgroundColor: '#374151',
-                color: 'white',
-                '& .MuiMenuItem-root:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                },
-              },
-            }}
-          >
-            <MenuItem onClick={onProfileClick}>
-              <ListItemIcon>
-                <Person sx={{ color: 'white' }} />
-              </ListItemIcon>
-              <ListItemText>Profile</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={onSettingsClick}>
-              <ListItemIcon>
-                <Settings sx={{ color: 'white' }} />
-              </ListItemIcon>
-              <ListItemText>Settings</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={onSignOutClick}>
-              <ListItemIcon>
-                <Logout sx={{ color: 'white' }} />
-              </ListItemIcon>
-              <ListItemText>Sign Out</ListItemText>
-            </MenuItem>
-          </Menu>
+          <div className="relative">
+            <button
+              onClick={onMenuOpen}
+              className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors"
+            >
+              <User size={20} />
+            </button>
+            
+            {Boolean(anchorEl) && (
+              <div 
+                className="absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-50"
+                onMouseLeave={onMenuClose}
+              >
+                <div className="py-1">
+                  <button
+                    onClick={onProfileClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <User size={16} className="mr-3" />
+                    Profile
+                  </button>
+                  <button
+                    onClick={onSettingsClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <Settings size={16} className="mr-3" />
+                    Settings
+                  </button>
+                  <button
+                    onClick={onSignOutClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <LogOut size={16} className="mr-3" />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
