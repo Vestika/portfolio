@@ -18,8 +18,6 @@ import {
   HoldingsTableData,
 } from './types';
 
-
-// Type guard for axios-like errors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;

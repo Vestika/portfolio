@@ -125,6 +125,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   });
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  console.log(user);
 
   useEffect(() => {
     setAccounts(
