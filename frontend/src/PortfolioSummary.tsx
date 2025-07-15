@@ -104,14 +104,14 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         ))}
         <div className="flex-1" />
         {/* NYSE Market Status */}
-        <div className={`flex items-center rounded-full px-3 py-1 ${usMarketStatus === 'open' ? 'bg-green-700' : usMarketStatus === 'closed' ? 'bg-gray-700' : 'bg-gray-700'}`}
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1"
              title="NYSE Market Status">
           <span className={`w-2 h-2 rounded-full mr-2 ${usMarketStatus === 'open' ? 'bg-green-400' : usMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
           <span className="text-xs font-medium">nyse:</span>
           <span className={`ml-1 text-xs ${usMarketStatus === 'open' ? 'text-green-400' : usMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{usMarketStatus}</span>
         </div>
         {/* TASE Market Status */}
-        <div className={`flex items-center rounded-full px-3 py-1 ml-2 ${taseMarketStatus === 'open' ? 'bg-green-700' : taseMarketStatus === 'closed' ? 'bg-gray-700' : 'bg-gray-700'}`}
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 ml-2"
              title="TASE Market Status">
           <span className={`w-2 h-2 rounded-full mr-2 ${taseMarketStatus === 'open' ? 'bg-green-400' : taseMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
           <span className="text-xs font-medium">tase:</span>

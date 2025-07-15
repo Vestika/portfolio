@@ -25,7 +25,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceTimeoutRef = useRef<number>();
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Debounced search with improved logic
   useEffect(() => {

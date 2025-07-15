@@ -18,7 +18,6 @@ import {
   HoldingsTableData,
 } from './types';
 
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;
@@ -409,7 +408,6 @@ const App: React.FC = () => {
           onAccountDeleted={handleAccountDeleted}
           onDefaultPortfolioSet={handleDefaultPortfolioSet}
           // New props for the moved buttons
-          user={user}
           aiChatEnabled={aiChatEnabled}
           isAIChatOpen={isAIChatOpen}
           onToggleAIChat={toggleAIChat}

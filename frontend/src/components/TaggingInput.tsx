@@ -28,7 +28,7 @@ const TaggingInput: React.FC<TaggingInputProps> = ({
 
   // Debounce function for autocomplete
   const debounce = (func: (query: string, tagType: string) => Promise<void>, delay: number) => {
-    let timeoutId: number;
+    let timeoutId: ReturnType<typeof setTimeout>;
     return (query: string, tagType: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => func(query, tagType), delay);
