@@ -25,8 +25,7 @@ const PieChart: React.FC<PieChartProps> = ({
   useEffect(() => {
     const load3D = async () => {
       try {
-        const Highcharts3D = (await import('highcharts/highcharts-3d')).default;
-        Highcharts3D(Highcharts);
+        await import('highcharts/highcharts-3d');
         setIs3DLoaded(true);
       } catch (error) {
         console.error('Failed to load 3D module:', error);

@@ -48,7 +48,7 @@ import {
   Chat,
   Close
 } from '@mui/icons-material';
-import { User } from 'firebase/auth';
+
 import api from './utils/api';
 
 interface AccountSelectorProps {
@@ -64,7 +64,6 @@ interface AccountSelectorProps {
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
   // New props for the moved buttons
-  user: User | null;
   aiChatEnabled: boolean;
   isAIChatOpen: boolean;
   onToggleAIChat: () => void;
@@ -89,7 +88,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onAccountDeleted,
   onDefaultPortfolioSet,
   // New props for the moved buttons
-  user,
   aiChatEnabled,
   isAIChatOpen,
   onToggleAIChat,

@@ -17,20 +17,7 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
-import { 
-  IconButton, 
-  Menu, 
-  MenuItem, 
-  ListItemIcon, 
-  ListItemText 
-} from '@mui/material';
-import { 
-  Person, 
-  Settings, 
-  Logout,
-  Chat,
-  Close
-} from '@mui/icons-material';
+
 
 // Type guard for axios-like errors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -423,7 +410,6 @@ const App: React.FC = () => {
           onAccountDeleted={handleAccountDeleted}
           onDefaultPortfolioSet={handleDefaultPortfolioSet}
           // New props for the moved buttons
-          user={user}
           aiChatEnabled={aiChatEnabled}
           isAIChatOpen={isAIChatOpen}
           onToggleAIChat={toggleAIChat}
