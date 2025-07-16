@@ -39,8 +39,8 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ portfolioId, portfolioName = 'Por
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">AI Financial Analyst</h2>
           <p className="text-gray-600 mt-1">
@@ -50,10 +50,10 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ portfolioId, portfolioName = 'Por
         <Button
           onClick={handleAnalyze}
           disabled={isLoading}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium w-full sm:w-auto"
         >
           {isLoading ? (
-            <div className="flex items-center">
+            <div className="flex items-center justify-center">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
               Analyzing...
             </div>
@@ -84,7 +84,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ portfolioId, portfolioName = 'Por
           {/* Portfolio Summary */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Total Value</p>
                 <p className="text-lg font-semibold text-gray-900">

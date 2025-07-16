@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { ChartDataItem } from './types';
+import { useMediaQuery } from './hooks/useMediaQuery';
 
 interface PieChartProps {
   title: string;
@@ -19,6 +20,7 @@ const PieChart: React.FC<PieChartProps> = ({
 }) => {
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
   const [is3DLoaded, setIs3DLoaded] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   console.log(selectedSeries);
 
   // Initialize 3D module
@@ -116,7 +118,7 @@ const PieChart: React.FC<PieChartProps> = ({
         borderWidth: 1,
         depth: 35,
         dataLabels: {
-          enabled: true,
+          enabled: !isMobile,
           format: '{point.percentage:.2f}%',
           color: 'white'
         },
@@ -138,6 +140,7 @@ const PieChart: React.FC<PieChartProps> = ({
       }
     },
     legend: {
+      enabled: !isMobile,
       layout: 'vertical',
       align: 'right',
       verticalAlign: 'middle',

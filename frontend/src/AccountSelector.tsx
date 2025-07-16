@@ -38,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import HamburgerMenu from "@/components/ui/HamburgerMenu";
 
 
 import api from './utils/api';
@@ -393,7 +394,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   return (
     <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
       <div className="container mx-auto flex justify-between items-start">
-        <div>
+        <div className="flex-1">
           <PortfolioSelector
             portfolios={availableFiles}
             selectedPortfolioId={selectedFile}
@@ -408,7 +409,28 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-4">
+        {/* Hamburger Menu for Mobile */}
+        <div className="md:hidden">
+          <HamburgerMenu
+            accounts={accounts}
+            toggleAccountSelection={toggleAccountSelection}
+            isValueVisible={isValueVisible}
+            toggleValueVisibility={toggleValueVisibility}
+            setShowAddAccountModal={setShowAddAccountModal}
+            aiChatEnabled={aiChatEnabled}
+            isAIChatOpen={isAIChatOpen}
+            onToggleAIChat={onToggleAIChat}
+            onMenuOpen={onMenuOpen}
+            onProfileClick={onProfileClick}
+            onSettingsClick={onSettingsClick}
+            onSignOutClick={onSignOutClick}
+            anchorEl={anchorEl}
+            onMenuClose={onMenuClose}
+          />
+        </div>
+
+        {/* Full Header for Desktop */}
+        <div className="hidden md:flex items-center space-x-4">
           <div className="flex space-x-2">
             {accounts.map(account => (
                 <div

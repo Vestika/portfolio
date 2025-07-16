@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { HoldingsTableData } from './types';
+import { HoldingsTableData, Quote } from './types';
+import { useMediaQuery } from './hooks/useMediaQuery';
 
 import 'highcharts/modules/treemap';
 import 'highcharts/modules/accessibility';
@@ -9,10 +10,12 @@ import 'highcharts/modules/accessibility';
 interface HoldingsHeatmapProps {
   data: HoldingsTableData;
   isValueVisible: boolean;
-  quotes?: Record<string, any>;
+  quotes?: Record<string, Quote>;
 }
 
 const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible, quotes }) => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
   const chartOptions = useMemo(() => {
     // Filter to only include stocks and securities with historical data
     const stockHoldings = data.holdings.filter(holding =>
@@ -93,7 +96,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
     const options: Highcharts.Options = {
       chart: {
         backgroundColor: 'transparent',
-        height: 600,
+        height: isMobile ? 400 : 600,
         margin: [2, 2, 2, 2],
         spacing: [0,0,0,0]
       },
@@ -113,6 +116,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
             '{point.custom.performance}</span>',
           style: {
             color: '#ffffff',
+            fontSize: isMobile ? '10px' : '12px',
           }
         },
         levels: [{
@@ -126,6 +130,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
               '{point.custom.performance}</span>',
             style: {
               color: '#ffffff',
+              fontSize: isMobile ? '10px' : '12px',
             }
           }
         }],
@@ -192,7 +197,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
     };
 
     return options;
-  }, [data, isValueVisible, quotes]);
+  }, [data, isValueVisible, quotes, isMobile]);
 
   // Filter to only include stocks with historical data
   const stockHoldings = data.holdings.filter(holding =>
