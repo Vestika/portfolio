@@ -389,10 +389,10 @@ const App: React.FC = () => {
   if (!displayMetadata || (!showEmptyState && !displayData)) return null;
 
   return (
-    <div className="bg-gray-900 min-h-screen text-white">
+    <div className="flex flex-col min-h-screen bg-gray-900 text-white">
       {/* Sticky Header Section */}
       <div
-        className="sticky top-0 z-30 bg-gray-900"
+        className="sticky top-0 z-30 bg-gray-900 px-4 sm:px-6 lg:px-8"
         style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
       >
         <AccountSelector
@@ -426,93 +426,93 @@ const App: React.FC = () => {
         />
       </div>
 
-      {/* Main Content Area - Adjusts based on chat visibility */}
-      <div className="flex">
+      {/* Main Content Area */}
+      <div className="flex flex-1">
         {/* Portfolio Data Section */}
         <div
           className="flex-1 transition-all duration-300"
           style={{
-            marginRight: aiChatEnabled && isAIChatOpen ? `${chatWidth}px` : '0px',
+            marginRight: aiChatEnabled && isAIChatOpen && window.innerWidth >= 1024 ? `${chatWidth}px` : '0px',
           }}
         >
-          <div className="container mx-auto px-4 py-6">
-            {showEmptyState ? (
-              // Empty state content
-              <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="text-center max-w-md">
-                  <div className="text-6xl mb-6">📊</div>
-                  <h2 className="text-2xl font-bold text-white mb-4">Welcome to Your Portfolio Dashboard</h2>
-                  <p className="text-gray-300 mb-6">
-                    You don't have any portfolios yet. Create your first portfolio using the dropdown menu above to start tracking your investments.
-                  </p>
-                  <div className="text-left space-y-2 text-sm text-gray-400 bg-gray-800 p-4 rounded-lg">
-                    <p className="font-medium text-white mb-2">Getting Started:</p>
-                    <p>• Click the dropdown above to create a portfolio</p>
-                    <p>• Add accounts (bank, brokerage, retirement)</p>
-                    <p>• Track stocks, bonds, ETFs, and cash holdings</p>
-                    <p>• View performance analytics and breakdowns</p>
+          <main className="flex-1">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+              {showEmptyState ? (
+                // Empty state content
+                <div className="flex items-center justify-center min-h-[60vh]">
+                  <div className="text-center max-w-md">
+                    <div className="text-6xl mb-6">📊</div>
+                    <h2 className="text-2xl font-bold text-white mb-4">Welcome to Your Portfolio Dashboard</h2>
+                    <p className="text-gray-300 mb-6">
+                      You don't have any portfolios yet. Create your first portfolio using the dropdown menu above to start tracking your investments.
+                    </p>
+                    <div className="text-left space-y-2 text-sm text-gray-400 bg-gray-800 p-4 rounded-lg">
+                      <p className="font-medium text-white mb-2">Getting Started:</p>
+                      <p>• Click the dropdown above to create a portfolio</p>
+                      <p>• Add accounts (bank, brokerage, retirement)</p>
+                      <p>• Track stocks, bonds, ETFs, and cash holdings</p>
+                      <p>• View performance analytics and breakdowns</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              // Normal portfolio content
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                {displayData && displayData.map(chart => (
-                  <PieChart
-                    key={chart.chart_title}
-                    title={`<b>${chart.chart_title}</b>${
-                      isValueVisible
-                        ? ` <span class="text-xs text-gray-400 ml-1">
-                            ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
-                              chart.chart_total
-                            )}
-                            (${displayMetadata.base_currency})
-                            </span>`
-                        : ''
-                    }`}
-                    data={chart.chart_data}
-                    total={chart.chart_total}
-                    baseCurrency={displayMetadata.base_currency}
-                    hideValues={!isValueVisible}
+              ) : (
+                // Normal portfolio content
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                  {displayData && displayData.map(chart => (
+                    <PieChart
+                      key={chart.chart_title}
+                      title={`<b>${chart.chart_title}</b>${
+                        isValueVisible
+                          ? ` <span class="text-xs text-gray-400 ml-1">
+                              ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+                                chart.chart_total
+                              )}
+                              (${displayMetadata.base_currency})
+                              </span>`
+                          : ''
+                      }`}
+                      data={chart.chart_data}
+                      total={chart.chart_total}
+                      baseCurrency={displayMetadata.base_currency}
+                      hideValues={!isValueVisible}
+                    />
+                  ))}
+                </div>
+              )}
+              {holdingsData && !showEmptyState && (
+                <div className="mt-8">
+                  <HoldingsTable
+                    data={holdingsData}
+                    isValueVisible={isValueVisible}
                   />
-                ))}
-              </div>
-            )}
-            {holdingsData && !showEmptyState && (
-              <div className="mt-8">
-                <HoldingsTable
-                  data={holdingsData}
-                  isValueVisible={isValueVisible}
-                />
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          </main>
         </div>
 
         {/* AI Chat Sidebar */}
-        {aiChatEnabled && (
+        {aiChatEnabled && isAIChatOpen && (
           <div
-            className={`fixed right-0 transition-transform duration-300 transform ${
+            className={`fixed inset-0 z-40 transition-transform duration-300 transform ${
               isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
-            } z-40`}
+            } lg:relative lg:translate-x-0 lg:inset-y-0`}
             style={{
-              width: `${chatWidth}px`,
-              top: HEADER_HEIGHT,
-              height: `calc(100vh - ${HEADER_HEIGHT}px)`
+              width: window.innerWidth < 1024 ? '100%' : `${chatWidth}px`,
+              top: 0,
+              height: '100vh',
             }}
           >
-            {/* Resize Handle */}
             <div
               ref={resizeRef}
-              className="absolute left-0 top-0 w-1 h-full bg-gray-600 cursor-col-resize hover:bg-blue-500 transition-colors"
               onMouseDown={handleMouseDown}
+              className={`absolute left-0 top-0 w-1.5 h-full bg-gray-700 cursor-col-resize hover:bg-blue-500 transition-colors ${
+                isResizing ? 'bg-blue-600' : ''
+              }`}
+              style={{ zIndex: 50 }}
             />
-            <div className="h-full p-4">
-              <AIChat
-                portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
-                isOpen={isAIChatOpen}
-                onClose={() => setIsAIChatOpen(false)}
-              />
+            <div className="h-full bg-gray-800" style={{ width: '100%' }}>
+              <AIChat />
             </div>
           </div>
         )}

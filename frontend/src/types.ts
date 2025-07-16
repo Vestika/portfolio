@@ -70,6 +70,13 @@ export interface HistoricalPrice {
   price: number;
 }
 
+export interface Quote {
+  symbol: string;
+  current_price: number;
+  percent_change: number;
+  last_updated: string;
+}
+
 export interface HoldingsTableData {
   base_currency: string;
   holdings: SecurityHolding[];

@@ -58,9 +58,9 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
 
   return (
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
-      <div className="container mx-auto flex items-center space-x-4 py-1.5 px-4">
+      <div className="container mx-auto flex flex-wrap items-center space-x-4 py-1.5 px-4">
         {/* Total Value Chip */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2">
           <Wallet size={14} className="text-green-400 mr-1.5" />
           <span className="text-xs font-medium mr-1">Total:</span>
           {isValueVisible ? (
@@ -83,7 +83,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         {Object.entries(totalCash).map(([currency, amount]) => (
           <div
             key={currency}
-            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
+            className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2"
           >
             <Coins size={14} className="text-sky-400 mr-1.5" />
             <span className="text-xs font-medium mr-1">{currency}:</span>
@@ -104,14 +104,14 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         ))}
         <div className="flex-1" />
         {/* NYSE Market Status */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1"
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2"
              title="NYSE Market Status">
           <span className={`w-2 h-2 rounded-full mr-2 ${usMarketStatus === 'open' ? 'bg-green-400' : usMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
           <span className="text-xs font-medium">nyse:</span>
           <span className={`ml-1 text-xs ${usMarketStatus === 'open' ? 'text-green-400' : usMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{usMarketStatus}</span>
         </div>
         {/* TASE Market Status */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 ml-2"
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 ml-2 mb-2"
              title="TASE Market Status">
           <span className={`w-2 h-2 rounded-full mr-2 ${taseMarketStatus === 'open' ? 'bg-green-400' : taseMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
           <span className="text-xs font-medium">tase:</span>

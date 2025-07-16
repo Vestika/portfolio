@@ -146,7 +146,7 @@ const AIChat: React.FC<AIChatProps> = ({
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">AI Financial Analyst</h2>
-            <p className="text-sm text-gray-400">Chat about your {portfolioName.toLowerCase()}</p>
+            <p className="text-sm text-gray-400 hidden sm:block">Chat about your {portfolioName.toLowerCase()}</p>
           </div>
         </div>
         
@@ -233,7 +233,7 @@ const AIChat: React.FC<AIChatProps> = ({
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+              className={`max-w-[80%] sm:max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                 message.role === 'user'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-200'
@@ -282,7 +282,7 @@ const AIChat: React.FC<AIChatProps> = ({
       )}
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-2 sm:p-4 border-t border-gray-700">
         <div className="flex space-x-2">
           <TaggingInput
             value={inputMessage}
@@ -302,7 +302,7 @@ const AIChat: React.FC<AIChatProps> = ({
         </div>
         
         {/* Disclaimer */}
-        <div className="mt-3 text-xs text-gray-500">
+        <div className="mt-3 text-xs text-gray-500 px-2">
           <p>
             This AI assistant provides informational analysis only. It is not financial advice. 
             Always consult with a qualified financial advisor before making investment decisions.

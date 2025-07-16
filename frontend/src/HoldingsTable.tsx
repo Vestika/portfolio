@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData } from './types';
+import { SecurityHolding, HoldingsTableData, Quote } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import api from './utils/api';
+import { useMediaQuery } from './hooks/useMediaQuery';
 
 import {
   Search,
@@ -153,6 +154,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
 
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
   const [filters, setFilters] = useState<{
     symbol: string;
     type: string;
@@ -164,7 +168,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
 
   // Fetch live quotes for holdings
-  const [quotes, setQuotes] = useState<Record<string, unknown>>({});
+  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   React.useEffect(() => {
     const symbols = data.holdings.map(h => h.symbol).join(',');
     if (!symbols) return;
@@ -234,12 +238,12 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       </div>
 
       {viewMode === 'table' && (
-        <div className="overflow-x-auto border border-blue-400/30 rounded-md">
+        <div className="border border-blue-400/30 rounded-md overflow-x-auto">
           <table className="min-w-full">
             <thead>
               <tr className="h-14 bg-blue-500/10 backdrop-blur-sm border-b border-blue-400/30">
-                <th className="px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md">Type</th>
-                <th className="px-4 text-left text-sm font-medium text-gray-200">
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md">Type</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">
                   <div className="flex items-center gap-2">
                     <SortableHeader
                       label="Symbol"
@@ -247,7 +251,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       sortConfig={sortConfig}
                       onSort={handleSort}
                     />
-                    <div className="relative">
+                    <div className="relative hidden md:block">
                       <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
@@ -259,11 +263,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                     </div>
                   </div>
                 </th>
-                <th className="px-4 text-left text-sm font-medium text-gray-200">Name</th>
-                <th className="px-4 text-left text-sm font-medium text-gray-200">Tags</th>
-                <th className="px-4 text-right text-sm font-medium text-gray-200">
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 hidden md:table-cell">Name</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 hidden md:table-cell">Tags</th>
+                <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                   <SortableHeader
-                    label="Price (Original)"
+                    label={isMobile ? "Price" : "Price (Original)"}
                     sortKey="original_price"
                     sortConfig={sortConfig}
                     onSort={handleSort}
@@ -271,7 +275,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                 </th>
                 {isValueVisible && (
                   <>
-                    <th className="px-4 text-right text-sm font-medium text-gray-200">
+                    <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
                       <SortableHeader
                         label="Units"
                         sortKey="total_units"
@@ -279,9 +283,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                         onSort={handleSort}
                       />
                     </th>
-                    <th className="px-4 text-right text-sm font-medium text-gray-200">
+                    <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
-                        label={`Total Value (${data.base_currency})`}
+                        label={isMobile ? `Value (${data.base_currency})` : `Total Value (${data.base_currency})`}
                         sortKey="total_value"
                         sortConfig={sortConfig}
                         onSort={handleSort}
@@ -289,37 +293,64 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                     </th>
                   </>
                 )}
-                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md">30d Trend</th>
+                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">30d Trend</th>
               </tr>
             </thead>
             <tbody>
               {filteredAndSortedHoldings.map((holding) => (
-                <tr key={holding.symbol} className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors">
-                  <td className="px-4">{getSecurityTypeIcon(holding.security_type)}</td>
-                  <td className="px-4 font-medium text-blue-400">{holding.symbol}</td>
-                  <td className="px-4 text-sm text-gray-300">{holding.name}</td>
-                  <td className="px-4 text-sm">{renderTags(holding.tags)}</td>
-                  <td className="px-4 text-right text-sm text-gray-200">
-                    {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
-                    <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
-                  </td>
-                  {isValueVisible && (
-                    <>
-                      <td className="px-4 text-right text-sm text-gray-200">
-                        {Math.round(holding.total_units).toLocaleString()}
+                <React.Fragment key={holding.symbol}>
+                  <tr
+                    className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer md:cursor-default"
+                    onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
+                  >
+                    <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
+                    <td className="px-2 md:px-4 font-medium text-blue-400">{holding.symbol}</td>
+                    <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
+                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding.tags)}</td>
+                    <td className="px-2 md:px-4 text-right text-sm text-gray-200">
+                      {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                      <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                    </td>
+                    {isValueVisible && (
+                      <>
+                        <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                          {Math.round(holding.total_units).toLocaleString()}
+                        </td>
+                        <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
+                          {Math.round(holding.total_value).toLocaleString()}
+                          <span className="text-xs text-gray-400 ml-1 hidden md:inline">
+                            ({calculatePercentage(holding)}%)
+                          </span>
+                        </td>
+                      </>
+                    )}
+                    <td className="px-2 md:px-4 hidden md:table-cell">
+                      <MiniChart data={holding.historical_prices} />
+                    </td>
+                  </tr>
+                  {expandedRow === holding.symbol && (
+                    <tr className="bg-gray-800/50 md:hidden">
+                      <td colSpan={4} className="p-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="font-bold text-gray-400">Name</p>
+                            <p>{holding.name}</p>
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-400">Tags</p>
+                            <div>{renderTags(holding.tags)}</div>
+                          </div>
+                          {isValueVisible && (
+                            <div>
+                              <p className="font-bold text-gray-400">Units</p>
+                              <p>{Math.round(holding.total_units).toLocaleString()}</p>
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 text-right text-sm whitespace-nowrap text-gray-200">
-                        {Math.round(holding.total_value).toLocaleString()}
-                        <span className="text-xs text-gray-400 ml-1">
-                          ({calculatePercentage(holding)}%)
-                        </span>
-                      </td>
-                    </>
+                    </tr>
                   )}
-                  <td className="px-4">
-                    <MiniChart data={holding.historical_prices} />
-                  </td>
-                </tr>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
