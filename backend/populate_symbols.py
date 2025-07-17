@@ -20,7 +20,7 @@ from pymaya.maya import Maya
 
 from core.database import db_manager
 from models.symbol import Symbol, SymbolType
-from services.closing_price.config import settings
+from config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
