@@ -1,3 +1,5 @@
+[![Netlify Status](https://api.netlify.com/api/v1/badges/5564771f-4622-4d5b-adff-4f98832bbf0e/deploy-status)](https://app.netlify.com/projects/vestika/deploys)
+
 # portfolio
 
 ## Prerequisites

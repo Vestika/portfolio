@@ -24,11 +24,14 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Use Firebase authentication
     const unsubscribe = onAuthStateChange((user) => {
       setUser(user);
       setLoading(false);

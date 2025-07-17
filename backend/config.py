@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Configuration settings for the closing price module"""
     
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).parent.parent.parent / ".env",
+        env_file=Path(__file__).parent / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
@@ -64,6 +64,8 @@ class Settings(BaseSettings):
         default="INFO",
         description="Logging level"
     )
+
+
 
     firebase_file_path: Optional[str] = Field(
         default="firebase_credentials.json",

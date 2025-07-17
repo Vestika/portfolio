@@ -152,6 +152,21 @@ class PriceManager:
         fetcher = FinnhubFetcher(settings.finnhub_api_key)
         return await fetcher.get_market_status()
     
+    async def get_market_status(self) -> dict[str, str]:
+        """Get both US and TASE market statuses"""
+        from .stock_fetcher import FinnhubFetcher, TaseFetcher
+        
+        # Get US market status
+        us_fetcher = FinnhubFetcher(settings.finnhub_api_key)
+        us_status = await us_fetcher.get_market_status()
+        
+        # Get TASE market status
+        tase_fetcher = TaseFetcher()
+        tase_status = await tase_fetcher.get_market_status()
+        
+        # Combine both statuses
+        return {**us_status, **tase_status}
+    
     async def _get_cached_price(self, symbol: str) -> Optional[PriceResponse]:
         """Get price from Redis cache"""
         try:

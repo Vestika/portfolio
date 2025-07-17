@@ -17,22 +17,7 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
-import { 
-  IconButton, 
-  Menu, 
-  MenuItem, 
-  ListItemIcon, 
-  ListItemText 
-} from '@mui/material';
-import { 
-  Person, 
-  Settings, 
-  Logout,
-  Chat,
-  Close
-} from '@mui/icons-material';
 
-// Type guard for axios-like errors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;
@@ -68,9 +53,9 @@ const App: React.FC = () => {
   const resizeRef = useRef<HTMLDivElement>(null);
 
   // Get default portfolio from backend API
-  const getDefaultPortfolio = async (userName: string): Promise<string | null> => {
+  const getDefaultPortfolio = async (): Promise<string | null> => {
     try {
-      const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
+      const response = await api.get(`/default-portfolio`);
       return response.data.default_portfolio_id;
     } catch (error) {
       console.error('Failed to fetch default portfolio:', error);
@@ -101,17 +86,14 @@ const App: React.FC = () => {
       const portfolios = await fetchAvailablePortfolios();
       
       if (portfolios.length === 0) {
-        setError('No portfolios available');
+        // No portfolios found - this is fine, user will create one manually
+        console.log('No portfolios found - showing empty state');
         setIsLoading(false);
         return;
       }
-
-      // Get user name from the first portfolio to determine default
-      const tempMetadata = await api.get(`/portfolio?portfolio_id=${portfolios[0].portfolio_id}`);
-      const userName = tempMetadata.data.user_name;
       
       // Check for default portfolio
-      const defaultPortfolioId = await getDefaultPortfolio(userName);
+      const defaultPortfolioId = await getDefaultPortfolio();
       
       let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
       
@@ -119,7 +101,7 @@ const App: React.FC = () => {
         portfolioToSelect = defaultPortfolioId;
         console.log(`Loading default portfolio: ${defaultPortfolioId}`);
       } else {
-        console.log(`No default portfolio found for user ${userName}, using first portfolio`);
+        console.log(`No default portfolio found for user, using first portfolio`);
       }
       
       setSelectedPortfolioId(portfolioToSelect);
@@ -230,10 +212,21 @@ const App: React.FC = () => {
   };
 
   const handlePortfolioCreated = async (newPortfolioId: string) => {
-    // Refresh available portfolios
-    await fetchAvailablePortfolios();
-    // Switch to the new portfolio
-    setSelectedPortfolioId(newPortfolioId);
+    try {
+      // Refresh available portfolios
+      await fetchAvailablePortfolios();
+      
+      // If this was the first portfolio, initialize the app
+      if (!isInitialized) {
+        setIsInitialized(true);
+      }
+      
+      // Switch to the new portfolio - the useEffect will handle loading the data
+      setSelectedPortfolioId(newPortfolioId);
+      
+    } catch (err) {
+      console.error('Failed to handle portfolio creation:', err);
+    }
   };
 
   const handleAccountAdded = async () => {
@@ -355,87 +348,55 @@ const App: React.FC = () => {
 
   // Show loading screen while app is loading
   if (isLoading) return <LoadingScreen />;
-  if (error) return <div>{error}</div>;
-  if (!portfolioMetadata || !portfolioData) return null;
+  
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold text-white mb-4">Error</h2>
+          <p className="text-gray-300 mb-6">{error}</p>
+          
+          <button
+            onClick={() => {
+              setError(null);
+              setIsLoading(true);
+              initializeApp();
+            }}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // When no portfolios exist, still show the normal layout with topbar
+  // but display empty content areas instead of hiding everything
+  const showEmptyState = availablePortfolios.length === 0;
+  
+  // Create mock metadata for empty state to keep UI working
+  const mockMetadata: PortfolioMetadata = {
+    base_currency: 'USD',
+    user_name: user?.displayName || user?.email || 'User',
+    accounts: []
+  };
+  
+  const displayMetadata = showEmptyState ? mockMetadata : portfolioMetadata;
+  const displayData = showEmptyState ? [] : portfolioData;
+  
+  if (!displayMetadata || (!showEmptyState && !displayData)) return null;
 
   return (
-    <div className="bg-gray-900 min-h-screen text-white">
-      {/* Person Icon Dropdown - Positioned at top right */}
-      <div className="fixed top-4 right-4 z-50">
-        <IconButton
-          onClick={handleMenuOpen}
-          sx={{
-            color: 'white',
-            backgroundColor: 'rgba(55, 65, 81, 0.8)',
-            backdropFilter: 'blur(8px)',
-            '&:hover': {
-              backgroundColor: 'rgba(55, 65, 81, 1)',
-            },
-          }}
-        >
-          <Person />
-        </IconButton>
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleMenuClose}
-          PaperProps={{
-            sx: {
-              backgroundColor: '#374151',
-              color: 'white',
-              '& .MuiMenuItem-root:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              },
-            },
-          }}
-        >
-          <MenuItem onClick={handleProfileClick}>
-            <ListItemIcon>
-              <Person sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Profile</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleSettingsClick}>
-            <ListItemIcon>
-              <Settings sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Settings</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleSignOutClick}>
-            <ListItemIcon>
-              <Logout sx={{ color: 'white' }} />
-            </ListItemIcon>
-            <ListItemText>Sign Out</ListItemText>
-          </MenuItem>
-        </Menu>
-      </div>
-
-      {/* AI Chat Toggle Button - Positioned at top right, next to person icon */}
-      {aiChatEnabled && (
-        <div className="fixed top-4 right-16 z-50">
-          <IconButton
-            onClick={toggleAIChat}
-            sx={{
-              color: 'white',
-              backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 0.8)' : 'rgba(55, 65, 81, 0.8)',
-              backdropFilter: 'blur(8px)',
-              '&:hover': {
-                backgroundColor: isAIChatOpen ? 'rgba(59, 130, 246, 1)' : 'rgba(55, 65, 81, 1)',
-              },
-            }}
-          >
-            {isAIChatOpen ? <Close /> : <Chat />}
-          </IconButton>
-        </div>
-      )}
-
+    <div className="flex flex-col min-h-screen bg-gray-900 text-white">
       {/* Sticky Header Section */}
       <div
-        className="sticky top-0 z-30 bg-gray-900"
+        className="sticky top-0 z-30 bg-gray-900 px-4 sm:px-6 lg:px-8"
         style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
       >
         <AccountSelector
-          portfolioMetadata={portfolioMetadata}
+          portfolioMetadata={displayMetadata}
           onAccountsChange={handleAccountsChange}
           onToggleVisibility={handleToggleVisibility}
           availableFiles={availablePortfolios}
@@ -446,81 +407,112 @@ const App: React.FC = () => {
           onPortfolioDeleted={handlePortfolioDeleted}
           onAccountDeleted={handleAccountDeleted}
           onDefaultPortfolioSet={handleDefaultPortfolioSet}
+          // New props for the moved buttons
+          aiChatEnabled={aiChatEnabled}
+          isAIChatOpen={isAIChatOpen}
+          onToggleAIChat={toggleAIChat}
+          anchorEl={anchorEl}
+          onMenuOpen={handleMenuOpen}
+          onMenuClose={handleMenuClose}
+          onProfileClick={handleProfileClick}
+          onSettingsClick={handleSettingsClick}
+          onSignOutClick={handleSignOutClick}
         />
         <PortfolioSummary
-          accounts={portfolioMetadata.accounts}
+          accounts={displayMetadata.accounts}
           selectedAccountNames={selectedAccounts}
-          baseCurrency={portfolioMetadata.base_currency}
+          baseCurrency={displayMetadata.base_currency}
           isValueVisible={isValueVisible}
         />
       </div>
 
-      {/* Main Content Area - Adjusts based on chat visibility */}
-      <div className="flex">
+      {/* Main Content Area */}
+      <div className="flex flex-1">
         {/* Portfolio Data Section */}
         <div
           className="flex-1 transition-all duration-300"
           style={{
-            marginRight: aiChatEnabled && isAIChatOpen ? `${chatWidth}px` : '0px',
+            marginRight: aiChatEnabled && isAIChatOpen && window.innerWidth >= 1024 ? `${chatWidth}px` : '0px',
           }}
         >
-          <div className="container mx-auto px-4 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-              {portfolioData.map(chart => (
-                <PieChart
-                  key={chart.chart_title}
-                  title={`<b>${chart.chart_title}</b>${
-                    isValueVisible
-                      ? ` <span class="text-xs text-gray-400 ml-1">
-                          ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
-                            chart.chart_total
-                          )}
-                          (${portfolioMetadata.base_currency})
-                          </span>`
-                      : ''
-                  }`}
-                  data={chart.chart_data}
-                  total={chart.chart_total}
-                  baseCurrency={portfolioMetadata.base_currency}
-                  hideValues={!isValueVisible}
-                />
-              ))}
+          <main className="flex-1">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+              {showEmptyState ? (
+                // Empty state content
+                <div className="flex items-center justify-center min-h-[60vh]">
+                  <div className="text-center max-w-md">
+                    <div className="text-6xl mb-6">📊</div>
+                    <h2 className="text-2xl font-bold text-white mb-4">Welcome to Your Portfolio Dashboard</h2>
+                    <p className="text-gray-300 mb-6">
+                      You don't have any portfolios yet. Create your first portfolio using the dropdown menu above to start tracking your investments.
+                    </p>
+                    <div className="text-left space-y-2 text-sm text-gray-400 bg-gray-800 p-4 rounded-lg">
+                      <p className="font-medium text-white mb-2">Getting Started:</p>
+                      <p>• Click the dropdown above to create a portfolio</p>
+                      <p>• Add accounts (bank, brokerage, retirement)</p>
+                      <p>• Track stocks, bonds, ETFs, and cash holdings</p>
+                      <p>• View performance analytics and breakdowns</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Normal portfolio content
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                  {displayData && displayData.map(chart => (
+                    <PieChart
+                      key={chart.chart_title}
+                      title={`<b>${chart.chart_title}</b>${
+                        isValueVisible
+                          ? ` <span class="text-xs text-gray-400 ml-1">
+                              ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+                                chart.chart_total
+                              )}
+                              (${displayMetadata.base_currency})
+                              </span>`
+                          : ''
+                      }`}
+                      data={chart.chart_data}
+                      total={chart.chart_total}
+                      baseCurrency={displayMetadata.base_currency}
+                      hideValues={!isValueVisible}
+                    />
+                  ))}
+                </div>
+              )}
+              {holdingsData && !showEmptyState && (
+                <div className="mt-8">
+                  <HoldingsTable
+                    data={holdingsData}
+                    isValueVisible={isValueVisible}
+                  />
+                </div>
+              )}
             </div>
-            {holdingsData && (
-              <div className="mt-8">
-                <HoldingsTable
-                  data={holdingsData}
-                  isValueVisible={isValueVisible}
-                />
-              </div>
-            )}
-          </div>
+          </main>
         </div>
 
         {/* AI Chat Sidebar */}
-        {aiChatEnabled && (
+        {aiChatEnabled && isAIChatOpen && (
           <div
-            className={`fixed right-0 transition-transform duration-300 transform ${
+            className={`fixed inset-0 z-40 transition-transform duration-300 transform ${
               isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
-            } z-40`}
+            } lg:relative lg:translate-x-0 lg:inset-y-0`}
             style={{
-              width: `${chatWidth}px`,
-              top: HEADER_HEIGHT,
-              height: `calc(100vh - ${HEADER_HEIGHT}px)`
+              width: window.innerWidth < 1024 ? '100%' : `${chatWidth}px`,
+              top: 0,
+              height: '100vh',
             }}
           >
-            {/* Resize Handle */}
             <div
               ref={resizeRef}
-              className="absolute left-0 top-0 w-1 h-full bg-gray-600 cursor-col-resize hover:bg-blue-500 transition-colors"
               onMouseDown={handleMouseDown}
+              className={`absolute left-0 top-0 w-1.5 h-full bg-gray-700 cursor-col-resize hover:bg-blue-500 transition-colors ${
+                isResizing ? 'bg-blue-600' : ''
+              }`}
+              style={{ zIndex: 50 }}
             />
-            <div className="h-full p-4">
-              <AIChat
-                portfolioName={availablePortfolios.find(p => p.portfolio_id === selectedPortfolioId)?.portfolio_name || 'Portfolio'}
-                isOpen={isAIChatOpen}
-                onClose={() => setIsAIChatOpen(false)}
-              />
+            <div className="h-full bg-gray-800" style={{ width: '100%' }}>
+              <AIChat />
             </div>
           </div>
         )}

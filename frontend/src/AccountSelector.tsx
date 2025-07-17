@@ -14,7 +14,11 @@ import {
   Plus,
   Trash2,
   X,
-  Edit
+  Edit,
+  User,
+  MessageCircle,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -36,6 +40,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import HamburgerMenu from "@/components/ui/HamburgerMenu";
+
+
 import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
 import api from './utils/api';
@@ -52,6 +59,16 @@ interface AccountSelectorProps {
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
+  // New props for the moved buttons
+  aiChatEnabled: boolean;
+  isAIChatOpen: boolean;
+  onToggleAIChat: () => void;
+  anchorEl: null | HTMLElement;
+  onMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
+  onMenuClose: () => void;
+  onProfileClick: () => void;
+  onSettingsClick: () => void;
+  onSignOutClick: () => Promise<void>;
 }
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
@@ -65,7 +82,17 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onAccountAdded,
   onPortfolioDeleted,
   onAccountDeleted,
-  onDefaultPortfolioSet
+  onDefaultPortfolioSet,
+  // New props for the moved buttons
+  aiChatEnabled,
+  isAIChatOpen,
+  onToggleAIChat,
+  anchorEl,
+  onMenuOpen,
+  onMenuClose,
+  onProfileClick,
+  onSettingsClick,
+  onSignOutClick
 }) => {
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
@@ -228,7 +255,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       // Filter out empty RSU and ESPP plans
       const validRSUPlans = newAccount.rsu_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
-      
+
       const validESPPPlans = newAccount.espp_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
@@ -382,7 +409,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       // Filter out empty RSU and ESPP plans
       const validRSUPlans = editAccount.rsu_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
-      
+
       const validESPPPlans = editAccount.espp_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
@@ -461,7 +488,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   return (
     <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
       <div className="container mx-auto flex justify-between items-start">
-        <div>
+        <div className="flex-1">
           <PortfolioSelector
             portfolios={availableFiles}
             selectedPortfolioId={selectedFile}
@@ -476,7 +503,28 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-4">
+        {/* Hamburger Menu for Mobile */}
+        <div className="md:hidden">
+          <HamburgerMenu
+            accounts={accounts}
+            toggleAccountSelection={toggleAccountSelection}
+            isValueVisible={isValueVisible}
+            toggleValueVisibility={toggleValueVisibility}
+            setShowAddAccountModal={setShowAddAccountModal}
+            aiChatEnabled={aiChatEnabled}
+            isAIChatOpen={isAIChatOpen}
+            onToggleAIChat={onToggleAIChat}
+            onMenuOpen={onMenuOpen}
+            onProfileClick={onProfileClick}
+            onSettingsClick={onSettingsClick}
+            onSignOutClick={onSignOutClick}
+            anchorEl={anchorEl}
+            onMenuClose={onMenuClose}
+          />
+        </div>
+
+        {/* Full Header for Desktop */}
+        <div className="hidden md:flex items-center space-x-4">
           <div className="flex space-x-2">
             {accounts.map(account => (
                 <div
@@ -489,10 +537,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <div
                     className={`
                   group cursor-pointer flex items-center space-x-2 
-                  pl-3 pr-4 py-2 rounded-lg transition-all duration-300 transform hover:scale-105 
+                  pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105
                   ${account.isSelected
-                        ? 'bg-gradient-to-br from-sky-600 to-sky-800 border border-sky-500/50 shadow-sky-500/25' 
-                        : 'bg-gradient-to-br from-gray-700 to-gray-800 border border-gray-600/50 shadow-gray-700/25 hover:from-gray-600 hover:to-gray-700'}
+                        ? 'bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 shadow-blue-500/10'
+                        : 'bg-gray-500/10 backdrop-blur-sm border border-gray-400/20 shadow-gray-500/5 hover:bg-gray-400/15 hover:border-gray-300/30'}
                 `}
                     onClick={() => toggleAccountSelection(account.account_name)}
                   >
@@ -532,7 +580,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           }}
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-blue-500 hover:bg-gray-800 hover:border-blue-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                          className="h-8 w-8 border border-transparent bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 hover:border-blue-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
                           title="Edit account"
                         >
                           <Edit className="h-4 w-4" />
@@ -545,7 +593,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             }}
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 border border-transparent bg-gray-900 text-white hover:text-red-500 hover:bg-gray-800 hover:border-red-700 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors"
+                            className="h-8 w-8 border border-transparent bg-red-500/20 backdrop-blur-sm text-red-200 hover:text-red-100 hover:bg-red-500/30 hover:border-red-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
                             title="Delete account"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -560,10 +608,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             {/* Add New Account Button */}
             <button
               onClick={() => setShowAddAccountModal(true)}
-              className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl border border-green-600 group"
+              className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group"
             >
-              <Plus size={16} className="text-green-100 group-hover:text-white" />
-              <span className="text-xs font-medium">Add Account</span>
+              <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
+              <span className="text-xs font-medium text-emerald-100">Add Account</span>
             </button>
           </div>
 
@@ -574,6 +622,61 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           >
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
+
+          {/* AI Chat Toggle Button */}
+          {aiChatEnabled && (
+            <button
+              onClick={onToggleAIChat}
+              className={`p-2 rounded-full text-white backdrop-blur-md transition-colors ${
+                isAIChatOpen
+                  ? 'bg-blue-500/80 hover:bg-blue-500'
+                  : 'bg-gray-600/80 hover:bg-gray-600'
+              }`}
+            >
+              {isAIChatOpen ? <X size={20} /> : <MessageCircle size={20} />}
+            </button>
+          )}
+
+          {/* Person Icon Dropdown */}
+          <div className="relative">
+            <button
+              onClick={onMenuOpen}
+              className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors"
+            >
+              <User size={20} />
+            </button>
+
+            {Boolean(anchorEl) && (
+              <div
+                className="absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-50"
+                onMouseLeave={onMenuClose}
+              >
+                <div className="py-1">
+                  <button
+                    onClick={onProfileClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <User size={16} className="mr-3" />
+                    Profile
+                  </button>
+                  <button
+                    onClick={onSettingsClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <Settings size={16} className="mr-3" />
+                    Settings
+                  </button>
+                  <button
+                    onClick={onSignOutClick}
+                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
+                  >
+                    <LogOut size={16} className="mr-3" />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
@@ -589,7 +692,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Create a new account to manage your investments and assets.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-y-auto">
             <div className="flex gap-6 py-4 min-h-[400px]">
               {/* Left Column - Form Fields */}
@@ -603,7 +706,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     placeholder="Enter account name"
                   />
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label htmlFor="account-type">Account Type</Label>
                   <Select value={newAccount.account_type} onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}>
@@ -619,7 +722,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label>Owners</Label>
                   <div className="space-y-2">
@@ -629,7 +732,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         id="owner-me"
                         checked={newAccount.owners.includes('me')}
                         onChange={(e) => {
-                          const owners = e.target.checked 
+                          const owners = e.target.checked
                             ? [...new Set([...newAccount.owners, 'me'])]
                             : newAccount.owners.filter(o => o !== 'me');
                           setNewAccount({ ...newAccount, owners });
@@ -644,7 +747,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         id="owner-wife"
                         checked={newAccount.owners.includes('wife')}
                         onChange={(e) => {
-                          const owners = e.target.checked 
+                          const owners = e.target.checked
                             ? [...new Set([...newAccount.owners, 'wife'])]
                             : newAccount.owners.filter(o => o !== 'wife');
                           setNewAccount({ ...newAccount, owners });
@@ -662,7 +765,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 {newAccount.account_type === 'company-custodian-account' ? (
                   <div className="space-y-4">
                     <Label className="mb-3">Company Plans</Label>
-                    
+
                     {/* RSU Plans */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -692,7 +795,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           Add RSU Plan
                         </Button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {newAccount.rsu_plans.map((plan, index) => (
                           <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
@@ -716,7 +819,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             <RSUPlanConfig
                               plan={plan}
                               onChange={(updatedPlan) => {
-                                const updatedPlans = newAccount.rsu_plans.map((p, i) => 
+                                const updatedPlans = newAccount.rsu_plans.map((p, i) =>
                                   i === index ? updatedPlan : p
                                 );
                                 setNewAccount({ ...newAccount, rsu_plans: updatedPlans });
@@ -761,7 +864,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           Add ESPP Plan
                         </Button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {newAccount.espp_plans.map((plan, index) => (
                           <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
@@ -785,7 +888,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             <ESPPPlanConfig
                               plan={plan}
                               onChange={(updatedPlan) => {
-                                const updatedPlans = newAccount.espp_plans.map((p, i) => 
+                                const updatedPlans = newAccount.espp_plans.map((p, i) =>
                                   i === index ? updatedPlan : p
                                 );
                                 setNewAccount({ ...newAccount, espp_plans: updatedPlans });
@@ -808,7 +911,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
                         <div className="w-12 px-3 py-3"></div>
                       </div>
-                      
+
                       {/* Table Body */}
                       <div className="flex-1 overflow-y-auto">
                         {newAccount.holdings.map((holding, index) => (
@@ -864,7 +967,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               </div>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddAccountModal(false)}>
               Cancel
@@ -891,7 +994,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Update the account details and holdings.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-y-auto">
             <div className="flex gap-6 py-4 min-h-[400px]">
               {/* Left Column - Form Fields */}
@@ -905,7 +1008,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     placeholder="Enter account name"
                   />
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label htmlFor="edit-account-type">Account Type</Label>
                   <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
@@ -921,7 +1024,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label>Owners</Label>
                   <div className="space-y-2">
@@ -931,7 +1034,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         id="edit-owner-me"
                         checked={editAccount.owners.includes('me')}
                         onChange={(e) => {
-                          const owners = e.target.checked 
+                          const owners = e.target.checked
                             ? [...new Set([...editAccount.owners, 'me'])]
                             : editAccount.owners.filter(o => o !== 'me');
                           setEditAccount({ ...editAccount, owners });
@@ -946,7 +1049,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         id="edit-owner-wife"
                         checked={editAccount.owners.includes('wife')}
                         onChange={(e) => {
-                          const owners = e.target.checked 
+                          const owners = e.target.checked
                             ? [...new Set([...editAccount.owners, 'wife'])]
                             : editAccount.owners.filter(o => o !== 'wife');
                           setEditAccount({ ...editAccount, owners });
@@ -964,7 +1067,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 {editAccount.account_type === 'company-custodian-account' ? (
                   <div className="space-y-4">
                     <Label className="mb-3">Company Plans</Label>
-                    
+
                     {/* RSU Plans */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -994,7 +1097,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           Add RSU Plan
                         </Button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {editAccount.rsu_plans.map((plan, index) => (
                           <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
@@ -1018,7 +1121,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             <RSUPlanConfig
                               plan={plan}
                               onChange={(updatedPlan) => {
-                                const updatedPlans = editAccount.rsu_plans.map((p, i) => 
+                                const updatedPlans = editAccount.rsu_plans.map((p, i) =>
                                   i === index ? updatedPlan : p
                                 );
                                 setEditAccount({ ...editAccount, rsu_plans: updatedPlans });
@@ -1063,7 +1166,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           Add ESPP Plan
                         </Button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {editAccount.espp_plans.map((plan, index) => (
                           <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
@@ -1087,7 +1190,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             <ESPPPlanConfig
                               plan={plan}
                               onChange={(updatedPlan) => {
-                                const updatedPlans = editAccount.espp_plans.map((p, i) => 
+                                const updatedPlans = editAccount.espp_plans.map((p, i) =>
                                   i === index ? updatedPlan : p
                                 );
                                 setEditAccount({ ...editAccount, espp_plans: updatedPlans });
@@ -1110,7 +1213,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
                         <div className="w-12 px-3 py-3"></div>
                       </div>
-                      
+
                       {/* Table Body */}
                       <div className="flex-1 overflow-y-auto">
                         {editAccount.holdings.map((holding, index) => (
@@ -1166,7 +1269,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               </div>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditAccountModal(false)}>
               Cancel

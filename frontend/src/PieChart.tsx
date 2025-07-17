@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { ChartDataItem } from './types';
+import { useMediaQuery } from './hooks/useMediaQuery';
 
 interface PieChartProps {
   title: string;
@@ -18,7 +19,35 @@ const PieChart: React.FC<PieChartProps> = ({
   hideValues = false
 }) => {
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
+  const [is3DLoaded, setIs3DLoaded] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   console.log(selectedSeries);
+
+  // Initialize 3D module
+  useEffect(() => {
+    const load3D = async () => {
+      try {
+        await import('highcharts/highcharts-3d');
+        setIs3DLoaded(true);
+      } catch (error) {
+        console.error('Failed to load 3D module:', error);
+        setIs3DLoaded(true); // Still render the chart, just without 3D
+      }
+    };
+    load3D();
+  }, []);
+
+  // Don't render until 3D module is loaded
+  if (!is3DLoaded) {
+    return (
+      <div className="p-4">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-white">Loading chart...</div>
+        </div>
+      </div>
+    );
+  }
+
   // Format number with comma separators and no decimal
   const formatNumber = (value: number) =>
     new Intl.NumberFormat('en-US', {
@@ -32,13 +61,38 @@ const PieChart: React.FC<PieChartProps> = ({
       backgroundColor: 'transparent',
       style: {
         fontFamily: 'Arial, sans-serif'
+      },
+      options3d: {
+        enabled: true,
+        alpha: 45,
+        beta: 0,
+        depth: 50,
+        viewDistance: 25
       }
     },
+    colors: [
+      '#4E6BA6', // True Blue
+      '#938FB8', // Cool gray
+      '#D8B5BE', // Fairy Tale
+      '#398AA2', // Blue (Munsell)
+      '#1E7590', // Cerulean
+      '#6B8FB8', // Light blue
+      '#B8A8C8', // Lavender
+      '#C8B5D8', // Light purple
+      '#A8C8D8', // Powder blue
+      '#8FB8C8', // Sky blue
+      '#D8C8B8', // Warm beige
+      '#B8D8C8'  // Mint green
+    ],
     credits: {
       enabled: false
     },
     title: {
       text: title,
+      align: 'left',
+      verticalAlign: 'top',
+      x: 0,
+      y: 20,
       style: {
         fontWeight: 'normal',
         fontSize: '18px',
@@ -60,8 +114,11 @@ const PieChart: React.FC<PieChartProps> = ({
       pie: {
         allowPointSelect: true,
         cursor: 'pointer',
+        borderColor: '#242424', // Dark gray border to match theme
+        borderWidth: 1,
+        depth: 35,
         dataLabels: {
-          enabled: true,
+          enabled: !isMobile,
           format: '{point.percentage:.2f}%',
           color: 'white'
         },
@@ -83,6 +140,7 @@ const PieChart: React.FC<PieChartProps> = ({
       }
     },
     legend: {
+      enabled: !isMobile,
       layout: 'vertical',
       align: 'right',
       verticalAlign: 'middle',
@@ -108,7 +166,7 @@ const PieChart: React.FC<PieChartProps> = ({
   };
 
   return (
-    <div className="p-4 border border-gray-700 rounded-lg shadow-sm bg-gray-800">
+    <div className="p-4">
       <HighchartsReact
         highcharts={Highcharts}
         options={chartOptions}

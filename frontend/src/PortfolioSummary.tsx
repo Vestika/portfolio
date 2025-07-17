@@ -41,19 +41,26 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
   }, {} as CashHoldings);
 
   // Market status state
-  const [marketStatus, setMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
+  const [usMarketStatus, setUsMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
+  const [taseMarketStatus, setTaseMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
 
   useEffect(() => {
     api.get('/market-status')
-      .then(res => setMarketStatus(res.data.us_market_status || 'unknown'))
-      .catch(() => setMarketStatus('unknown'));
+      .then(res => {
+        setUsMarketStatus(res.data.us_market_status || 'unknown');
+        setTaseMarketStatus(res.data.tase_market_status || 'unknown');
+      })
+      .catch(() => {
+        setUsMarketStatus('unknown');
+        setTaseMarketStatus('unknown');
+      });
   }, []);
 
   return (
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
-      <div className="container mx-auto flex items-center space-x-4 py-1.5 px-4">
+      <div className="container mx-auto flex flex-wrap items-center space-x-4 py-1.5 px-4">
         {/* Total Value Chip */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2">
           <Wallet size={14} className="text-green-400 mr-1.5" />
           <span className="text-xs font-medium mr-1">Total:</span>
           {isValueVisible ? (
@@ -76,7 +83,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         {Object.entries(totalCash).map(([currency, amount]) => (
           <div
             key={currency}
-            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
+            className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2"
           >
             <Coins size={14} className="text-sky-400 mr-1.5" />
             <span className="text-xs font-medium mr-1">{currency}:</span>
@@ -96,12 +103,19 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
           </div>
         ))}
         <div className="flex-1" />
-        {/* US Market Status */}
-        <div className={`flex items-center rounded-full px-3 py-1 ml-auto ${marketStatus === 'open' ? 'bg-green-700' : marketStatus === 'closed' ? 'bg-gray-700' : 'bg-gray-700'}`}
-             title="US Market Status">
-          <span className={`w-2 h-2 rounded-full mr-2 ${marketStatus === 'open' ? 'bg-green-400' : marketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
-          <span className="text-xs font-medium">us-market-status:</span>
-          <span className={`ml-1 text-xs ${marketStatus === 'open' ? 'text-green-400' : marketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{marketStatus}</span>
+        {/* NYSE Market Status */}
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-2"
+             title="NYSE Market Status">
+          <span className={`w-2 h-2 rounded-full mr-2 ${usMarketStatus === 'open' ? 'bg-green-400' : usMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
+          <span className="text-xs font-medium">nyse:</span>
+          <span className={`ml-1 text-xs ${usMarketStatus === 'open' ? 'text-green-400' : usMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{usMarketStatus}</span>
+        </div>
+        {/* TASE Market Status */}
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 ml-2 mb-2"
+             title="TASE Market Status">
+          <span className={`w-2 h-2 rounded-full mr-2 ${taseMarketStatus === 'open' ? 'bg-green-400' : taseMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
+          <span className="text-xs font-medium">tase:</span>
+          <span className={`ml-1 text-xs ${taseMarketStatus === 'open' ? 'text-green-400' : taseMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{taseMarketStatus}</span>
         </div>
       </div>
     </div>

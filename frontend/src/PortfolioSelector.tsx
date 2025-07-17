@@ -53,10 +53,8 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   // Fetch default portfolio from backend
   useEffect(() => {
     const fetchDefaultPortfolio = async () => {
-      if (!userName) return;
-      
       try {
-        const response = await api.get(`/user/${encodeURIComponent(userName)}/default-portfolio`);
+        const response = await api.get(`/default-portfolio`);
         setDefaultPortfolioId(response.data.default_portfolio_id);
       } catch (error) {
         console.error('Failed to fetch default portfolio:', error);
@@ -64,14 +62,11 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
     };
 
     fetchDefaultPortfolio();
-  }, [userName]);
+  }, []);
 
   const handleSetDefault = async (portfolioId: string) => {
-    if (!userName) return;
-    
     try {
-      await api.post(`/user/${encodeURIComponent(userName)}/default-portfolio`, {
-        user_name: userName,
+      await api.post(`/default-portfolio`, {
         portfolio_id: portfolioId,
       });
 
@@ -84,10 +79,6 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       alert(`Error setting default portfolio: ${errorMessage}`);
     }
   };
-
-  if (!portfolios || portfolios.length === 0) {
-    return <h1 className="text-2xl font-bold text-white">{userName}'s Portfolio</h1>;
-  }
 
   const handleCreatePortfolio = async () => {
     try {
@@ -203,6 +194,107 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       alert('Error creating portfolio: ' + errorMessage);
     }
   };
+
+  // Check if we should show empty state after all functions are defined
+  const showEmptyState = !portfolios || portfolios.length === 0;
+
+  if (showEmptyState) {
+    return (
+      <div className="relative">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
+              <h1 className="text-2xl font-bold flex items-center">
+                {userName}'s Portfolio
+                <ChevronDown
+                  size={16}
+                  className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"
+                />
+              </h1>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-96 bg-white dark:bg-gray-900 border shadow-lg">
+            <div className="p-3 text-center text-gray-500">
+              <p>No portfolios yet</p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onSelect={() => setShowCreateModal(true)}
+              className="cursor-pointer hover:bg-green-50 hover:dark:bg-green-950 hover:text-green-900 hover:dark:text-green-100 p-3 transition-colors"
+            >
+              <Plus className="mr-3 h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Create Your First Portfolio</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Create Portfolio Modal - needs to be here even when no portfolios */}
+        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Plus className="mr-2 h-5 w-5 text-green-500" />
+                Create New Portfolio
+              </DialogTitle>
+              <DialogDescription>
+                Create a new portfolio to manage your investments and assets.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-name">Portfolio Name</Label>
+                <Input
+                  id="portfolio-name"
+                  value={newPortfolio.portfolio_name}
+                  onChange={(e) => setNewPortfolio({ ...newPortfolio, portfolio_name: e.target.value })}
+                  placeholder="Enter portfolio name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="base-currency">Base Currency</Label>
+                <Select value={newPortfolio.base_currency} onValueChange={(value) => setNewPortfolio({ ...newPortfolio, base_currency: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ILS">ILS</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-upload">Upload Portfolio (YAML)</Label>
+                <Input
+                  id="portfolio-upload"
+                  type="file"
+                  accept=".yaml,application/x-yaml,text/yaml"
+                  onChange={handleUploadPortfolio}
+                />
+              </div>
+              {uploadedYaml !== null && (
+                <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded border mt-2">
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">YAML loaded. You can now edit the portfolio name and click Create.</div>
+                  <pre className="text-xs overflow-x-auto max-h-40 whitespace-pre-wrap">{yaml.dump(uploadedYaml as Record<string, unknown>)}</pre>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateModal(false)} className="bg-gray-900 text-white hover:bg-gray-800">
+                Cancel
+              </Button>
+              <Button
+                onClick={uploadedYaml ? handleCreatePortfolioFromYaml : handleCreatePortfolio}
+                disabled={!newPortfolio.portfolio_name}
+              >
+                Create Portfolio
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

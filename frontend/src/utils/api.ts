@@ -3,6 +3,8 @@ import { auth } from '../firebase';
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
+
+
 // Create axios instance
 const api = axios.create({
   baseURL: apiUrl,
@@ -10,6 +12,7 @@ const api = axios.create({
 
 // Function to get auth token with proper error handling
 const getAuthToken = async (): Promise<string | null> => {
+
   try {
     const user = auth.currentUser;
     console.log('Current user:', user); // Debug log

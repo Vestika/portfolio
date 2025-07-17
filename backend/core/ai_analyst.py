@@ -28,21 +28,44 @@ class AIAnalyst:
     
     def __init__(self):
         self.client = None
+        self._available = False
+        self._error_message = None
         self._initialize_client()
     
     def _initialize_client(self):
         """Initialize the Google AI client"""
         try:
             if not settings.google_ai_api_key:
-                raise ValueError("Google AI API key not configured")
+                self._available = False
+                self._error_message = "Google AI API key not configured"
+                logger.warning("Failed to initialize AI client: Google AI API key not configured")
+                return
             
             # Create client instance
             self.client = genai.Client(api_key=settings.google_ai_api_key)
+            self._available = True
             logger.info(f"AI Analyst initialized with model: {settings.google_ai_model}")
             
         except Exception as e:
+            self._available = False
+            self._error_message = str(e)
             logger.error(f"Failed to initialize AI client: {e}")
-            raise
+            # Don't raise - just mark as unavailable
+    
+    @property
+    def is_available(self) -> bool:
+        """Check if the AI service is available"""
+        return self._available
+    
+    @property
+    def error_message(self) -> str:
+        """Get the error message if AI service is unavailable"""
+        return self._error_message
+    
+    def _check_availability(self):
+        """Check if AI service is available, raise exception if not"""
+        if not self.is_available:
+            raise ValueError(f"AI service unavailable: {self.error_message}")
     
     def _format_portfolio_data(self, portfolio_data: Dict[str, Any]) -> str:
         """Format portfolio data for AI analysis"""
@@ -162,8 +185,7 @@ Format your response clearly and professionally.
     async def analyze_portfolio(self, portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
         """Perform comprehensive portfolio analysis"""
         try:
-            if not self.client:
-                raise ValueError("AI client not initialized")
+            self._check_availability()
             
             formatted_data = self._format_portfolio_data(portfolio_data)
             prompt = self._create_analysis_prompt(formatted_data)
@@ -204,8 +226,7 @@ Format your response clearly and professionally.
     async def chat_with_analyst(self, portfolio_data: Dict[str, Any], user_question: str, conversation_history: List[Dict[str, str]] = None, tagged_entities: List[Any] = None) -> Dict[str, Any]:
         """Interactive chat with AI analyst"""
         try:
-            if not self.client:
-                raise ValueError("AI client not initialized")
+            self._check_availability()
             
             formatted_data = self._format_portfolio_data(portfolio_data)
             prompt = self._create_chat_prompt(formatted_data, user_question, conversation_history, tagged_entities)
@@ -246,8 +267,7 @@ Format your response clearly and professionally.
     ) -> Dict[str, Any]:
         """Interactive chat with AI analyst for multiple portfolios"""
         try:
-            if not self.client:
-                raise ValueError("AI client not initialized")
+            self._check_availability()
             
             # Format multiple portfolio data
             formatted_data = self._format_multi_portfolio_data(portfolio_contexts)
