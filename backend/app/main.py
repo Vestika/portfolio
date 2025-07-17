@@ -237,6 +237,10 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
                     for holding in account.holdings
                 ]
             }
+            if hasattr(account, "rsu_plans") and account.rsu_plans is not None:
+                account_data["rsu_plans"] = account.rsu_plans
+            if hasattr(account, "espp_plans") and account.espp_plans is not None:
+                account_data["espp_plans"] = account.espp_plans
             for holding in account.holdings:
                 if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
                     account_data["account_cash"][holding.symbol] = holding.units

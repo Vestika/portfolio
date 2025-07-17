@@ -332,6 +332,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         espp_plans: account.espp_plans || []
       });
       
+      // Collapse all loaded plans by default
+      setEditCollapsedRSUPlans(new Set((account.rsu_plans || []).map(plan => plan.id)));
+      setEditCollapsedESPPPlans(new Set((account.espp_plans || []).map(plan => plan.id)));
+      
       setShowEditAccountModal(true);
       setHoveredAccount(null);
     }
