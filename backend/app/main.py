@@ -436,6 +436,8 @@ class CreateAccountRequest(BaseModel):
     account_type: str = "bank-account"
     owners: list[str] = ["me"]
     holdings: list[dict[str, Any]] = []
+    rsu_plans: list[Any] = []
+    espp_plans: list[Any] = []
 
 
 @app.post("/portfolio")
@@ -530,7 +532,9 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                 "owners": request.owners,
                 "type": request.account_type
             },
-            "holdings": request.holdings
+            "holdings": request.holdings,
+            "rsu_plans": request.rsu_plans,
+            "espp_plans": request.espp_plans
         }
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
@@ -634,7 +638,9 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                 "owners": request.owners,
                 "type": request.account_type
             },
-            "holdings": request.holdings
+            "holdings": request.holdings,
+            "rsu_plans": request.rsu_plans,
+            "espp_plans": request.espp_plans
         }
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
