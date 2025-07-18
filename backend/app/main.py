@@ -429,7 +429,7 @@ async def get_holdings_table(
                                 if entry.get('TradeDate') and entry.get('SellPrice'):
                                     historical_prices.append({
                                         "date": entry.get('TradeDate'),
-                                        "price": float(entry.get('SellPrice'))
+                                        "price": float(entry.get('SellPrice')) / 100
                                     })
                             if not historical_prices:
                                 logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
