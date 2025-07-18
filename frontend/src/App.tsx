@@ -17,6 +17,7 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
+import RSUVestingTimeline from './components/RSUVestingTimeline';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
@@ -51,6 +52,7 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(500);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
+  const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -81,32 +83,25 @@ const App: React.FC = () => {
   const initializeApp = async () => {
     try {
       setIsLoading(true);
-      
       // First, fetch available portfolios
       const portfolios = await fetchAvailablePortfolios();
-      
       if (portfolios.length === 0) {
         // No portfolios found - this is fine, user will create one manually
         console.log('No portfolios found - showing empty state');
         setIsLoading(false);
         return;
       }
-      
       // Check for default portfolio
       const defaultPortfolioId = await getDefaultPortfolio();
-      
       let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
-      
       if (defaultPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === defaultPortfolioId)) {
         portfolioToSelect = defaultPortfolioId;
         console.log(`Loading default portfolio: ${defaultPortfolioId}`);
       } else {
         console.log(`No default portfolio found for user, using first portfolio`);
       }
-      
       setSelectedPortfolioId(portfolioToSelect);
       setIsInitialized(true);
-      
     } catch (err) {
       console.error('Failed to initialize app:', err);
       setError('Failed to initialize application');
@@ -201,6 +196,31 @@ const App: React.FC = () => {
 
     loadPortfolioData();
   }, [selectedPortfolioId, isInitialized]);
+
+
+  useEffect(() => {
+    if (!portfolioMetadata || !selectedPortfolioId) return;
+    // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
+    const fetchAllRSUVesting = async () => {
+      const vestingMap: Record<string, any> = {};
+      await Promise.all(
+        (portfolioMetadata.accounts || []).map(async (account) => {
+          const type = account.account_type || account.account_properties?.type;
+          if (type === 'company-custodian-account') {
+            try {
+              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/rsu-vesting`);
+              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
+            } catch (e) {
+              vestingMap[account.account_name] = [];
+            }
+          }
+        })
+      );
+      setMainRSUVesting(vestingMap);
+    };
+    fetchAllRSUVesting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolioMetadata, selectedPortfolioId]);
 
   const handleAccountsChange = (accountNames: string[]) => {
     setSelectedAccounts(accountNames);
@@ -477,6 +497,67 @@ const App: React.FC = () => {
                       hideValues={!isValueVisible}
                     />
                   ))}
+                  {/* RSU Vesting grouped by symbol */}
+                  {(() => {
+                    // 1. Gather all plans with their account names
+                    const allPlans: Array<{ plan: any; accountName: string }> = [];
+                    Object.entries(mainRSUVesting).forEach(([accountName, plans]) => {
+                      (plans as any[]).forEach(plan => {
+                        allPlans.push({ plan, accountName });
+                      });
+                    });
+                    // 2. Group by symbol
+                    const grouped: Record<string, Array<{ plan: any; accountName: string }>> = {};
+                    allPlans.forEach(({ plan, accountName }) => {
+                      if (!grouped[plan.symbol]) grouped[plan.symbol] = [];
+                      grouped[plan.symbol].push({ plan, accountName });
+                    });
+                    // 3. Render
+                    return Object.entries(grouped).map(([symbol, plans]) => (
+                      <div key={symbol} className="bg-muted/30 rounded-lg p-4">
+                        <div className="text-base font-bold mb-2">{symbol}</div>
+                        <div className="space-y-4">
+                          {plans.map(({ plan, accountName }, idx) => {
+                            let displayPlan = plan;
+                            if (plan.left_company && plan.left_company_date) {
+                              // Find the last vested event before or on left_company_date
+                              const leftDate = new Date(plan.left_company_date);
+                              let vested = 0;
+                              let trimmedSchedule = [];
+                              if (Array.isArray(plan.schedule)) {
+                                trimmedSchedule = plan.schedule.filter((event: any) => new Date(event.date) <= leftDate);
+                                for (const event of trimmedSchedule as any[]) {
+                                  vested += event.units;
+                                }
+                              }
+                              displayPlan = {
+                                ...plan,
+                                total_units: vested,
+                                vested_units: vested,
+                                schedule: trimmedSchedule,
+                                next_vest_date: null,
+                                next_vest_units: 0,
+                              };
+                            }
+                            return (
+                              <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
+                                <div className="text-sm font-semibold mb-1">
+                                  {accountName}
+                                  {plans.length > 1 && (
+                                    <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
+                                  )}
+                                </div>
+                                <RSUVestingTimeline
+                                plan={displayPlan}
+                                baseCurrency={displayMetadata.base_currency}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               )}
               {holdingsData && !showEmptyState && (

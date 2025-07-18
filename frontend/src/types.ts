@@ -4,6 +4,32 @@ export interface PortfolioMetadata {
   accounts: AccountInfo[];
 }
 
+export interface RSUPlan {
+  id: string;
+  symbol: string;
+  units: number;
+  grant_date: string;
+  has_cliff: boolean;
+  cliff_duration_months?: number;
+  vesting_period_years: 3 | 4;
+  vesting_frequency: 'monthly' | 'quarterly' | 'annually';
+  left_company?: boolean;
+  left_company_date?: string | null;
+}
+
+export interface ESPPPlan {
+  id: string;
+  symbol: string;
+  units: number;
+  income_percentage: number;
+  buying_periods: {
+    start_date: string;
+    end_date: string;
+  }[];
+  stock_discount_percentage: number;
+  base_stock_price: number;
+}
+
 export interface AccountInfo {
   account_name: string;
   account_total: number;
@@ -13,6 +39,8 @@ export interface AccountInfo {
     symbol: string;
     units: number;
   }[];
+  rsu_plans?: RSUPlan[];
+  espp_plans?: ESPPPlan[];
   account_properties?: {
     [currency: string]: number;
   };

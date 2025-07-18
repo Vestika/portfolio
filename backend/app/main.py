@@ -3,6 +3,7 @@ import math
 from bson import ObjectId
 from datetime import datetime, timedelta
 from typing import Any, Optional, List
+from dateutil.relativedelta import relativedelta
 
 from fastapi import FastAPI, Query, Depends, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -237,6 +238,10 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
                     for holding in account.holdings
                 ]
             }
+            if hasattr(account, "rsu_plans") and account.rsu_plans is not None:
+                account_data["rsu_plans"] = account.rsu_plans
+            if hasattr(account, "espp_plans") and account.espp_plans is not None:
+                account_data["espp_plans"] = account.espp_plans
             for holding in account.holdings:
                 if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
                     account_data["account_cash"][holding.symbol] = holding.units
@@ -461,6 +466,8 @@ class CreateAccountRequest(BaseModel):
     account_type: str = "bank-account"
     owners: list[str] = ["me"]
     holdings: list[dict[str, Any]] = []
+    rsu_plans: list[Any] = []
+    espp_plans: list[Any] = []
 
 
 @app.post("/portfolio")
@@ -555,7 +562,9 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                 "owners": request.owners,
                 "type": request.account_type
             },
-            "holdings": request.holdings
+            "holdings": request.holdings,
+            "rsu_plans": request.rsu_plans,
+            "espp_plans": request.espp_plans
         }
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
@@ -659,7 +668,9 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                 "owners": request.owners,
                 "type": request.account_type
             },
-            "holdings": request.holdings
+            "holdings": request.holdings,
+            "rsu_plans": request.rsu_plans,
+            "espp_plans": request.espp_plans
         }
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
@@ -1418,4 +1429,143 @@ async def get_chat_autocomplete(
     except Exception as e:
         logger.error(f"Error getting chat autocomplete: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get autocomplete suggestions: {str(e)}")
+
+
+@app.get("/portfolio/{portfolio_id}/accounts/{account_name}/rsu-vesting")
+async def get_rsu_vesting(
+    portfolio_id: str,
+    account_name: str,
+    user=Depends(get_current_user)
+):
+    """
+    Return RSU vesting progress and schedule for each RSU plan in the account.
+    """
+    from datetime import datetime, timedelta
+    import math
+    from services.closing_price.price_manager import PriceManager
+
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+    portfolio = Portfolio.from_dict(doc)
+    calculator = get_or_create_calculator(portfolio_id, portfolio)
+
+    rsu_plans = account.get("rsu_plans", [])
+    now = datetime.now().date()
+    results = []
+    price_manager = PriceManager()
+    for plan in rsu_plans:
+        grant_date = datetime.strptime(plan["grant_date"], "%Y-%m-%d").date()
+        if plan.get('left_company'):
+            left_company_date = datetime.strptime(plan["left_company_date"], "%Y-%m-%d").date()
+        cliff_months = plan.get("cliff_duration_months") if plan.get("has_cliff") else 0
+        vesting_years = plan["vesting_period_years"]
+        vesting_frequency = plan["vesting_frequency"]  # 'monthly', 'quarterly', 'annually'
+        total_units = plan["units"]
+        # Calculate periods in cliff correctly
+        if vesting_frequency == "monthly":
+            period_months = 1
+        elif vesting_frequency == "quarterly":
+            period_months = 3
+        elif vesting_frequency == "annually":
+            period_months = 12
+        else:
+            period_months = 1
+        periods = vesting_years * (12 // period_months)
+        delta = relativedelta(months=period_months)
+        cliff_periods = cliff_months // period_months if period_months else 0
+        # Calculate units per period
+        units_per_period = total_units / periods
+        vested_units = 0
+        next_vest_date = None
+        next_vest_units = 0
+        schedule = []
+        cliff_date = grant_date + relativedelta(months=cliff_months) if cliff_months else grant_date
+        # Add cliff lump sum if applicable
+        periods_vested = 0
+        for i in range(periods):
+            vest_date = grant_date + delta * i
+            if vest_date < cliff_date:
+                continue  # skip periods before cliff
+            if cliff_months and vest_date == cliff_date:
+                # Lump sum for all periods in cliff
+                cliff_units = units_per_period * cliff_periods
+                schedule.append({"date": vest_date.isoformat(), "units": cliff_units})
+                if vest_date <= now:
+                    vested_units += cliff_units
+                elif not next_vest_date:
+                    next_vest_date = vest_date
+                    next_vest_units = cliff_units
+                periods_vested = cliff_periods
+                break
+        # Continue with regular vesting after cliff
+        for i in range(periods_vested + 1, periods):
+            vest_date = cliff_date + delta * (i - periods_vested)
+            if plan.get('left_company') and vest_date > left_company_date:
+                total_units = vested_units
+                break
+            schedule.append({"date": vest_date.isoformat(), "units": units_per_period})
+            if vest_date <= now:
+                vested_units += units_per_period
+            elif not next_vest_date:
+                next_vest_date = vest_date
+                next_vest_units = units_per_period
+        # Clamp vested units to total
+        vested_units = min(vested_units, total_units)
+        # Fetch current price for the symbol
+        symbol = plan["symbol"]
+        price_data = closing_price_service.get_price_sync(symbol)
+        price = price_data.get('price',  0.0)
+        price_currency = price_data.get('currency')
+        total_value = round(total_units * price, 2)
+        vested_value = round(vested_units * price, 2)
+        unvested_value = round((total_units - vested_units) * price, 2)
+        exchange_value = calculator.get_exchange_rate(price_data['currency'], portfolio.base_currency.value)
+        results.append({
+            "id": plan["id"],
+            "symbol": symbol,
+            "total_units": total_units,
+            "vested_units": round(vested_units, 2),
+            "next_vest_date": next_vest_date.isoformat() if next_vest_date else None,
+            "next_vest_units": round(next_vest_units, 2) if next_vest_units else 0,
+            "schedule": schedule,
+            "grant_date": plan["grant_date"],
+            "cliff_months": cliff_months,
+            "vesting_period_years": vesting_years,
+            "vesting_frequency": vesting_frequency,
+            "price": price,
+            "price_currency": price_currency,
+            "total_value": total_value * exchange_value,
+            "vested_value": vested_value * exchange_value,
+            "unvested_value": unvested_value * exchange_value
+        })
+
+    # --- Update holdings in DB with vested units ---
+    # Build a dict: symbol -> vested_units (rounded up)
+    symbol_to_vested = {}
+    for plan_result in results:
+        symbol = plan_result["symbol"]
+        vested = plan_result["vested_units"]
+        symbol_to_vested[symbol] = symbol_to_vested.get(symbol, 0) + math.ceil(vested)
+    # Update the holdings array for the account
+    new_holdings = [
+        {"symbol": symbol, "units": units}
+        for symbol, units in symbol_to_vested.items()
+    ]
+    # Update the account in the doc
+    updated = False
+    for acc in doc["accounts"]:
+        if acc["name"] == account_name:
+            acc["holdings"] = new_holdings
+            updated = True
+            break
+    if updated:
+        await collection.replace_one({"_id": doc["_id"]}, doc)
+        invalidate_portfolio_cache(portfolio_id)
+    # --- End update holdings ---
+    return {"plans": results}
 

@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   PortfolioMetadata,
   PortfolioFile,
-  AccountInfo
+  AccountInfo,
+  RSUPlan,
+  ESPPPlan
 } from './types';
 import {
   Eye,
@@ -41,6 +43,8 @@ import {
 import HamburgerMenu from "@/components/ui/HamburgerMenu";
 
 
+import RSUPlanConfig from './components/RSUPlanConfig';
+import ESPPPlanConfig from './components/ESPPPlanConfig';
 import api from './utils/api';
 
 interface AccountSelectorProps {
@@ -103,18 +107,40 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [accountToDelete, setAccountToDelete] = useState<string>('');
   const [accountToEdit, setAccountToEdit] = useState<string>('');
   const [hoveredAccount, setHoveredAccount] = useState<string | null>(null);
-  const [newAccount, setNewAccount] = useState({
+  const [newAccount, setNewAccount] = useState<{
+    account_name: string;
+    account_type: string;
+    owners: string[];
+    holdings: { symbol: string; units: string }[];
+    rsu_plans: RSUPlan[];
+    espp_plans: ESPPPlan[];
+  }>({
     account_name: '',
     account_type: 'bank-account',
     owners: ['me'],
-    holdings: [{ symbol: '', units: '' }]
+    holdings: [{ symbol: '', units: '' }],
+    rsu_plans: [],
+    espp_plans: []
   });
-  const [editAccount, setEditAccount] = useState({
+  const [editAccount, setEditAccount] = useState<{
+    account_name: string;
+    account_type: string;
+    owners: string[];
+    holdings: { symbol: string; units: string }[];
+    rsu_plans: RSUPlan[];
+    espp_plans: ESPPPlan[];
+  }>({
     account_name: '',
     account_type: 'bank-account',
     owners: ['me'],
-    holdings: [{ symbol: '', units: '' }]
+    holdings: [{ symbol: '', units: '' }],
+    rsu_plans: [],
+    espp_plans: []
   });
+  const [collapsedRSUPlans, setCollapsedRSUPlans] = useState<Set<string>>(new Set());
+  const [collapsedESPPPlans, setCollapsedESPPPlans] = useState<Set<string>>(new Set());
+  const [editCollapsedRSUPlans, setEditCollapsedRSUPlans] = useState<Set<string>>(new Set());
+  const [editCollapsedESPPPlans, setEditCollapsedESPPPlans] = useState<Set<string>>(new Set());
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
@@ -218,23 +244,44 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleAddAccount = async () => {
     try {
-      // Filter out empty holdings and convert units to numbers
-      const validHoldings = newAccount.holdings
-        .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
+      let validHoldings;
+      // If company-custodian-account, generate holdings from plan symbols
+      if (newAccount.account_type === 'company-custodian-account') {
+        // Collect all unique symbols from RSU and ESPP plans
+        const planSymbols = [
+          ...newAccount.rsu_plans.map(plan => plan.symbol.trim()),
+          ...newAccount.espp_plans.map(plan => plan.symbol.trim())
+        ].filter(s => s);
+        const uniqueSymbols = Array.from(new Set(planSymbols));
+        validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
+      } else {
+        // Filter out empty holdings and convert units to numbers
+        validHoldings = newAccount.holdings
+          .filter(holding => holding.symbol.trim() && holding.units.trim())
+          .map(holding => ({
+            symbol: holding.symbol.trim(),
+            units: parseFloat(holding.units)
+          }));
+      }
+
+      // Filter out empty RSU and ESPP plans
+      const validRSUPlans = newAccount.rsu_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
+
+      const validESPPPlans = newAccount.espp_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const accountData = {
         ...newAccount,
-        holdings: validHoldings
+        holdings: validHoldings,
+        rsu_plans: validRSUPlans,
+        espp_plans: validESPPPlans
       };
 
       await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
       setShowAddAccountModal(false);
-      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] } );
+      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [] } );
       holdingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with new account
@@ -292,8 +339,14 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         account_name: account.account_name,
         account_type: account.account_type || 'bank-account',
         owners: account.owners || ['me'],
-        holdings: mappedHoldings
+        holdings: mappedHoldings,
+        rsu_plans: account.rsu_plans || [],
+        espp_plans: account.espp_plans || []
       });
+      
+      // Collapse all loaded plans by default
+      setEditCollapsedRSUPlans(new Set((account.rsu_plans || []).map(plan => plan.id)));
+      setEditCollapsedESPPPlans(new Set((account.espp_plans || []).map(plan => plan.id)));
       
       setShowEditAccountModal(true);
       setHoveredAccount(null);
@@ -361,24 +414,45 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleEditAccount = async () => {
     try {
-      // Filter out empty holdings and convert units to numbers
-      const validHoldings = editAccount.holdings
-        .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
+      let validHoldings;
+      // If company-custodian-account, generate holdings from plan symbols
+      if (editAccount.account_type === 'company-custodian-account') {
+        // Collect all unique symbols from RSU and ESPP plans
+        const planSymbols = [
+          ...editAccount.rsu_plans.map(plan => plan.symbol.trim()),
+          ...editAccount.espp_plans.map(plan => plan.symbol.trim())
+        ].filter(s => s);
+        const uniqueSymbols = Array.from(new Set(planSymbols));
+        validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
+      } else {
+        // Filter out empty holdings and convert units to numbers
+        validHoldings = editAccount.holdings
+          .filter(holding => holding.symbol.trim() && holding.units.trim())
+          .map(holding => ({
+            symbol: holding.symbol.trim(),
+            units: parseFloat(holding.units)
+          }));
+      }
+
+      // Filter out empty RSU and ESPP plans
+      const validRSUPlans = editAccount.rsu_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
+
+      const validESPPPlans = editAccount.espp_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const accountData = {
         ...editAccount,
-        holdings: validHoldings
+        holdings: validHoldings,
+        rsu_plans: validRSUPlans,
+        espp_plans: validESPPPlans
       };
 
       await api.put(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, accountData);
 
       setShowEditAccountModal(false);
       setAccountToEdit('');
-      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }] });
+      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [] });
       editHoldingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with updated account
@@ -387,6 +461,54 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       const errorMessage = error instanceof Error ? error.message : 'Error updating account';
       alert(`Error updating account: ${errorMessage}`);
     }
+  };
+
+  const toggleRSUPlanCollapse = (planId: string) => {
+    setCollapsedRSUPlans(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(planId)) {
+        newSet.delete(planId);
+      } else {
+        newSet.add(planId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleESPPPlanCollapse = (planId: string) => {
+    setCollapsedESPPPlans(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(planId)) {
+        newSet.delete(planId);
+      } else {
+        newSet.add(planId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleEditRSUPlanCollapse = (planId: string) => {
+    setEditCollapsedRSUPlans(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(planId)) {
+        newSet.delete(planId);
+      } else {
+        newSet.add(planId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleEditESPPPlanCollapse = (planId: string) => {
+    setEditCollapsedESPPPlans(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(planId)) {
+        newSet.delete(planId);
+      } else {
+        newSet.add(planId);
+      }
+      return newSet;
+    });
   };
 
   const selectedAccountsCount = accounts.filter(account => account.isSelected).length;
@@ -443,9 +565,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <div
                     className={`
                   group cursor-pointer flex items-center space-x-2 
-                  pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105 
+                  pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105
                   ${account.isSelected
-                        ? 'bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 shadow-blue-500/10' 
+                        ? 'bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 shadow-blue-500/10'
                         : 'bg-gray-500/10 backdrop-blur-sm border border-gray-400/20 shadow-gray-500/5 hover:bg-gray-400/15 hover:border-gray-300/30'}
                 `}
                     onClick={() => toggleAccountSelection(account.account_name)}
@@ -534,8 +656,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             <button
               onClick={onToggleAIChat}
               className={`p-2 rounded-full text-white backdrop-blur-md transition-colors ${
-                isAIChatOpen 
-                  ? 'bg-blue-500/80 hover:bg-blue-500' 
+                isAIChatOpen
+                  ? 'bg-blue-500/80 hover:bg-blue-500'
                   : 'bg-gray-600/80 hover:bg-gray-600'
               }`}
             >
@@ -551,9 +673,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             >
               <User size={20} />
             </button>
-            
+
             {Boolean(anchorEl) && (
-              <div 
+              <div
                 className="absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-50"
                 onMouseLeave={onMenuClose}
               >
@@ -588,7 +710,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       {/* Add Account Modal */}
       <Dialog open={showAddAccountModal} onOpenChange={setShowAddAccountModal}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Plus className="mr-2 h-5 w-5 text-green-500" />
@@ -598,134 +720,282 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Create a new account to manage your investments and assets.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-6 py-4 min-h-[400px]">
-            {/* Left Column - Form Fields */}
-            <div className="flex-1 space-y-4">
-              <div className="grid gap-2">
-                <Label htmlFor="account-name">Account Name</Label>
-                <Input
-                  id="account-name"
-                  value={newAccount.account_name}
-                  onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
-                  placeholder="Enter account name"
-                />
-              </div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="account-type">Account Type</Label>
-                <Select value={newAccount.account_type} onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bank-account">Bank Account</SelectItem>
-                    <SelectItem value="investment-account">Investment Account</SelectItem>
-                    <SelectItem value="education-fund">Education Fund</SelectItem>
-                    <SelectItem value="retirement-account">Retirement Account</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Owners</Label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="owner-me"
-                      checked={newAccount.owners.includes('me')}
-                      onChange={(e) => {
-                        const owners = e.target.checked 
-                          ? [...new Set([...newAccount.owners, 'me'])]
-                          : newAccount.owners.filter(o => o !== 'me');
-                        setNewAccount({ ...newAccount, owners });
-                      }}
-                      className="rounded border-border bg-background"
-                    />
-                    <Label htmlFor="owner-me" className="text-sm font-normal">Me</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="owner-wife"
-                      checked={newAccount.owners.includes('wife')}
-                      onChange={(e) => {
-                        const owners = e.target.checked 
-                          ? [...new Set([...newAccount.owners, 'wife'])]
-                          : newAccount.owners.filter(o => o !== 'wife');
-                        setNewAccount({ ...newAccount, owners });
-                      }}
-                      className="rounded border-border bg-background"
-                    />
-                    <Label htmlFor="owner-wife" className="text-sm font-normal">Wife</Label>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Right Column - Holdings Table */}
-            <div className="flex-1 flex flex-col">
-              <Label className="mb-3">Holdings</Label>
-              <div className="rounded-md border flex-1 flex flex-col">
-                {/* Table Header */}
-                <div className="flex items-center border-b bg-muted/50 px-0">
-                  <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
-                  <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
-                  <div className="w-12 px-3 py-3"></div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex gap-6 py-4 min-h-[400px]">
+              {/* Left Column - Form Fields */}
+              <div className="flex-1 space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="account-name">Account Name</Label>
+                  <Input
+                    id="account-name"
+                    value={newAccount.account_name}
+                    onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
+                    placeholder="Enter account name"
+                  />
                 </div>
-                
-                {/* Table Body */}
-                <div className="flex-1 overflow-y-auto">
-                  {newAccount.holdings.map((holding, index) => (
-                    <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
-                      <div className="flex-1 p-0">
-                        <SymbolAutocomplete
-                          placeholder="e.g., AAPL"
-                          value={holding.symbol}
-                          onChange={(value) => {
-                            updateHolding(index, 'symbol', value);
+
+                <div className="grid gap-2">
+                  <Label htmlFor="account-type">Account Type</Label>
+                  <Select value={newAccount.account_type} onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank-account">Bank Account</SelectItem>
+                      <SelectItem value="investment-account">Investment Account</SelectItem>
+                      <SelectItem value="education-fund">Education Fund</SelectItem>
+                      <SelectItem value="retirement-account">Retirement Account</SelectItem>
+                      <SelectItem value="company-custodian-account">Company Custodian Account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Owners</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="owner-me"
+                        checked={newAccount.owners.includes('me')}
+                        onChange={(e) => {
+                          const owners = e.target.checked
+                            ? [...new Set([...newAccount.owners, 'me'])]
+                            : newAccount.owners.filter(o => o !== 'me');
+                          setNewAccount({ ...newAccount, owners });
+                        }}
+                        className="rounded border-border bg-background"
+                      />
+                      <Label htmlFor="owner-me" className="text-sm font-normal">Me</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="owner-wife"
+                        checked={newAccount.owners.includes('wife')}
+                        onChange={(e) => {
+                          const owners = e.target.checked
+                            ? [...new Set([...newAccount.owners, 'wife'])]
+                            : newAccount.owners.filter(o => o !== 'wife');
+                          setNewAccount({ ...newAccount, owners });
+                        }}
+                        className="rounded border-border bg-background"
+                      />
+                      <Label htmlFor="owner-wife" className="text-sm font-normal">Wife</Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Holdings Table */}
+              <div className="flex-1 flex flex-col">
+                {newAccount.account_type === 'company-custodian-account' ? (
+                  <div className="space-y-4">
+                    <Label className="mb-3">Company Plans</Label>
+
+                    {/* RSU Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">RSU Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newRSUPlan: RSUPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              grant_date: new Date().toISOString().split('T')[0],
+                              has_cliff: false,
+                              vesting_period_years: 4,
+                              vesting_frequency: 'quarterly'
+                            };
+                            setNewAccount({
+                              ...newAccount,
+                              rsu_plans: [...newAccount.rsu_plans, newRSUPlan]
+                            });
                           }}
-                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                          onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
-                          ref={(el) => holdingRefs.current[`${index}-symbol`] = el}
-                        />
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add RSU Plan
+                        </Button>
                       </div>
-                      <div className="w-28 p-0">
-                        <Input
-                          placeholder="0"
-                          type="number"
-                          step="1"
-                          value={holding.units}
-                          onChange={(e) => {
-                            updateHolding(index, 'units', e.target.value);
-                          }}
-                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                          onKeyDown={(e) => handleKeyDown(e, index, 'units')}
-                          ref={(el) => holdingRefs.current[`${index}-units`] = el}
-                        />
-                      </div>
-                      <div className="w-12 flex justify-center py-2">
-                        {newAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
-                          <Button
-                            type="button"
-                            onClick={() => removeHolding(index)}
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
+
+                      <div className="space-y-3">
+                        {newAccount.rsu_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                RSU Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = newAccount.rsu_plans.filter((_, i) => i !== index);
+                                  setNewAccount({ ...newAccount, rsu_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <RSUPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = newAccount.rsu_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setNewAccount({ ...newAccount, rsu_plans: updatedPlans });
+                              }}
+                              isCollapsed={collapsedRSUPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleRSUPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+
+                    {/* ESPP Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">ESPP Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newESPPPlan: ESPPPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              income_percentage: 15,
+                              buying_periods: [{
+                                start_date: new Date().toISOString().split('T')[0],
+                                end_date: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                              }],
+                              stock_discount_percentage: 15,
+                              base_stock_price: 100
+                            };
+                            setNewAccount({
+                              ...newAccount,
+                              espp_plans: [...newAccount.espp_plans, newESPPPlan]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add ESPP Plan
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {newAccount.espp_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                ESPP Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = newAccount.espp_plans.filter((_, i) => i !== index);
+                                  setNewAccount({ ...newAccount, espp_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <ESPPPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = newAccount.espp_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setNewAccount({ ...newAccount, espp_plans: updatedPlans });
+                              }}
+                              isCollapsed={collapsedESPPPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleESPPPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Label className="mb-3">Holdings</Label>
+                    <div className="rounded-md border flex-1 flex flex-col">
+                      {/* Table Header */}
+                      <div className="flex items-center border-b bg-muted/50 px-0">
+                        <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
+                        <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
+                        <div className="w-12 px-3 py-3"></div>
+                      </div>
+
+                      {/* Table Body */}
+                      <div className="flex-1 overflow-y-auto">
+                        {newAccount.holdings.map((holding, index) => (
+                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
+                            <div className="flex-1 p-0">
+                              <SymbolAutocomplete
+                                placeholder="e.g., AAPL"
+                                value={holding.symbol}
+                                onChange={(value) => {
+                                  updateHolding(index, 'symbol', value);
+                                }}
+                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
+                                ref={(el) => holdingRefs.current[`${index}-symbol`] = el}
+                              />
+                            </div>
+                            <div className="w-28 p-0">
+                              <Input
+                                placeholder="0"
+                                type="number"
+                                step="1"
+                                value={holding.units}
+                                onChange={(e) => {
+                                  updateHolding(index, 'units', e.target.value);
+                                }}
+                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                onKeyDown={(e) => handleKeyDown(e, index, 'units')}
+                                ref={(el) => holdingRefs.current[`${index}-units`] = el}
+                              />
+                            </div>
+                            <div className="w-12 flex justify-center py-2">
+                              {newAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
+                                <Button
+                                  type="button"
+                                  onClick={() => removeHolding(index)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      💡 Rows are added automatically when typing and removed when cleared
+                    </p>
+                  </>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                💡 Rows are added automatically when typing and removed when cleared
-              </p>
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddAccountModal(false)}>
               Cancel
@@ -742,7 +1012,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       {/* Edit Account Modal */}
       <Dialog open={showEditAccountModal} onOpenChange={setShowEditAccountModal}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Edit className="mr-2 h-5 w-5 text-blue-500" />
@@ -752,134 +1022,282 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Update the account details and holdings.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-6 py-4 min-h-[400px]">
-            {/* Left Column - Form Fields */}
-            <div className="flex-1 space-y-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-account-name">Account Name</Label>
-                <Input
-                  id="edit-account-name"
-                  value={editAccount.account_name}
-                  onChange={(e) => setEditAccount({ ...editAccount, account_name: e.target.value })}
-                  placeholder="Enter account name"
-                />
-              </div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="edit-account-type">Account Type</Label>
-                <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bank-account">Bank Account</SelectItem>
-                    <SelectItem value="investment-account">Investment Account</SelectItem>
-                    <SelectItem value="education-fund">Education Fund</SelectItem>
-                    <SelectItem value="retirement-account">Retirement Account</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Owners</Label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="edit-owner-me"
-                      checked={editAccount.owners.includes('me')}
-                      onChange={(e) => {
-                        const owners = e.target.checked 
-                          ? [...new Set([...editAccount.owners, 'me'])]
-                          : editAccount.owners.filter(o => o !== 'me');
-                        setEditAccount({ ...editAccount, owners });
-                      }}
-                      className="rounded border-border bg-background"
-                    />
-                    <Label htmlFor="edit-owner-me" className="text-sm font-normal">Me</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="edit-owner-wife"
-                      checked={editAccount.owners.includes('wife')}
-                      onChange={(e) => {
-                        const owners = e.target.checked 
-                          ? [...new Set([...editAccount.owners, 'wife'])]
-                          : editAccount.owners.filter(o => o !== 'wife');
-                        setEditAccount({ ...editAccount, owners });
-                      }}
-                      className="rounded border-border bg-background"
-                    />
-                    <Label htmlFor="edit-owner-wife" className="text-sm font-normal">Wife</Label>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Right Column - Holdings Table */}
-            <div className="flex-1 flex flex-col">
-              <Label className="mb-3">Holdings</Label>
-              <div className="rounded-md border flex-1 flex flex-col">
-                {/* Table Header */}
-                <div className="flex items-center border-b bg-muted/50 px-0">
-                  <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
-                  <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
-                  <div className="w-12 px-3 py-3"></div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex gap-6 py-4 min-h-[400px]">
+              {/* Left Column - Form Fields */}
+              <div className="flex-1 space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-account-name">Account Name</Label>
+                  <Input
+                    id="edit-account-name"
+                    value={editAccount.account_name}
+                    onChange={(e) => setEditAccount({ ...editAccount, account_name: e.target.value })}
+                    placeholder="Enter account name"
+                  />
                 </div>
-                
-                {/* Table Body */}
-                <div className="flex-1 overflow-y-auto">
-                  {editAccount.holdings.map((holding, index) => (
-                    <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
-                      <div className="flex-1 p-0">
-                        <SymbolAutocomplete
-                          placeholder="e.g., AAPL"
-                          value={holding.symbol}
-                          onChange={(value) => {
-                            updateEditHolding(index, 'symbol', value);
+
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-account-type">Account Type</Label>
+                  <Select value={editAccount.account_type} onValueChange={(value) => setEditAccount({ ...editAccount, account_type: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank-account">Bank Account</SelectItem>
+                      <SelectItem value="investment-account">Investment Account</SelectItem>
+                      <SelectItem value="education-fund">Education Fund</SelectItem>
+                      <SelectItem value="retirement-account">Retirement Account</SelectItem>
+                      <SelectItem value="company-custodian-account">Company Custodian Account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Owners</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="edit-owner-me"
+                        checked={editAccount.owners.includes('me')}
+                        onChange={(e) => {
+                          const owners = e.target.checked
+                            ? [...new Set([...editAccount.owners, 'me'])]
+                            : editAccount.owners.filter(o => o !== 'me');
+                          setEditAccount({ ...editAccount, owners });
+                        }}
+                        className="rounded border-border bg-background"
+                      />
+                      <Label htmlFor="edit-owner-me" className="text-sm font-normal">Me</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="edit-owner-wife"
+                        checked={editAccount.owners.includes('wife')}
+                        onChange={(e) => {
+                          const owners = e.target.checked
+                            ? [...new Set([...editAccount.owners, 'wife'])]
+                            : editAccount.owners.filter(o => o !== 'wife');
+                          setEditAccount({ ...editAccount, owners });
+                        }}
+                        className="rounded border-border bg-background"
+                      />
+                      <Label htmlFor="edit-owner-wife" className="text-sm font-normal">Wife</Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Holdings Table */}
+              <div className="flex-1 flex flex-col">
+                {editAccount.account_type === 'company-custodian-account' ? (
+                  <div className="space-y-4">
+                    <Label className="mb-3">Company Plans</Label>
+
+                    {/* RSU Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">RSU Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newRSUPlan: RSUPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              grant_date: new Date().toISOString().split('T')[0],
+                              has_cliff: false,
+                              vesting_period_years: 4,
+                              vesting_frequency: 'quarterly'
+                            };
+                            setEditAccount({
+                              ...editAccount,
+                              rsu_plans: [...editAccount.rsu_plans, newRSUPlan]
+                            });
                           }}
-                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                          onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
-                          ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
-                        />
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add RSU Plan
+                        </Button>
                       </div>
-                      <div className="w-28 p-0">
-                        <Input
-                          placeholder="0"
-                          type="number"
-                          step="1"
-                          value={holding.units}
-                          onChange={(e) => {
-                            updateEditHolding(index, 'units', e.target.value);
-                          }}
-                          className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                          onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
-                          ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
-                        />
-                      </div>
-                      <div className="w-12 flex justify-center py-2">
-                        {editAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
-                          <Button
-                            type="button"
-                            onClick={() => removeEditHolding(index)}
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
+
+                      <div className="space-y-3">
+                        {editAccount.rsu_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                RSU Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = editAccount.rsu_plans.filter((_, i) => i !== index);
+                                  setEditAccount({ ...editAccount, rsu_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <RSUPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = editAccount.rsu_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setEditAccount({ ...editAccount, rsu_plans: updatedPlans });
+                              }}
+                              isCollapsed={editCollapsedRSUPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleEditRSUPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+
+                    {/* ESPP Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">ESPP Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newESPPPlan: ESPPPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              income_percentage: 15,
+                              buying_periods: [{
+                                start_date: new Date().toISOString().split('T')[0],
+                                end_date: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                              }],
+                              stock_discount_percentage: 15,
+                              base_stock_price: 100
+                            };
+                            setEditAccount({
+                              ...editAccount,
+                              espp_plans: [...editAccount.espp_plans, newESPPPlan]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add ESPP Plan
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {editAccount.espp_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                ESPP Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = editAccount.espp_plans.filter((_, i) => i !== index);
+                                  setEditAccount({ ...editAccount, espp_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <ESPPPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = editAccount.espp_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setEditAccount({ ...editAccount, espp_plans: updatedPlans });
+                              }}
+                              isCollapsed={editCollapsedESPPPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleEditESPPPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Label className="mb-3">Holdings</Label>
+                    <div className="rounded-md border flex-1 flex flex-col">
+                      {/* Table Header */}
+                      <div className="flex items-center border-b bg-muted/50 px-0">
+                        <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
+                        <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
+                        <div className="w-12 px-3 py-3"></div>
+                      </div>
+
+                      {/* Table Body */}
+                      <div className="flex-1 overflow-y-auto">
+                        {editAccount.holdings.map((holding, index) => (
+                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
+                            <div className="flex-1 p-0">
+                              <SymbolAutocomplete
+                                placeholder="e.g., AAPL"
+                                value={holding.symbol}
+                                onChange={(value) => {
+                                  updateEditHolding(index, 'symbol', value);
+                                }}
+                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
+                                ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
+                              />
+                            </div>
+                            <div className="w-28 p-0">
+                              <Input
+                                placeholder="0"
+                                type="number"
+                                step="1"
+                                value={holding.units}
+                                onChange={(e) => {
+                                  updateEditHolding(index, 'units', e.target.value);
+                                }}
+                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                onKeyDown={(e) => handleEditKeyDown(e, index, 'units')}
+                                ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
+                              />
+                            </div>
+                            <div className="w-12 flex justify-center py-2">
+                              {editAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
+                                <Button
+                                  type="button"
+                                  onClick={() => removeEditHolding(index)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      💡 Rows are added automatically when typing and removed when cleared
+                    </p>
+                  </>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                💡 Rows are added automatically when typing and removed when cleared
-              </p>
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditAccountModal(false)}>
               Cancel
