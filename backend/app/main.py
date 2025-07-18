@@ -421,7 +421,33 @@ async def get_holdings_table(
                     original_price = pricing_info["unit_price"]
                     historical_prices = []
                     try:
-                        if symbol.isdigit():
+                        if symbol == 'USD':
+                            # Handle currency holdings
+                            from_currency = symbol
+                            to_currency = str(portfolio.base_currency)
+                            if from_currency == to_currency:
+                                # No conversion needed, always 1
+                                for i in range(7, 0, -1):
+                                    day = today - timedelta(days=i)
+                                    historical_prices.append({
+                                        "date": day.strftime("%Y-%m-%d"),
+                                        "price": 1.0
+                                    })
+                            else:
+                                # Construct yfinance ticker for currency pair
+                                ticker = f"{from_currency}{to_currency}=X"
+                                logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
+                                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                                if not data.empty:
+                                    prices = data["Close"].dropna().round(6).to_dict().get(ticker)
+                                    for dt, price in prices.items():
+                                        historical_prices.append({
+                                            "date": dt,
+                                            "price": float(price)
+                                        })
+                                else:
+                                    logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
+                        elif symbol.isdigit():
                             logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
                             tase_id = getattr(security, 'tase_id', None) or symbol
                             price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
@@ -446,14 +472,6 @@ async def get_holdings_table(
                                     })
                             else:
                                 logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
-                        if not historical_prices:
-                            historical_prices = [
-                                {
-                                    "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                                    "price": original_price * (1 + 0.1 * math.sin(i / 5)),
-                                }
-                                for i in range(7)
-                            ]
                     except Exception as e:
                         logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
 

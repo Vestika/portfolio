@@ -45,10 +45,7 @@ const getSecurityTypeIcon = (type: string) => {
 };
 
 
-const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string }> = ({ data, symbol, currency }) => {
-  if (symbol === 'USD' || symbol === 'ILS') {
-    return null;
-  }
+const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string, baseCurrency: string }> = ({ data, symbol, currency, baseCurrency }) => {
   // Determine solid color: green for positive/neutral, red for negative
   let trendColor = '#4ade80'; // green by default
   if (data && data.length > 1) {
@@ -103,7 +100,9 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        return `<span style="padding:2px 8px;display:inline-block;"><b>${date.toLocaleDateString()}</b><br/><b>${point.y?.toFixed(2)} ${currency}</b></span>`;
+        // If symbol is USD, show baseCurrency instead of currency
+        const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+        return `<span style="padding:2px 8px;display:inline-block;"><b>${date.toLocaleDateString()}</b><br/><b>${point.y?.toFixed(2)} ${displayCurrency}</b></span>`;
       }
     },
     plotOptions: {
@@ -380,8 +379,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </>
                     )}
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {(holding.symbol !== 'USD' && holding.symbol !== 'ILS') ? (
-                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} />
+                      {( holding.symbol !== data.base_currency) ? (
+                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} baseCurrency={data.base_currency} />
                       ) : null}
                     </td>
                   </tr>
