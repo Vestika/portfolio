@@ -26,6 +26,9 @@ from core.firebase import FirebaseAuthMiddleware
 from core.ai_analyst import ai_analyst
 from core.portfolio_analyzer import portfolio_analyzer
 from core.chat_manager import chat_manager
+import yfinance as yf
+from pymaya.maya import Maya
+from datetime import date
 
 logger = logging.Logger(__name__)
 
@@ -173,7 +176,7 @@ async def list_portfolios(user=Depends(get_current_user)) -> list[dict[str, str]
             "portfolio_name": doc["portfolio_name"],
             "display_name": doc["portfolio_name"].title()
         })
-    
+
     return portfolios
 
 
@@ -192,7 +195,7 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
             if user_portfolio_count == 0:
                 # User has no portfolios, suggest creating one
                 raise HTTPException(
-                    status_code=404, 
+                    status_code=404,
                     detail={
                         "error": "No portfolios found",
                         "message": "You don't have any portfolios yet. Please create your first portfolio to get started.",
@@ -203,15 +206,15 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
             else:
                 # User has portfolios but this specific one doesn't exist
                 raise HTTPException(
-                    status_code=404, 
+                    status_code=404,
                     detail={
                         "error": f"Portfolio {portfolio_id} not found",
                         "message": "The requested portfolio doesn't exist. Please select a different portfolio.",
-                        "action": "select_different_portfolio", 
+                        "action": "select_different_portfolio",
                         "user_has_portfolios": True
                     }
                 )
-        
+
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
         result = {
@@ -400,8 +403,10 @@ async def get_holdings_table(
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
 
-        # Create a dictionary to aggregate holdings across selected accounts
         holdings_aggregation: dict[str, dict] = {}
+        maya = Maya()
+        today = date.today()
+        seven_days_ago = today - timedelta(days=7)
 
         for account in portfolio.accounts:
             if request.account_names and account.name not in request.account_names:
@@ -409,38 +414,65 @@ async def get_holdings_table(
 
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
+                symbol = holding.symbol
 
-                if holding.symbol not in holdings_aggregation:
-                    # Get detailed pricing information
+                if symbol not in holdings_aggregation:
                     pricing_info = calculator.calc_holding_value(security, 1)
-                    
-                    # Calculate original price (before currency conversion)
                     original_price = pricing_info["unit_price"]
-                    
-                    holdings_aggregation[holding.symbol] = {
-                        "symbol": holding.symbol,
+                    historical_prices = []
+                    try:
+                        if symbol.isdigit():
+                            logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
+                            tase_id = getattr(security, 'tase_id', None) or symbol
+                            price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
+                            for entry in reversed(price_history):
+                                if entry.get('TradeDate') and entry.get('SellPrice'):
+                                    historical_prices.append({
+                                        "date": entry.get('TradeDate'),
+                                        "price": float(entry.get('SellPrice'))
+                                    })
+                            if not historical_prices:
+                                logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
+                        else:
+                            logger.info(f"Fetching 7d trend for non-numeric symbol: {symbol} using yfinance")
+                            data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                            if not data.empty:
+                                prices = data["Close"].dropna().round(2)
+                                prices = prices.to_dict().get(symbol)
+                                for dt, price in prices.items():
+                                    historical_prices.append({
+                                        "date": dt.strftime("%Y-%m-%d"),
+                                        "price": float(price)
+                                    })
+                            else:
+                                logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
+                        if not historical_prices:
+                            historical_prices = [
+                                {
+                                    "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
+                                    "price": original_price * (1 + 0.1 * math.sin(i / 5)),
+                                }
+                                for i in range(7)
+                            ]
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
+
+                    holdings_aggregation[symbol] = {
+                        "symbol": symbol,
                         "security_type": security.security_type.value,
                         "name": security.name,
                         "tags": security.tags,
                         "total_units": 0,
-                        "original_price": original_price,  # Price in original currency
-                        "original_currency": security.currency,  # Original currency
-                        "value_per_unit": pricing_info["value"],  # Converted to base currency
-                        "currency": portfolio.base_currency,  # Base currency for display compatibility
-                        "price_source": pricing_info["price_source"],  # real-time or predefined
-                        # Generate mock historical prices for the last 30 days (in original currency)
-                        "historical_prices": [
-                            {
-                                "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                                "price": original_price * (1 + 0.1 * math.sin(i / 5)),  # Generate sine wave pattern
-                            }
-                            for i in range(30)
-                        ],
+                        "original_price": original_price,
+                        "original_currency": security.currency,
+                        "value_per_unit": pricing_info["value"],
+                        "currency": portfolio.base_currency,
+                        "price_source": pricing_info["price_source"],
+                        "historical_prices": historical_prices,
                     }
 
-                holdings_aggregation[holding.symbol]["total_units"] += holding.units
+                holdings_aggregation[symbol]["total_units"] += holding.units
 
-        # Calculate total values and convert to list
         holdings = []
         for holding_data in holdings_aggregation.values():
             holding_data["total_value"] = holding_data["value_per_unit"] * holding_data["total_units"]
