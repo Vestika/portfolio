@@ -45,10 +45,22 @@ const getSecurityTypeIcon = (type: string) => {
 };
 
 
-const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'] }> = ({ data }) => {
+const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string }> = ({ data, symbol, currency }) => {
+  if (symbol === 'USD' || symbol === 'ILS') {
+    return null;
+  }
+  // Determine solid color: green for positive/neutral, red for negative
+  let trendColor = '#4ade80'; // green by default
+  if (data && data.length > 1) {
+    const first = data[0].price;
+    const last = data[data.length - 1].price;
+    if (last < first) {
+      trendColor = '#f87171'; // red
+    }
+  }
   const options: Highcharts.Options = {
     chart: {
-      type: 'line',
+      type: 'spline',
       height: 32,
       width: 100,
       backgroundColor: 'transparent',
@@ -71,24 +83,47 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'] }> = ({ d
     legend: { enabled: false },
     tooltip: {
       enabled: true,
-      backgroundColor: 'rgba(30, 41, 59, 0.9)',
+      useHTML: true,
+      backgroundColor: 'transparent', // No card background
       borderWidth: 0,
-      borderRadius: 8,
-      style: { color: '#fff', zIndex: 300},
+      shadow: false,
+      style: {
+        color: '#e5e7eb', // Softer light gray
+        fontWeight: 'normal', // Softer font weight
+        textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+        padding: '0px',
+        zIndex: 300,
+        pointerEvents: 'none',
+        fontSize: '13px',
+      },
+      borderRadius: 0,
+      outside: true, // Always float above the chart
+      hideDelay: 0, // Disappear immediately when not hovering
+      followPointer: true, // Tooltip follows the mouse
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        return `<b>${point.y?.toFixed(2)}</b>(${date.toLocaleDateString()})`;
+        return `<span style="padding:2px 8px;display:inline-block;"><b>${date.toLocaleDateString()}</b><br/><b>${point.y?.toFixed(2)} ${currency}</b></span>`;
       }
     },
     plotOptions: {
       series: {
         animation: false,
-        lineWidth: 1.5,
+        lineWidth: 3,
+        shadow: {
+          color: 'rgba(96,165,250,0.5)',
+          width: 8,
+          offsetX: 0,
+          offsetY: 0
+        },
         states: {
           hover: {
             enabled: true,
-            lineWidth: 2
+            lineWidth: 4,
+            halo: {
+              size: 10,
+              opacity: 0.25
+            }
           }
         },
         marker: {
@@ -96,19 +131,39 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'] }> = ({ d
           states: {
             hover: {
               enabled: true,
-              radius: 3
+              fillColor: 'rgba(96,165,250,0.8)',
+              lineColor: '#fff',
+              lineWidth: 2,
+              radius: 5,
             }
           }
         }
       }
     },
     series: [{
-      type: 'line',
+      type: 'spline',
       data: data.map(point => ({
         x: new Date(point.date).getTime(),
         y: point.price
       })),
-      color: '#60A5FA'
+      color: trendColor,
+      linecap: 'round',
+      lineWidth: 3,
+      shadow: {
+        color: 'rgba(56,189,248,0.4)',
+        width: 10,
+        offsetX: 0,
+        offsetY: 0
+      },
+      states: {
+        hover: {
+          lineWidth: 4,
+          halo: {
+            size: 12,
+            opacity: 0.35
+          }
+        }
+      }
     }]
   };
 
@@ -293,7 +348,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                     </th>
                   </>
                 )}
-                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">30d Trend</th>
+                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">7d Trend</th>
               </tr>
             </thead>
             <tbody>
@@ -325,7 +380,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </>
                     )}
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      <MiniChart data={holding.historical_prices} />
+                      {(holding.symbol !== 'USD' && holding.symbol !== 'ILS') ? (
+                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} />
+                      ) : null}
                     </td>
                   </tr>
                   {expandedRow === holding.symbol && (
