@@ -53,7 +53,6 @@ const App: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
-  const [vestingLoaded, setVestingLoaded] = useState(false);
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
