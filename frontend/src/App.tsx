@@ -16,7 +16,9 @@ import {
   AccountInfo,
   PortfolioData,
   HoldingsTableData,
+  DividendBreakdown,
 } from './types';
+import BarChart from './components/BarChart';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
@@ -51,6 +53,9 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(500);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
+  const [dividendData, setDividendData] = useState<DividendBreakdown | null>(null);
+  const [dividendPeriod, setDividendPeriod] = useState<'ytd' | 'year' | '5year'>('ytd');
+  const [dividendAccumulateBy, setDividendAccumulateBy] = useState<'month' | 'year'>('month');
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -179,6 +184,23 @@ const App: React.FC = () => {
     }
   };
 
+  const fetchDividendBreakdown = async (accountNames: string[] | null = null, period = dividendPeriod, accumulateBy = dividendAccumulateBy) => {
+    if (!selectedPortfolioId) return;
+    try {
+      const params = new URLSearchParams();
+      params.append('portfolio_id', selectedPortfolioId);
+      if (accountNames) {
+        accountNames.forEach(name => params.append('account_names', name));
+      }
+      params.append('period', period);
+      params.append('accumulate_by', accumulateBy);
+      const res = await api.get(`/portfolio/dividends?${params}`);
+      setDividendData(res.data);
+    } catch {
+      setDividendData(null);
+    }
+  };
+
     useEffect(() => {
         if (!authLoading && user && !isInitialized) {
             initializeApp();
@@ -201,6 +223,12 @@ const App: React.FC = () => {
 
     loadPortfolioData();
   }, [selectedPortfolioId, isInitialized]);
+
+  // Fetch dividends when portfolio, accounts, or controls change
+  useEffect(() => {
+    fetchDividendBreakdown(selectedAccounts, dividendPeriod, dividendAccumulateBy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPortfolioId, selectedAccounts, dividendPeriod, dividendAccumulateBy]);
 
   const handleAccountsChange = (accountNames: string[]) => {
     setSelectedAccounts(accountNames);
@@ -479,6 +507,41 @@ const App: React.FC = () => {
                   ))}
                 </div>
               )}
+              <div className="mt-8">
+                <h2 className="text-lg font-semibold mb-2">Dividend Breakdown</h2>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <label className="text-sm">Period:
+                    <select
+                      className="ml-2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+                      value={dividendPeriod}
+                      onChange={e => setDividendPeriod(e.target.value as 'ytd' | 'year' | '5year')}
+                    >
+                      <option value="ytd">YTD</option>
+                      <option value="year">Year</option>
+                      <option value="5year">5 Year</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">Accumulate By:
+                    <select
+                      className="ml-2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+                      value={dividendAccumulateBy}
+                      onChange={e => setDividendAccumulateBy(e.target.value as 'month' | 'year')}
+                    >
+                      <option value="month">Month</option>
+                      <option value="year">Year</option>
+                    </select>
+                  </label>
+                </div>
+                {dividendData && (
+                  <BarChart
+                    title={`Dividends (${dividendData.period.toUpperCase()}, ${dividendData.accumulate_by})`}
+                    data={dividendData.breakdown}
+                    perTickerData={dividendData.per_ticker_breakdown}
+                    baseCurrency={displayMetadata.base_currency}
+                  />
+                )}
+                {!dividendData && <div className="text-gray-400">No dividend data available.</div>}
+              </div>
               {holdingsData && !showEmptyState && (
                 <div className="mt-8">
                   <HoldingsTable

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 import yaml
+from collections import defaultdict
 
 from core import feature_generator
 from core.database import db_manager
@@ -16,6 +17,7 @@ from models import User, Product, UserPreferences, Symbol
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
+from models.currency import Currency
 from utils import filter_security
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
@@ -25,6 +27,8 @@ from core.firebase import FirebaseAuthMiddleware
 from core.ai_analyst import ai_analyst
 from core.portfolio_analyzer import portfolio_analyzer
 from core.chat_manager import chat_manager
+import yfinance as yf
+import pandas as pd
 
 logger = logging.Logger(__name__)
 
@@ -1418,4 +1422,169 @@ async def get_chat_autocomplete(
     except Exception as e:
         logger.error(f"Error getting chat autocomplete: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get autocomplete suggestions: {str(e)}")
+
+
+class DividendBreakdownRequest(BaseModel):
+    portfolio_id: str = "demo"
+    account_names: Optional[List[str]] = None
+    period: str = Query("ytd", description="Breakdown period: ytd, year, 5year")
+    accumulate_by: str = Query("month", description="Accumulate by: month or year")
+
+@app.get("/portfolio/dividends")
+async def get_portfolio_dividends(
+    portfolio_id: str = Query("demo"),
+    account_names: Optional[List[str]] = Query(None),
+    period: str = Query("ytd", description="Breakdown period: ytd, year, 5year"),
+    accumulate_by: str = Query("month", description="Accumulate by: month or year"),
+    user=Depends(get_current_user)
+) -> dict:
+    """
+    Returns total dividends received and a breakdown by month or year for the selected period.
+    Uses yfinance to fetch real dividend data for stocks in the portfolio.
+    """
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    doc.pop("_id", None)
+    doc.pop("user_id", None)
+    portfolio = Portfolio(**doc)
+    
+    # Initialize portfolio calculator for currency conversion
+    calculator = PortfolioCalculator(
+        base_currency=portfolio.base_currency,
+        exchange_rates={},  # Will use real-time rates
+        unit_prices={},
+        use_real_time_rates=True
+    )
+    
+    # Filter accounts if specified
+    accounts = portfolio.accounts
+    if account_names:
+        accounts = [acc for acc in accounts if acc.name in account_names]
+    
+    # Collect all stock holdings with their units
+    ticker_holdings = {}
+    for account in accounts:
+        for holding in account.holdings:
+            security = portfolio.securities[holding.symbol]
+            if security.security_type == SecurityType.STOCK:
+                ticker_holdings[security.symbol] = holding.units
+    
+    if not ticker_holdings:
+        return {
+            "total_dividends": 0.0,
+            "breakdown": [],
+            "per_ticker_breakdown": [],
+            "period": period,
+            "accumulate_by": accumulate_by
+        }
+    
+    # Fetch dividend data for each ticker
+    ticker_dividends = {}
+    all_dividends = pd.Series(dtype=float)
+    
+    for symbol, units in ticker_holdings.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            dividends = ticker.dividends
+            
+            if not dividends.empty:
+                # Convert dividends from USD to portfolio base currency
+                converted_dividends = pd.Series(index=dividends.index, dtype=float)
+                for date, dividend_amount in dividends.items():
+                    # yfinance dividends are in USD, convert to portfolio base currency
+                    exchange_rate = calculator.get_exchange_rate(Currency.USD, portfolio.base_currency)
+                    converted_amount = dividend_amount * exchange_rate * units  # Multiply by units held
+                    converted_dividends[date] = converted_amount
+                
+                ticker_dividends[symbol] = converted_dividends
+                all_dividends = pd.concat([all_dividends, converted_dividends])
+                
+        except Exception as e:
+            logger.warning(f"Failed to fetch dividends for {symbol}: {e}")
+            continue
+    
+    if all_dividends.empty:
+        return {
+            "total_dividends": 0.0,
+            "breakdown": [],
+            "per_ticker_breakdown": [],
+            "period": period,
+            "accumulate_by": accumulate_by
+        }
+    
+    # Filter by period
+    now = pd.Timestamp.now()
+    if period == "ytd":
+        start = pd.Timestamp(year=now.year, month=1, day=1)
+    elif period == "year":
+        start = pd.Timestamp(year=now.year, month=1, day=1)
+    elif period == "5year":
+        start = pd.Timestamp(year=now.year - 4, month=1, day=1)
+    else:
+        start = all_dividends.index.min()
+    
+    # Make both index and start timezone-naive
+    all_dividends.index = all_dividends.index.tz_localize(None)
+    start = pd.Timestamp(start).tz_localize(None)
+    filtered = all_dividends[all_dividends.index >= start]
+    
+    # Calculate total dividends
+    total_dividends = float(filtered.sum())
+    
+    # Accumulate by month or year for total
+    if accumulate_by == "year":
+        grouped = filtered.resample('Y').sum()
+        breakdown = [
+            {"period": str(idx.year), "dividends": float(val)}
+            for idx, val in grouped.items()
+        ]
+    else:
+        grouped = filtered.resample('ME').sum()
+        breakdown = [
+            {"period": f"{idx.year}-{idx.month:02d}", "dividends": float(val)}
+            for idx, val in grouped.items()
+        ]
+    
+    # Create per-ticker breakdown for stacked bars
+    per_ticker_breakdown = []
+    for symbol, dividends in ticker_dividends.items():
+        # Make timezone-naive and filter by period
+        dividends.index = dividends.index.tz_localize(None)
+        filtered_dividends = dividends[dividends.index >= start]
+        
+        if filtered_dividends.empty:
+            continue
+            
+        total_units = ticker_holdings[symbol]
+        ticker_total = float(filtered_dividends.sum())
+        
+        # Accumulate by month or year for this ticker
+        if accumulate_by == "year":
+            grouped_ticker = filtered_dividends.resample('Y').sum()
+            ticker_breakdown = [
+                {"period": str(idx.year), "dividends": float(val)}
+                for idx, val in grouped_ticker.items()
+            ]
+        else:
+            grouped_ticker = filtered_dividends.resample('ME').sum()
+            ticker_breakdown = [
+                {"period": f"{idx.year}-{idx.month:02d}", "dividends": float(val)}
+                for idx, val in grouped_ticker.items()
+            ]
+        
+        per_ticker_breakdown.append({
+            "symbol": symbol,
+            "total_units": total_units,
+            "breakdown": ticker_breakdown
+        })
+    
+    return {
+        "total_dividends": round(total_dividends, 2),
+        "breakdown": breakdown,
+        "per_ticker_breakdown": per_ticker_breakdown,
+        "period": period,
+        "accumulate_by": accumulate_by
+    }
 

@@ -83,3 +83,16 @@ export interface HoldingsTableData {
 }
 
 export type PortfolioData = ChartBreakdown[];
+
+export interface DividendBreakdown {
+  total_dividends: number;
+  breakdown: { period: string; dividends: number }[];
+  per_ticker_breakdown: {
+    symbol: string;
+    total_units: number;
+    breakdown: { period: string; dividends: number }[];
+  }[];
+  period: string;
+  accumulate_by: string;
+  mock?: boolean;
+}
