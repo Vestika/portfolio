@@ -412,7 +412,7 @@ const App: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-gray-900 text-white">
       {/* Sticky Header Section */}
       <div
-        className="sticky top-0 z-30 bg-gray-900 px-4 sm:px-6 lg:px-8"
+        className="sticky top-0 z-30 bg-gray-900"
         style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
       >
         <AccountSelector
@@ -456,7 +456,7 @@ const App: React.FC = () => {
           }}
         >
           <main className="flex-1">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="container mx-auto py-6">
               {showEmptyState ? (
                 // Empty state content
                 <div className="flex items-center justify-center min-h-[60vh]">
