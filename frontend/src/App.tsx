@@ -44,11 +44,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
-  const LOCAL_STORAGE_PORTFOLIO_KEY = 'selectedPortfolioId';
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(() => {
-    // Try to load from localStorage
-    return localStorage.getItem(LOCAL_STORAGE_PORTFOLIO_KEY) || "";
-  });
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -96,14 +92,6 @@ const App: React.FC = () => {
         setIsLoading(false);
         return;
       }
-      // Check for localStorage portfolio
-      const savedPortfolioId = localStorage.getItem(LOCAL_STORAGE_PORTFOLIO_KEY);
-      if (savedPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === savedPortfolioId)) {
-        setSelectedPortfolioId(savedPortfolioId);
-        setIsInitialized(true);
-        setIsLoading(false);
-        return;
-      }
       // Check for default portfolio
       const defaultPortfolioId = await getDefaultPortfolio();
       let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
@@ -114,7 +102,6 @@ const App: React.FC = () => {
         console.log(`No default portfolio found for user, using first portfolio`);
       }
       setSelectedPortfolioId(portfolioToSelect);
-      localStorage.setItem(LOCAL_STORAGE_PORTFOLIO_KEY, portfolioToSelect);
       setIsInitialized(true);
     } catch (err) {
       console.error('Failed to initialize app:', err);
@@ -211,12 +198,6 @@ const App: React.FC = () => {
     loadPortfolioData();
   }, [selectedPortfolioId, isInitialized]);
 
-  // When portfolio changes, update localStorage
-  useEffect(() => {
-    if (selectedPortfolioId) {
-      localStorage.setItem(LOCAL_STORAGE_PORTFOLIO_KEY, selectedPortfolioId);
-    }
-  }, [selectedPortfolioId]);
 
   useEffect(() => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
@@ -289,10 +270,8 @@ const App: React.FC = () => {
     if (deletedPortfolioId === selectedPortfolioId) {
       if (portfolios.length > 0) {
         setSelectedPortfolioId(portfolios[0].portfolio_id);
-        localStorage.removeItem(LOCAL_STORAGE_PORTFOLIO_KEY);
       } else {
         setSelectedPortfolioId("");
-        localStorage.removeItem(LOCAL_STORAGE_PORTFOLIO_KEY);
       }
     }
   };
@@ -390,8 +369,8 @@ const App: React.FC = () => {
   // Show login screen if user is not authenticated
   if (!user) return <Login />;
 
-  // Show loading screen while app is loading or vesting data is not ready
-  if (isLoading || !portfolioData || !vestingLoaded) return <LoadingScreen />;
+  // Show loading screen while app is loading
+  if (isLoading) return <LoadingScreen />;
   
   if (error) {
     return (
