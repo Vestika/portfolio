@@ -200,7 +200,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
-    setVestingLoaded(false); // Start loading
     // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllRSUVesting = async () => {
       const vestingMap: Record<string, any> = {};
@@ -218,7 +217,6 @@ const App: React.FC = () => {
         })
       );
       setMainRSUVesting(vestingMap);
-      setVestingLoaded(true); // Done loading
     };
     fetchAllRSUVesting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
