@@ -1451,6 +1451,9 @@ async def get_rsu_vesting(
     account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
     if not account:
         raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+    portfolio = Portfolio.from_dict(doc)
+    calculator = get_or_create_calculator(portfolio_id, portfolio)
+
     rsu_plans = account.get("rsu_plans", [])
     now = datetime.now().date()
     results = []
@@ -1514,15 +1517,17 @@ async def get_rsu_vesting(
         # Clamp vested units to total
         vested_units = min(vested_units, total_units)
         # Fetch current price for the symbol
-        price_data = await price_manager.get_price(plan["symbol"])
-        price = price_data.price if price_data else 0.0
-        price_currency = price_data.currency if price_data else None
+        symbol = plan["symbol"]
+        price_data = closing_price_service.get_price_sync(symbol)
+        price = price_data.get('price',  0.0)
+        price_currency = price_data.get('currency')
         total_value = round(total_units * price, 2)
         vested_value = round(vested_units * price, 2)
         unvested_value = round((total_units - vested_units) * price, 2)
+        exchange_value = calculator.get_exchange_rate(price_data['currency'], portfolio.base_currency.value)
         results.append({
             "id": plan["id"],
-            "symbol": plan["symbol"],
+            "symbol": symbol,
             "total_units": total_units,
             "vested_units": round(vested_units, 2),
             "next_vest_date": next_vest_date.isoformat() if next_vest_date else None,
@@ -1534,9 +1539,33 @@ async def get_rsu_vesting(
             "vesting_frequency": vesting_frequency,
             "price": price,
             "price_currency": price_currency,
-            "total_value": total_value,
-            "vested_value": vested_value,
-            "unvested_value": unvested_value
+            "total_value": total_value * exchange_value,
+            "vested_value": vested_value * exchange_value,
+            "unvested_value": unvested_value * exchange_value
         })
+
+    # --- Update holdings in DB with vested units ---
+    # Build a dict: symbol -> vested_units (rounded up)
+    symbol_to_vested = {}
+    for plan_result in results:
+        symbol = plan_result["symbol"]
+        vested = plan_result["vested_units"]
+        symbol_to_vested[symbol] = symbol_to_vested.get(symbol, 0) + math.ceil(vested)
+    # Update the holdings array for the account
+    new_holdings = [
+        {"symbol": symbol, "units": units}
+        for symbol, units in symbol_to_vested.items()
+    ]
+    # Update the account in the doc
+    updated = False
+    for acc in doc["accounts"]:
+        if acc["name"] == account_name:
+            acc["holdings"] = new_holdings
+            updated = True
+            break
+    if updated:
+        await collection.replace_one({"_id": doc["_id"]}, doc)
+        invalidate_portfolio_cache(portfolio_id)
+    # --- End update holdings ---
     return {"plans": results}
 

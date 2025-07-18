@@ -244,13 +244,25 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleAddAccount = async () => {
     try {
-      // Filter out empty holdings and convert units to numbers
-      const validHoldings = newAccount.holdings
-        .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
+      let validHoldings;
+      // If company-custodian-account, generate holdings from plan symbols
+      if (newAccount.account_type === 'company-custodian-account') {
+        // Collect all unique symbols from RSU and ESPP plans
+        const planSymbols = [
+          ...newAccount.rsu_plans.map(plan => plan.symbol.trim()),
+          ...newAccount.espp_plans.map(plan => plan.symbol.trim())
+        ].filter(s => s);
+        const uniqueSymbols = Array.from(new Set(planSymbols));
+        validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
+      } else {
+        // Filter out empty holdings and convert units to numbers
+        validHoldings = newAccount.holdings
+          .filter(holding => holding.symbol.trim() && holding.units.trim())
+          .map(holding => ({
+            symbol: holding.symbol.trim(),
+            units: parseFloat(holding.units)
+          }));
+      }
 
       // Filter out empty RSU and ESPP plans
       const validRSUPlans = newAccount.rsu_plans
@@ -402,13 +414,25 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleEditAccount = async () => {
     try {
-      // Filter out empty holdings and convert units to numbers
-      const validHoldings = editAccount.holdings
-        .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
+      let validHoldings;
+      // If company-custodian-account, generate holdings from plan symbols
+      if (editAccount.account_type === 'company-custodian-account') {
+        // Collect all unique symbols from RSU and ESPP plans
+        const planSymbols = [
+          ...editAccount.rsu_plans.map(plan => plan.symbol.trim()),
+          ...editAccount.espp_plans.map(plan => plan.symbol.trim())
+        ].filter(s => s);
+        const uniqueSymbols = Array.from(new Set(planSymbols));
+        validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
+      } else {
+        // Filter out empty holdings and convert units to numbers
+        validHoldings = editAccount.holdings
+          .filter(holding => holding.symbol.trim() && holding.units.trim())
+          .map(holding => ({
+            symbol: holding.symbol.trim(),
+            units: parseFloat(holding.units)
+          }));
+      }
 
       // Filter out empty RSU and ESPP plans
       const validRSUPlans = editAccount.rsu_plans

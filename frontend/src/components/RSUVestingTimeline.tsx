@@ -26,19 +26,14 @@ interface RSUVestingPlan {
 
 interface RSUVestingTimelineProps {
   plan: RSUVestingPlan;
+  baseCurrency: string
 }
 
-const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan }) => {
+const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurrency }) => {
   const percentVested = plan.total_units > 0 ? (plan.vested_units / plan.total_units) * 100 : 0;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">Vested</span>
-        <span className="text-xs font-medium">
-          {plan.vested_units} / {plan.total_units} units
-        </span>
-      </div>
       <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
         <div
           className="h-full bg-green-500 transition-all"
@@ -56,24 +51,6 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan }) => {
           <span className="font-medium text-green-700">Next Vest:</span> {plan.next_vest_date} ({plan.next_vest_units} units)
         </div>
       )}
-      {/* Value summary */}
-      {typeof plan.price === 'number' && plan.price > 0 && (
-        <div className="mt-2 text-xs space-y-1">
-          <div>
-            <span className="font-semibold text-gray-700 dark:text-gray-200">Vested Value:</span>{' '}
-            <span className="font-mono">{plan.vested_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {plan.price_currency}</span>
-          </div>
-          <div>
-            <span className="font-semibold text-gray-700 dark:text-gray-200">Unvested Value:</span>{' '}
-            <span className="font-mono">{plan.unvested_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {plan.price_currency}</span>
-          </div>
-          <div>
-            <span className="font-semibold text-gray-700 dark:text-gray-200">Total Potential:</span>{' '}
-            <span className="font-mono">{plan.total_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {plan.price_currency}</span>
-          </div>
-          <div className="text-gray-400">@ {plan.price} {plan.price_currency} per share</div>
-        </div>
-      )}
       <div className="mt-2">
         <div className="flex flex-row items-center gap-1 overflow-x-auto">
           {plan.schedule.map((event, idx) => (
@@ -86,6 +63,33 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan }) => {
             </div>
           ))}
         </div>
+        {/* Inline value summary at the bottom of the timeline card */}
+        {typeof plan.price === 'number' && plan.price > 0 && (
+          <div className="flex flex-row justify-center items-center gap-4 mt-2 text-xs">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-gray-500">Vested</span>
+              <span className="font-mono font-semibold text-green-700 dark:text-green-400 text-xs">
+                {plan.vested_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrency}
+              </span>
+            </div>
+            {plan.unvested_value !== 0 && (
+              <>
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] text-gray-500">Unvested</span>
+                  <span className="font-mono font-semibold text-yellow-700 dark:text-yellow-400 text-xs">
+                    {plan.unvested_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrency}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] text-gray-500">Total</span>
+                  <span className="font-mono font-semibold text-blue-700 dark:text-blue-400 text-xs">
+                    {plan.total_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrency}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

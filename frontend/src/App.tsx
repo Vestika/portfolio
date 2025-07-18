@@ -571,7 +571,10 @@ const App: React.FC = () => {
                                     <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
                                   )}
                                 </div>
-                                <RSUVestingTimeline plan={displayPlan} />
+                                <RSUVestingTimeline
+                                plan={displayPlan}
+                                baseCurrency={displayMetadata.base_currency}
+                                />
                               </div>
                             );
                           })}
