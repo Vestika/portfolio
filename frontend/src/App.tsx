@@ -17,6 +17,7 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
+import RSUVestingTimeline from './components/RSUVestingTimeline';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
@@ -43,7 +44,11 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
+  const LOCAL_STORAGE_PORTFOLIO_KEY = 'selectedPortfolioId';
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>(() => {
+    // Try to load from localStorage
+    return localStorage.getItem(LOCAL_STORAGE_PORTFOLIO_KEY) || "";
+  });
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -51,6 +56,7 @@ const App: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(500);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
+  const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -81,32 +87,34 @@ const App: React.FC = () => {
   const initializeApp = async () => {
     try {
       setIsLoading(true);
-      
       // First, fetch available portfolios
       const portfolios = await fetchAvailablePortfolios();
-      
       if (portfolios.length === 0) {
         // No portfolios found - this is fine, user will create one manually
         console.log('No portfolios found - showing empty state');
         setIsLoading(false);
         return;
       }
-      
+      // Check for localStorage portfolio
+      const savedPortfolioId = localStorage.getItem(LOCAL_STORAGE_PORTFOLIO_KEY);
+      if (savedPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === savedPortfolioId)) {
+        setSelectedPortfolioId(savedPortfolioId);
+        setIsInitialized(true);
+        setIsLoading(false);
+        return;
+      }
       // Check for default portfolio
       const defaultPortfolioId = await getDefaultPortfolio();
-      
       let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
-      
       if (defaultPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === defaultPortfolioId)) {
         portfolioToSelect = defaultPortfolioId;
         console.log(`Loading default portfolio: ${defaultPortfolioId}`);
       } else {
         console.log(`No default portfolio found for user, using first portfolio`);
       }
-      
       setSelectedPortfolioId(portfolioToSelect);
+      localStorage.setItem(LOCAL_STORAGE_PORTFOLIO_KEY, portfolioToSelect);
       setIsInitialized(true);
-      
     } catch (err) {
       console.error('Failed to initialize app:', err);
       setError('Failed to initialize application');
@@ -202,6 +210,37 @@ const App: React.FC = () => {
     loadPortfolioData();
   }, [selectedPortfolioId, isInitialized]);
 
+  // When portfolio changes, update localStorage
+  useEffect(() => {
+    if (selectedPortfolioId) {
+      localStorage.setItem(LOCAL_STORAGE_PORTFOLIO_KEY, selectedPortfolioId);
+    }
+  }, [selectedPortfolioId]);
+
+  useEffect(() => {
+    // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
+    const fetchAllRSUVesting = async () => {
+      if (!portfolioMetadata) return;
+      const vestingMap: Record<string, any> = {};
+      await Promise.all(
+        (portfolioMetadata.accounts || []).map(async (account) => {
+          const type = account.account_type || account.account_properties?.type;
+          if (type === 'company-custodian-account') {
+            try {
+              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/rsu-vesting`);
+              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
+            } catch (e) {
+              vestingMap[account.account_name] = [];
+            }
+          }
+        })
+      );
+      setMainRSUVesting(vestingMap);
+    };
+    fetchAllRSUVesting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolioMetadata, selectedPortfolioId]);
+
   const handleAccountsChange = (accountNames: string[]) => {
     setSelectedAccounts(accountNames);
     fetchPortfolioBreakdown(accountNames);
@@ -247,8 +286,10 @@ const App: React.FC = () => {
     if (deletedPortfolioId === selectedPortfolioId) {
       if (portfolios.length > 0) {
         setSelectedPortfolioId(portfolios[0].portfolio_id);
+        localStorage.removeItem(LOCAL_STORAGE_PORTFOLIO_KEY);
       } else {
         setSelectedPortfolioId("");
+        localStorage.removeItem(LOCAL_STORAGE_PORTFOLIO_KEY);
       }
     }
   };
@@ -477,6 +518,14 @@ const App: React.FC = () => {
                       hideValues={!isValueVisible}
                     />
                   ))}
+                  {Object.entries(mainRSUVesting).flatMap(([accountName, plans]) =>
+                    (plans as any[]).map(plan => (
+                      <div key={accountName + '-' + plan.id} className="bg-muted/30 rounded-lg p-4">
+                        <div className="text-sm font-semibold mb-1">{accountName} — RSU: {plan.symbol}</div>
+                        <RSUVestingTimeline plan={plan} />
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
               {holdingsData && !showEmptyState && (

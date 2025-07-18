@@ -3,6 +3,7 @@ import math
 from bson import ObjectId
 from datetime import datetime, timedelta
 from typing import Any, Optional, List
+from dateutil.relativedelta import relativedelta
 
 from fastapi import FastAPI, Query, Depends, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -1428,4 +1429,109 @@ async def get_chat_autocomplete(
     except Exception as e:
         logger.error(f"Error getting chat autocomplete: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get autocomplete suggestions: {str(e)}")
+
+
+@app.get("/portfolio/{portfolio_id}/accounts/{account_name}/rsu-vesting")
+async def get_rsu_vesting(
+    portfolio_id: str,
+    account_name: str,
+    user=Depends(get_current_user)
+):
+    """
+    Return RSU vesting progress and schedule for each RSU plan in the account.
+    """
+    from datetime import datetime, timedelta
+    import math
+    from services.closing_price.price_manager import PriceManager
+
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+    rsu_plans = account.get("rsu_plans", [])
+    now = datetime.now().date()
+    results = []
+    price_manager = PriceManager()
+    for plan in rsu_plans:
+        grant_date = datetime.strptime(plan["grant_date"], "%Y-%m-%d").date()
+        cliff_months = plan.get("cliff_duration_months") if plan.get("has_cliff") else 0
+        vesting_years = plan["vesting_period_years"]
+        vesting_frequency = plan["vesting_frequency"]  # 'monthly', 'quarterly', 'annually'
+        total_units = plan["units"]
+        # Calculate periods in cliff correctly
+        if vesting_frequency == "monthly":
+            period_months = 1
+        elif vesting_frequency == "quarterly":
+            period_months = 3
+        elif vesting_frequency == "annually":
+            period_months = 12
+        else:
+            period_months = 1
+        periods = vesting_years * (12 // period_months)
+        delta = relativedelta(months=period_months)
+        cliff_periods = cliff_months // period_months if period_months else 0
+        # Calculate units per period
+        units_per_period = total_units / periods
+        vested_units = 0
+        next_vest_date = None
+        next_vest_units = 0
+        schedule = []
+        cliff_date = grant_date + relativedelta(months=cliff_months) if cliff_months else grant_date
+        # Add cliff lump sum if applicable
+        periods_vested = 0
+        for i in range(periods):
+            vest_date = grant_date + delta * i
+            if vest_date < cliff_date:
+                continue  # skip periods before cliff
+            if cliff_months and vest_date == cliff_date:
+                # Lump sum for all periods in cliff
+                cliff_units = units_per_period * cliff_periods
+                schedule.append({"date": vest_date.isoformat(), "units": cliff_units})
+                if vest_date <= now:
+                    vested_units += cliff_units
+                elif not next_vest_date:
+                    next_vest_date = vest_date
+                    next_vest_units = cliff_units
+                periods_vested = cliff_periods
+                break
+        # Continue with regular vesting after cliff
+        for i in range(periods_vested, periods):
+            vest_date = cliff_date + delta * (i - periods_vested)
+            schedule.append({"date": vest_date.isoformat(), "units": units_per_period})
+            if vest_date <= now:
+                vested_units += units_per_period
+            elif not next_vest_date:
+                next_vest_date = vest_date
+                next_vest_units = units_per_period
+        # Clamp vested units to total
+        vested_units = min(vested_units, total_units)
+        # Fetch current price for the symbol
+        price_data = await price_manager.get_price(plan["symbol"])
+        price = price_data.price if price_data else 0.0
+        price_currency = price_data.currency if price_data else None
+        total_value = round(total_units * price, 2)
+        vested_value = round(vested_units * price, 2)
+        unvested_value = round((total_units - vested_units) * price, 2)
+        results.append({
+            "id": plan["id"],
+            "symbol": plan["symbol"],
+            "total_units": total_units,
+            "vested_units": round(vested_units, 2),
+            "next_vest_date": next_vest_date.isoformat() if next_vest_date else None,
+            "next_vest_units": round(next_vest_units, 2) if next_vest_units else 0,
+            "schedule": schedule,
+            "grant_date": plan["grant_date"],
+            "cliff_months": cliff_months,
+            "vesting_period_years": vesting_years,
+            "vesting_frequency": vesting_frequency,
+            "price": price,
+            "price_currency": price_currency,
+            "total_value": total_value,
+            "vested_value": vested_value,
+            "unvested_value": unvested_value
+        })
+    return {"plans": results}
 

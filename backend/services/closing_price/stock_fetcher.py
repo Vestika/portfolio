@@ -92,7 +92,7 @@ class FinnhubFetcher(StockFetcher):
                 response.raise_for_status()
                 data = response.json()
                 # Finnhub returns 'isUSMarketOpen': true/false
-                status = "open" if data.get("isUSMarketOpen") else "closed"
+                status = "open" if data.get("isOpen") else "closed"
                 return {"us_market_status": status}
         except Exception as e:
             logger.error(f"Error fetching US market status: {e}")
