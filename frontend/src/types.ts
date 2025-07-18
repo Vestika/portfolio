@@ -13,6 +13,8 @@ export interface RSUPlan {
   cliff_duration_months?: number;
   vesting_period_years: 3 | 4;
   vesting_frequency: 'monthly' | 'quarterly' | 'annually';
+  left_company?: boolean;
+  left_company_date?: string | null;
 }
 
 export interface ESPPPlan {

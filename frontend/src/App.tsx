@@ -541,17 +541,40 @@ const App: React.FC = () => {
                       <div key={symbol} className="bg-muted/30 rounded-lg p-4">
                         <div className="text-base font-bold mb-2">{symbol}</div>
                         <div className="space-y-4">
-                          {plans.map(({ plan, accountName }, idx) => (
-                            <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
-                              <div className="text-sm font-semibold mb-1">
-                                {accountName}
-                                {plans.length > 1 && (
-                                  <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
-                                )}
+                          {plans.map(({ plan, accountName }, idx) => {
+                            let displayPlan = plan;
+                            if (plan.left_company && plan.left_company_date) {
+                              // Find the last vested event before or on left_company_date
+                              const leftDate = new Date(plan.left_company_date);
+                              let vested = 0;
+                              let trimmedSchedule = [];
+                              if (Array.isArray(plan.schedule)) {
+                                trimmedSchedule = plan.schedule.filter((event: any) => new Date(event.date) <= leftDate);
+                                for (const event of trimmedSchedule as any[]) {
+                                  vested += event.units;
+                                }
+                              }
+                              displayPlan = {
+                                ...plan,
+                                total_units: vested,
+                                vested_units: vested,
+                                schedule: trimmedSchedule,
+                                next_vest_date: null,
+                                next_vest_units: 0,
+                              };
+                            }
+                            return (
+                              <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
+                                <div className="text-sm font-semibold mb-1">
+                                  {accountName}
+                                  {plans.length > 1 && (
+                                    <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
+                                  )}
+                                </div>
+                                <RSUVestingTimeline plan={displayPlan} />
                               </div>
-                              <RSUVestingTimeline plan={plan} />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ));

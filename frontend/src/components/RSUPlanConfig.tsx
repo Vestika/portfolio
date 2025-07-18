@@ -148,6 +148,28 @@ const RSUPlanConfig: React.FC<RSUPlanConfigProps> = ({
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="left-company"
+              checked={!!plan.left_company}
+              onChange={e => updatePlan({ left_company: e.target.checked, left_company_date: e.target.checked ? (plan.left_company_date || new Date().toISOString().split('T')[0]) : null })}
+              className="rounded border-border bg-background"
+            />
+            <Label htmlFor="left-company">Left the company</Label>
+          </div>
+          {plan.left_company && (
+            <div className="grid gap-2">
+              <Label htmlFor="left-company-date">Date left</Label>
+              <Input
+                id="left-company-date"
+                type="date"
+                value={plan.left_company_date || ''}
+                onChange={e => updatePlan({ left_company_date: e.target.value })}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

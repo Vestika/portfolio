@@ -1457,6 +1457,8 @@ async def get_rsu_vesting(
     price_manager = PriceManager()
     for plan in rsu_plans:
         grant_date = datetime.strptime(plan["grant_date"], "%Y-%m-%d").date()
+        if plan.get('left_company'):
+            left_company_date = datetime.strptime(plan["left_company_date"], "%Y-%m-%d").date()
         cliff_months = plan.get("cliff_duration_months") if plan.get("has_cliff") else 0
         vesting_years = plan["vesting_period_years"]
         vesting_frequency = plan["vesting_frequency"]  # 'monthly', 'quarterly', 'annually'
@@ -1498,8 +1500,11 @@ async def get_rsu_vesting(
                 periods_vested = cliff_periods
                 break
         # Continue with regular vesting after cliff
-        for i in range(periods_vested, periods):
+        for i in range(periods_vested + 1, periods):
             vest_date = cliff_date + delta * (i - periods_vested)
+            if plan.get('left_company') and vest_date > left_company_date:
+                total_units = vested_units
+                break
             schedule.append({"date": vest_date.isoformat(), "units": units_per_period})
             if vest_date <= now:
                 vested_units += units_per_period
