@@ -57,6 +57,7 @@ const App: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
+  const [vestingLoaded, setVestingLoaded] = useState(false);
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -218,9 +219,10 @@ const App: React.FC = () => {
   }, [selectedPortfolioId]);
 
   useEffect(() => {
+    if (!portfolioMetadata || !selectedPortfolioId) return;
+    setVestingLoaded(false); // Start loading
     // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllRSUVesting = async () => {
-      if (!portfolioMetadata) return;
       const vestingMap: Record<string, any> = {};
       await Promise.all(
         (portfolioMetadata.accounts || []).map(async (account) => {
@@ -236,6 +238,7 @@ const App: React.FC = () => {
         })
       );
       setMainRSUVesting(vestingMap);
+      setVestingLoaded(true); // Done loading
     };
     fetchAllRSUVesting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -387,8 +390,8 @@ const App: React.FC = () => {
   // Show login screen if user is not authenticated
   if (!user) return <Login />;
 
-  // Show loading screen while app is loading
-  if (isLoading) return <LoadingScreen />;
+  // Show loading screen while app is loading or vesting data is not ready
+  if (isLoading || !portfolioData || !vestingLoaded) return <LoadingScreen />;
   
   if (error) {
     return (
