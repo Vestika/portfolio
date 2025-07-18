@@ -447,19 +447,19 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex flex-1">
+      <div className="flex flex-col lg:flex-row flex-1">
         {/* Portfolio Data Section */}
         <div
-          className="flex-1 transition-all duration-300"
+          className="flex-1 transition-all duration-300 w-full"
           style={{
             marginRight: aiChatEnabled && isAIChatOpen && window.innerWidth >= 1024 ? `${chatWidth}px` : '0px',
           }}
         >
           <main className="flex-1">
-            <div className="container mx-auto py-6">
+            <div className="container mx-auto py-4 px-2 sm:px-4">
               {showEmptyState ? (
                 // Empty state content
-                <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="flex items-center justify-center min-h-[60vh] px-2">
                   <div className="text-center max-w-md">
                     <div className="text-6xl mb-6">📊</div>
                     <h2 className="text-2xl font-bold text-white mb-4">Welcome to Your Portfolio Dashboard</h2>
@@ -477,7 +477,7 @@ const App: React.FC = () => {
                 </div>
               ) : (
                 // Normal portfolio content
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
                   {displayData && displayData.map(chart => (
                     <PieChart
                       key={chart.chart_title}
