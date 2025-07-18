@@ -521,14 +521,41 @@ const App: React.FC = () => {
                       hideValues={!isValueVisible}
                     />
                   ))}
-                  {Object.entries(mainRSUVesting).flatMap(([accountName, plans]) =>
-                    (plans as any[]).map(plan => (
-                      <div key={accountName + '-' + plan.id} className="bg-muted/30 rounded-lg p-4">
-                        <div className="text-sm font-semibold mb-1">{accountName} — RSU: {plan.symbol}</div>
-                        <RSUVestingTimeline plan={plan} />
+                  {/* RSU Vesting grouped by symbol */}
+                  {(() => {
+                    // 1. Gather all plans with their account names
+                    const allPlans: Array<{ plan: any; accountName: string }> = [];
+                    Object.entries(mainRSUVesting).forEach(([accountName, plans]) => {
+                      (plans as any[]).forEach(plan => {
+                        allPlans.push({ plan, accountName });
+                      });
+                    });
+                    // 2. Group by symbol
+                    const grouped: Record<string, Array<{ plan: any; accountName: string }>> = {};
+                    allPlans.forEach(({ plan, accountName }) => {
+                      if (!grouped[plan.symbol]) grouped[plan.symbol] = [];
+                      grouped[plan.symbol].push({ plan, accountName });
+                    });
+                    // 3. Render
+                    return Object.entries(grouped).map(([symbol, plans]) => (
+                      <div key={symbol} className="bg-muted/30 rounded-lg p-4">
+                        <div className="text-base font-bold mb-2">{symbol}</div>
+                        <div className="space-y-4">
+                          {plans.map(({ plan, accountName }, idx) => (
+                            <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
+                              <div className="text-sm font-semibold mb-1">
+                                {accountName}
+                                {plans.length > 1 && (
+                                  <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
+                                )}
+                              </div>
+                              <RSUVestingTimeline plan={plan} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
               )}
               {holdingsData && !showEmptyState && (
