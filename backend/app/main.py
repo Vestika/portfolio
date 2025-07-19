@@ -487,13 +487,25 @@ async def get_holdings_table(
                         "currency": portfolio.base_currency,
                         "price_source": pricing_info["price_source"],
                         "historical_prices": historical_prices,
+                        "account_breakdown": []  # Add account breakdown array
                     }
 
+                # Add account information to the breakdown
+                account_holding_value = calculator.calc_holding_value(security, holding.units)
+                holdings_aggregation[symbol]["account_breakdown"].append({
+                    "account_name": account.name,
+                    "account_type": account.properties.get("type", "bank-account"),
+                    "units": holding.units,
+                    "value": account_holding_value["total"],
+                    "owners": account.properties.get("owners", ["me"])
+                })
                 holdings_aggregation[symbol]["total_units"] += holding.units
 
         holdings = []
         for holding_data in holdings_aggregation.values():
             holding_data["total_value"] = holding_data["value_per_unit"] * holding_data["total_units"]
+            # Sort account breakdown by value descending
+            holding_data["account_breakdown"].sort(key=lambda x: x["value"], reverse=True)
             holdings.append(holding_data)
 
         return {

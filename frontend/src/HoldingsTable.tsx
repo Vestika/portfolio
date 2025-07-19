@@ -17,6 +17,9 @@ import {
   ChartNoAxesCombined,
   Table,
   Flame,
+  ChevronDown,
+  ChevronRight,
+  Users,
 } from 'lucide-react';
 
 interface HoldingsTableProps {
@@ -183,6 +186,70 @@ const renderTags = (tags: Record<string, string>) => {
   });
 };
 
+const AccountBreakdownRow: React.FC<{ 
+  accountBreakdown: SecurityHolding['account_breakdown'], 
+  baseCurrency: string,
+  isValueVisible: boolean 
+}> = ({ accountBreakdown, baseCurrency, isValueVisible }) => {
+  const totalValue = accountBreakdown.reduce((sum, account) => sum + account.value, 0);
+  
+  return (
+    <div className="bg-gray-800/40 border-t border-blue-400/20 p-4">
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
+          <Users size={16} className="text-blue-400" />
+          Account Distribution
+          <span className="text-xs text-gray-400 font-normal ml-2">
+            ({accountBreakdown.length} account{accountBreakdown.length > 1 ? 's' : ''})
+          </span>
+        </h4>
+      </div>
+      <div className="space-y-3">
+        {accountBreakdown.map((account, index) => {
+          const percentage = totalValue > 0 ? ((account.value / totalValue) * 100).toFixed(1) : '0.0';
+          return (
+            <div key={account.account_name} className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30 hover:border-blue-400/30 transition-colors">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-blue-300 truncate">{account.account_name}</span>
+                  <span className="text-xs text-gray-400 bg-gray-600/60 px-2 py-0.5 rounded-md border border-gray-500/30">
+                    {account.account_type}
+                  </span>
+                </div>
+                {account.owners.length > 0 && (
+                  <span className="text-xs text-gray-400 bg-gray-600/40 px-2 py-0.5 rounded-md border border-gray-500/20">
+                    {account.owners.join(', ')}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-sm text-gray-300">
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-400">Units:</span>
+                  <span className="font-medium">{Math.round(account.units).toLocaleString()}</span>
+                </span>
+                {isValueVisible && (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <span className="text-gray-400">Value:</span>
+                      <span className="font-medium text-blue-200">
+                        {Math.round(account.value).toLocaleString()} {baseCurrency}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-gray-400">Share:</span>
+                      <span className="font-medium text-green-300">{percentage}%</span>
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const SortableHeader: React.FC<{
   label: string;
   sortKey: keyof SecurityHolding;
@@ -296,7 +363,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
           <table className="min-w-full">
             <thead>
               <tr className="h-14 bg-blue-500/10 backdrop-blur-sm border-b border-blue-400/30">
-                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md">Type</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md w-8"></th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">Type</th>
                 <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">
                   <div className="flex items-center gap-2">
                     <SortableHeader
@@ -354,11 +422,31 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
               {filteredAndSortedHoldings.map((holding) => (
                 <React.Fragment key={holding.symbol}>
                   <tr
-                    className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer md:cursor-default"
+                    className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
                     onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                   >
+                    <td className="px-2 md:px-4">
+                      {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                        <div className="flex items-center justify-center">
+                          {expandedRow === holding.symbol ? (
+                            <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
+                          ) : (
+                            <ChevronRight size={18} className="text-gray-400 hover:text-blue-400 transition-colors cursor-pointer" />
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
-                    <td className="px-2 md:px-4 font-medium text-blue-400">{holding.symbol}</td>
+                    <td className="px-2 md:px-4 font-medium text-blue-400">
+                      <div className="flex items-center gap-2">
+                        <span>{holding.symbol}</span>
+                        {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                          <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
+                            {holding.account_breakdown.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
                     <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding.tags)}</td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
@@ -384,9 +472,20 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       ) : null}
                     </td>
                   </tr>
-                  {expandedRow === holding.symbol && (
+                  {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                    <tr>
+                      <td colSpan={isValueVisible ? 9 : 7} className="p-0">
+                        <AccountBreakdownRow 
+                          accountBreakdown={holding.account_breakdown} 
+                          baseCurrency={data.base_currency} 
+                          isValueVisible={isValueVisible} 
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  {expandedRow === holding.symbol && isMobile && (
                     <tr className="bg-gray-800/50 md:hidden">
-                      <td colSpan={4} className="p-4">
+                      <td colSpan={isValueVisible ? 9 : 7} className="p-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-bold text-gray-400">Name</p>
