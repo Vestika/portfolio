@@ -176,6 +176,63 @@ class PortfolioCalculator:
         
         return result
 
+    def calc_options_value(self, options_plan: dict[str, Any]) -> dict[str, Any]:
+        """
+        Calculate the value of options in a plan.
+        
+        Args:
+            options_plan: Options plan dictionary with all plan details
+            
+        Returns:
+            Dictionary with options value calculation details
+        """
+        from core.options_calculator import OptionsCalculator
+        
+        # Calculate vesting schedule
+        vesting_calc = OptionsCalculator.calculate_vesting_schedule(
+            grant_date=options_plan["grant_date"],
+            total_units=options_plan["units"],
+            vesting_period_years=options_plan["vesting_period_years"],
+            vesting_frequency=options_plan["vesting_frequency"],
+            has_cliff=options_plan.get("has_cliff", False),
+            cliff_months=options_plan.get("cliff_duration_months", 0) if options_plan.get("has_cliff") else 0,
+            left_company=options_plan.get("left_company", False),
+            left_company_date=options_plan.get("left_company_date")
+        )
+        
+        # Calculate options value
+        value_calc = OptionsCalculator.calculate_options_value(
+            vested_units=vesting_calc["vested_units"],
+            exercise_price=options_plan["exercise_price"],
+            strike_price=options_plan["strike_price"],
+            company_valuation=options_plan.get("company_valuation"),
+            option_type=options_plan.get("option_type", "iso")
+        )
+        
+        # Convert to base currency
+        exchange_rate = self.get_exchange_rate(Currency("USD"), self.base_currency)
+        
+        return {
+            "symbol": options_plan["symbol"],
+            "total_units": options_plan["units"],
+            "vested_units": vesting_calc["vested_units"],
+            "unvested_units": options_plan["units"] - vesting_calc["vested_units"],
+            "exercise_price": options_plan["exercise_price"],
+            "strike_price": options_plan["strike_price"],
+            "current_valuation_per_share": value_calc["current_valuation_per_share"],
+            "intrinsic_value_per_share": value_calc["intrinsic_value_per_share"],
+            "total_intrinsic_value": value_calc["total_intrinsic_value"] * exchange_rate,
+            "time_value_per_share": value_calc["time_value_per_share"],
+            "total_time_value": value_calc["total_time_value"] * exchange_rate,
+            "total_value": value_calc["total_value"] * exchange_rate,
+            "option_type": options_plan.get("option_type", "iso"),
+            "grant_date": options_plan["grant_date"],
+            "expiration_date": options_plan["expiration_date"],
+            "vesting_schedule": vesting_calc["schedule"],
+            "next_vest_date": vesting_calc["next_vest_date"],
+            "next_vest_units": vesting_calc["next_vest_units"]
+        }
+
     def aggregate_holdings(
         self,
         portfolio: Portfolio,

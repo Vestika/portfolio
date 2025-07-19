@@ -11,6 +11,7 @@ class Account:
     properties: dict[str, Any]
     rsu_plans: list[Any] = None
     espp_plans: list[Any] = None
+    options_plans: list[Any] = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
@@ -20,4 +21,5 @@ class Account:
             properties=data.get("properties", {}),
             rsu_plans=data.get("rsu_plans", []),
             espp_plans=data.get("espp_plans", []),
+            options_plans=data.get("options_plans", []),
         )

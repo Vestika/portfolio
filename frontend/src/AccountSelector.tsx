@@ -1330,6 +1330,76 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
+
+                    {/* Options Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Options Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newOptionsPlan: OptionsPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              grant_date: new Date().toISOString().split('T')[0],
+                              exercise_price: 0.10,
+                              strike_price: 0.10,
+                              expiration_date: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                              has_cliff: false,
+                              vesting_period_years: 4,
+                              vesting_frequency: 'quarterly',
+                              option_type: 'iso'
+                            };
+                            setEditAccount({
+                              ...editAccount,
+                              options_plans: [...editAccount.options_plans, newOptionsPlan]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Options Plan
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {editAccount.options_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                Options Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = editAccount.options_plans.filter((_, i) => i !== index);
+                                  setEditAccount({ ...editAccount, options_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <OptionsPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = editAccount.options_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setEditAccount({ ...editAccount, options_plans: updatedPlans });
+                              }}
+                              isCollapsed={collapsedOptionsPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleOptionsPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <>

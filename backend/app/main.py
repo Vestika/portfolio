@@ -500,6 +500,7 @@ class CreateAccountRequest(BaseModel):
     holdings: list[dict[str, Any]] = []
     rsu_plans: list[Any] = []
     espp_plans: list[Any] = []
+    options_plans: list[Any] = []
 
 
 @app.post("/portfolio")
@@ -587,6 +588,16 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
+        
+        # Add securities for options plans
+        for plan in request.options_plans:
+            symbol = plan.get('symbol')
+            if symbol and symbol not in portfolio_data['securities']:
+                portfolio_data['securities'][symbol] = {
+                    'name': symbol,
+                    'type': 'stock',  # Options are typically for stock
+                    'currency': 'USD'  # Default currency for options
+                }
         new_account = {
             "name": request.account_name,
             "user_id": user.id,
@@ -596,7 +607,8 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             },
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
-            "espp_plans": request.espp_plans
+            "espp_plans": request.espp_plans,
+            "options_plans": request.options_plans
         }
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
@@ -694,6 +706,16 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
+        
+        # Add securities for options plans
+        for plan in request.options_plans:
+            symbol = plan.get('symbol')
+            if symbol and symbol not in doc['securities']:
+                doc['securities'][symbol] = {
+                    'name': symbol,
+                    'type': 'stock',  # Options are typically for stock
+                    'currency': 'USD'  # Default currency for options
+                }
         updated_account = {
             "name": request.account_name,
             "properties": {
@@ -702,7 +724,8 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             },
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
-            "espp_plans": request.espp_plans
+            "espp_plans": request.espp_plans,
+            "options_plans": request.options_plans
         }
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
@@ -1599,5 +1622,194 @@ async def get_rsu_vesting(
         await collection.replace_one({"_id": doc["_id"]}, doc)
         invalidate_portfolio_cache(portfolio_id)
     # --- End update holdings ---
+    return {"plans": results}
+
+
+@app.post("/portfolio/{portfolio_id}/accounts/{account_name}/options-exercise")
+async def exercise_options(
+    portfolio_id: str,
+    account_name: str,
+    request: dict,
+    user=Depends(get_current_user)
+):
+    """
+    Exercise options and create an exercise plan.
+    """
+    from core.options_exercise import OptionsExercise
+    
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+    
+    # Extract request parameters
+    plan_id = request.get("plan_id")
+    units_to_exercise = request.get("units_to_exercise")
+    exercise_date = request.get("exercise_date", datetime.now().strftime("%Y-%m-%d"))
+    current_valuation = request.get("current_valuation")
+    
+    if not plan_id or not units_to_exercise:
+        raise HTTPException(status_code=400, detail="plan_id and units_to_exercise are required")
+    
+    # Find the options plan
+    options_plans = account.get("options_plans", [])
+    plan = next((p for p in options_plans if p["id"] == plan_id), None)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"Options plan {plan_id} not found")
+    
+    try:
+        # Create exercise plan
+        exercise_plan = OptionsExercise.create_exercise_plan(
+            options_plan=plan,
+            units_to_exercise=units_to_exercise,
+            exercise_date=exercise_date,
+            current_valuation=current_valuation
+        )
+        
+        # Update the options plan to reflect the exercise
+        plan["units"] = exercise_plan["remaining_units"]
+        
+        # Add exercise history to the plan
+        if "exercise_history" not in plan:
+            plan["exercise_history"] = []
+        
+        plan["exercise_history"].append({
+            "exercise_date": exercise_date,
+            "units_exercised": units_to_exercise,
+            "exercise_cost": exercise_plan["total_cash_outlay"],
+            "net_value": exercise_plan["net_after_tax_value"]
+        })
+        
+        # Update the database
+        await collection.replace_one({"_id": doc["_id"]}, doc)
+        invalidate_portfolio_cache(portfolio_id)
+        
+        return {
+            "message": "Options exercised successfully",
+            "exercise_plan": exercise_plan
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error exercising options: {e}")
+        raise HTTPException(status_code=500, detail="Failed to exercise options")
+
+
+@app.get("/portfolio/{portfolio_id}/accounts/{account_name}/options-vesting")
+async def get_options_vesting(
+    portfolio_id: str,
+    account_name: str,
+    user=Depends(get_current_user)
+):
+    """
+    Return options vesting progress and schedule for each options plan in the account.
+    """
+    from datetime import datetime, timedelta
+    import math
+    from core.options_calculator import OptionsCalculator
+
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
+    if not account:
+        raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
+    portfolio = Portfolio.from_dict(doc)
+    calculator = get_or_create_calculator(portfolio_id, portfolio)
+
+    options_plans = account.get("options_plans", [])
+    now = datetime.now().date()
+    results = []
+    
+    for plan in options_plans:
+        # Calculate vesting schedule
+        vesting_calc = OptionsCalculator.calculate_vesting_schedule(
+            grant_date=plan["grant_date"],
+            total_units=plan["units"],
+            vesting_period_years=plan["vesting_period_years"],
+            vesting_frequency=plan["vesting_frequency"],
+            has_cliff=plan.get("has_cliff", False),
+            cliff_months=plan.get("cliff_duration_months", 0) if plan.get("has_cliff") else 0,
+            left_company=plan.get("left_company", False),
+            left_company_date=plan.get("left_company_date")
+        )
+        
+        # Calculate options value
+        value_calc = OptionsCalculator.calculate_options_value(
+            vested_units=vesting_calc["vested_units"],
+            exercise_price=plan["exercise_price"],
+            strike_price=plan["strike_price"],
+            company_valuation=plan.get("company_valuation"),
+            option_type=plan.get("option_type", "iso")
+        )
+        
+        # Calculate time to expiry
+        expiration_date = datetime.strptime(plan["expiration_date"], "%Y-%m-%d").date()
+        time_to_expiry = (expiration_date - now).days / 365.25
+        
+        # Calculate exchange rate for value conversion
+        exchange_value = 1.0  # Default to 1 if no conversion needed
+        if value_calc["current_valuation_per_share"] > 0:
+            # For private companies, we might need to convert from USD to base currency
+            # This is simplified - in reality you'd have proper currency conversion
+            exchange_value = calculator.get_exchange_rate("USD", portfolio.base_currency.value)
+        
+        results.append({
+            "id": plan["id"],
+            "symbol": plan["symbol"],
+            "total_units": plan["units"],
+            "vested_units": vesting_calc["vested_units"],
+            "next_vest_date": vesting_calc["next_vest_date"],
+            "next_vest_units": vesting_calc["next_vest_units"],
+            "schedule": vesting_calc["schedule"],
+            "grant_date": plan["grant_date"],
+            "expiration_date": plan["expiration_date"],
+            "exercise_price": plan["exercise_price"],
+            "strike_price": plan["strike_price"],
+            "option_type": plan.get("option_type", "iso"),
+            "company_valuation": plan.get("company_valuation"),
+            "cliff_months": vesting_calc["cliff_months"],
+            "vesting_period_years": vesting_calc["vesting_period_years"],
+            "vesting_frequency": vesting_calc["vesting_frequency"],
+            "time_to_expiry_years": round(time_to_expiry, 2),
+            "current_valuation_per_share": value_calc["current_valuation_per_share"],
+            "intrinsic_value_per_share": value_calc["intrinsic_value_per_share"],
+            "total_intrinsic_value": value_calc["total_intrinsic_value"] * exchange_value,
+            "time_value_per_share": value_calc["time_value_per_share"],
+            "total_time_value": value_calc["total_time_value"] * exchange_value,
+            "total_value": value_calc["total_value"] * exchange_value
+        })
+
+    # --- Update holdings in DB with vested units ---
+    # Build a dict: symbol -> vested_units (rounded up)
+    symbol_to_vested = {}
+    for plan_result in results:
+        symbol = plan_result["symbol"]
+        vested = plan_result["vested_units"]
+        symbol_to_vested[symbol] = symbol_to_vested.get(symbol, 0) + math.ceil(vested)
+    
+    # Update the holdings array for the account
+    new_holdings = [
+        {"symbol": symbol, "units": units}
+        for symbol, units in symbol_to_vested.items()
+    ]
+    
+    # Update the account in the doc
+    updated = False
+    for acc in doc["accounts"]:
+        if acc["name"] == account_name:
+            acc["holdings"] = new_holdings
+            updated = True
+            break
+    if updated:
+        await collection.replace_one({"_id": doc["_id"]}, doc)
+        invalidate_portfolio_cache(portfolio_id)
+    # --- End update holdings ---
+    
     return {"plans": results}
 
