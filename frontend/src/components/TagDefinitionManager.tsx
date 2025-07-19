@@ -15,6 +15,7 @@ interface TagDefinitionManagerProps {
   onClose: () => void;
   onSave: (tagDefinition: TagDefinition) => Promise<void>;
   onTemplateSelectedForImmediate?: (tagName: string) => Promise<void>;
+  onCustomTagCreatedForImmediate?: (tagName: string) => Promise<void>;
   existingDefinition?: TagDefinition;
 }
 
@@ -77,6 +78,7 @@ const TagDefinitionManager: React.FC<TagDefinitionManagerProps> = ({
   onClose,
   onSave,
   onTemplateSelectedForImmediate,
+  onCustomTagCreatedForImmediate,
   existingDefinition
 }) => {
   const [step, setStep] = useState<'type' | 'template' | 'config'>('type');
@@ -203,6 +205,12 @@ const TagDefinitionManager: React.FC<TagDefinitionManagerProps> = ({
       } as TagDefinition;
 
       await onSave(finalDefinition);
+      
+      // If we have a callback for immediate use of custom tags, call it
+      if (onCustomTagCreatedForImmediate) {
+        await onCustomTagCreatedForImmediate(finalDefinition.name);
+      }
+      
       handleClose();
     } catch (error) {
       console.error('Error saving tag definition:', error);
@@ -268,7 +276,7 @@ const TagDefinitionManager: React.FC<TagDefinitionManagerProps> = ({
         <div className="text-center">
           <p className="text-sm text-gray-400">
             {onTemplateSelectedForImmediate 
-              ? `Templates will be added and configured for this holding, or create a custom ${TAG_TYPE_INFO[selectedType!]?.name.toLowerCase()} tag`
+              ? `Templates will be added and configured for this holding, or create a custom ${TAG_TYPE_INFO[selectedType!]?.name.toLowerCase()} tag and configure it`
               : `Templates will be added as-is, or create a custom ${TAG_TYPE_INFO[selectedType!]?.name.toLowerCase()} tag`
             }
           </p>
