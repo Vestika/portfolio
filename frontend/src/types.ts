@@ -96,6 +96,7 @@ export interface SecurityHolding {
   security_type: string;
   name: string;
   tags: Record<string, string>;
+  structured_tags?: Record<string, TagValue>;
   total_units: number;
   original_price: number;
   original_currency: string;
@@ -105,6 +106,97 @@ export interface SecurityHolding {
   price_source?: string;
   historical_prices: HistoricalPrice[];
   account_breakdown?: AccountBreakdown[];
+}
+
+export enum TagType {
+  ENUM = "enum",
+  MAP = "map",
+  SCALAR = "scalar",
+  HIERARCHICAL = "hierarchical",
+  BOOLEAN = "boolean",
+  TIME_BASED = "time_based",
+  RELATIONSHIP = "relationship"
+}
+
+export enum ScalarDataType {
+  FLOAT = "float",
+  INTEGER = "integer",
+  PERCENTAGE = "percentage",
+  CURRENCY = "currency",
+  DATE = "date",
+  STRING = "string"
+}
+
+export interface TagDefinition {
+  id?: string;
+  user_id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  tag_type: TagType;
+
+  // For ENUM tags
+  enum_values?: string[];
+
+  // For SCALAR tags
+  scalar_data_type?: ScalarDataType;
+  min_value?: number;
+  max_value?: number;
+
+  // For MAP tags
+  map_key_type?: string;
+  allowed_keys?: string[];
+
+  // For HIERARCHICAL tags
+  max_depth?: number;
+  path_separator?: string;
+
+  // For TIME_BASED tags
+  time_format?: string;
+
+  // For RELATIONSHIP tags
+  relationship_type?: string;
+
+  // Metadata
+  created_at?: string;
+  updated_at?: string;
+  is_active?: boolean;
+}
+
+export interface TagValue {
+  tag_name: string;
+  tag_type: TagType;
+
+  // Different value types
+  enum_value?: string;
+  map_value?: Record<string, number>;
+  scalar_value?: number | string;
+  hierarchical_value?: string[];
+  boolean_value?: boolean;
+  time_value?: Record<string, any>;
+  relationship_value?: string[];
+
+  // Metadata
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface HoldingTags {
+  symbol: string;
+  user_id: string;
+  portfolio_id?: string;
+  tags: Record<string, TagValue>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TagLibrary {
+  id?: string;
+  user_id: string;
+  tag_definitions: Record<string, TagDefinition>;
+  template_tags: Record<string, TagDefinition>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Quote {
