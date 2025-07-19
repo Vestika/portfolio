@@ -135,23 +135,22 @@ const TagDefinitionManager: React.FC<TagDefinitionManagerProps> = ({
   const handleTemplateSelect = async (template: TagDefinition) => {
     setIsSaving(true);
     try {
-      // Use template as-is without modification
-      const templateDefinition: TagDefinition = {
-        ...template,
-        name: template.name, // Keep the original template name
-        user_id: 'current_user', // This will be set by the API
-      };
-
-      await onSave(templateDefinition);
-      
-      // If we have a callback for immediate use, call it instead of just closing
+      // If we have a callback for immediate use, use the template directly without saving as custom
       if (onTemplateSelectedForImmediate) {
         await onTemplateSelectedForImmediate(template.name);
+      } else {
+        // Only save as custom definition if not for immediate use
+        const templateDefinition: TagDefinition = {
+          ...template,
+          name: template.name, // Keep the original template name
+          user_id: 'current_user', // This will be set by the API
+        };
+        await onSave(templateDefinition);
       }
       
       handleClose();
     } catch (error) {
-      console.error('Error saving template tag:', error);
+      console.error('Error handling template selection:', error);
     } finally {
       setIsSaving(false);
     }

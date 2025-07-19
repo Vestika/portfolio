@@ -354,6 +354,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   });
 
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   // Tag management state
   const [structuredTags, setStructuredTags] = useState<Record<string, HoldingTags>>({});
@@ -403,11 +404,32 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     }
   };
 
+  // Handle tag click for filtering
+  const handleTagClick = (tagName: string) => {
+    if (tagFilter === tagName) {
+      // Clicking the same tag clears the filter
+      setTagFilter(null);
+    } else {
+      // Set new tag filter
+      setTagFilter(tagName);
+    }
+  };
+
   const filteredAndSortedHoldings = [...data.holdings]
-    .filter(holding =>
-      holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase()) &&
-      holding.security_type.toLowerCase().includes(filters.type.toLowerCase())
-    )
+    .filter(holding => {
+      // Apply symbol and type filters
+      const matchesSymbol = holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase());
+      const matchesType = holding.security_type.toLowerCase().includes(filters.type.toLowerCase());
+
+      // Apply tag filter if active
+      let matchesTag = true;
+      if (tagFilter) {
+        const holdingTags = structuredTags[holding.symbol];
+        matchesTag = holdingTags && Object.keys(holdingTags.tags).includes(tagFilter);
+      }
+
+      return matchesSymbol && matchesType && matchesTag;
+    })
     .sort((a, b) => {
       // Stocks first, then by total_value desc (default)
       const aIsStock = a.security_type.toLowerCase() === 'stock';
@@ -447,6 +469,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
             tags={structuredTag.tags}
             maxTags={0}
             compact={isMobile}
+            onTagClick={(tagName) => handleTagClick(tagName)}
+            activeFilter={tagFilter}
           />
           <button
             onClick={(e) => {
@@ -481,7 +505,28 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
-        <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
+
+          {/* Tag Filter Indicator */}
+          {tagFilter && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-400/30 rounded-md">
+              <span className="text-sm text-blue-200">
+                Filtered by: <span className="font-medium">{tagFilter.replace(/_/g, ' ')}</span>
+                <span className="text-xs ml-1 opacity-75">
+                  ({filteredAndSortedHoldings.length} of {data.holdings.length})
+                </span>
+              </span>
+              <button
+                onClick={() => setTagFilter(null)}
+                className="text-blue-300 hover:text-blue-100 transition-colors"
+                title="Clear filter"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
         
         {/* View Toggle */}
         <div 

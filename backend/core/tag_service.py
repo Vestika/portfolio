@@ -106,12 +106,15 @@ class TagService:
         library = await self.get_user_tag_library(user_id)
         tag_def = library.get_tag_definition(tag_name)
         
-        if not tag_def and tag_name not in DEFAULT_TAG_TEMPLATES:
+        # If not found in user definitions, check if it's a template
+        if not tag_def and tag_name in DEFAULT_TAG_TEMPLATES:
+            tag_def = DEFAULT_TAG_TEMPLATES[tag_name]
+        
+        if not tag_def:
             raise ValueError(f"Tag definition '{tag_name}' not found for user")
         
-        # Validate tag value against definition
-        if tag_def:
-            await self._validate_tag_value(tag_value, tag_def)
+        # Validate tag value against definition (use template or custom definition)
+        await self._validate_tag_value(tag_value, tag_def)
         
         tag_value.updated_at = datetime.utcnow()
         

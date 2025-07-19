@@ -103,12 +103,10 @@ const HoldingTagManager: React.FC<HoldingTagManagerProps> = ({
 
   const handleTemplateSelectedForImmediate = async (tagName: string) => {
     try {
-      // Reload the tag library to include the new template
-      await loadData();
+      // Find the template in the current tag library (no need to reload since we're using built-in templates)
+      if (!tagLibrary) return;
       
-      // Immediately open the tag editor for this tag
-      const updatedLibrary = await TagAPI.getUserTagLibrary();
-      const tagDefinition = updatedLibrary.tag_definitions[tagName] || updatedLibrary.template_tags[tagName];
+      const tagDefinition = tagLibrary.template_tags[tagName] || tagLibrary.tag_definitions[tagName];
       
       if (tagDefinition) {
         setEditingTag({ definition: tagDefinition });
@@ -161,12 +159,17 @@ const HoldingTagManager: React.FC<HoldingTagManagerProps> = ({
       }
     });
 
-    return Object.entries(tagsInUse).map(([tagName, symbolSet]) => ({
-      tagName,
-      symbols: Array.from(symbolSet),
-      definition: allDefinitions[tagName],
-      isTemplate: Boolean(tagLibrary.template_tags[tagName])
-    }));
+    return Object.entries(tagsInUse).map(([tagName, symbolSet]) => {
+      // Prioritize templates over custom definitions to avoid duplicates
+      const isTemplate = Boolean(tagLibrary.template_tags[tagName]);
+      
+      return {
+        tagName,
+        symbols: Array.from(symbolSet),
+        definition: allDefinitions[tagName],
+        isTemplate: isTemplate
+      };
+    });
   };
 
   const getAvailableTemplateTags = (): TagDefinition[] => {

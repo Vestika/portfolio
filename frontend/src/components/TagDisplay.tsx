@@ -7,13 +7,15 @@ interface TagDisplayProps {
   maxTags?: number;
   compact?: boolean;
   onTagClick?: (tagName: string, tagValue: TagValue) => void;
+  activeFilter?: string | null;
 }
 
 const TagDisplay: React.FC<TagDisplayProps> = ({ 
   tags, 
   maxTags = 5, 
   compact = false,
-  onTagClick 
+  onTagClick,
+  activeFilter 
 }) => {
   const tagEntries = Object.entries(tags);
   const displayTags = maxTags && maxTags > 0 ? tagEntries.slice(0, maxTags) : tagEntries;
@@ -114,13 +116,19 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
         const displayValue = getTagDisplayValue(tagValue);
         if (!displayValue) return null;
 
+        const isActive = activeFilter === tagName;
+        
         return (
           <Badge
             key={tagName}
             variant="outline"
-            className={`${getTagColor(tagValue)} cursor-pointer hover:opacity-80 transition-opacity text-xs`}
+            className={`${getTagColor(tagValue)} cursor-pointer transition-all text-xs ${
+              isActive 
+                ? 'ring-2 ring-blue-400 ring-opacity-60 shadow-lg scale-105' 
+                : 'hover:opacity-80 hover:scale-105'
+            }`}
             onClick={() => onTagClick?.(tagName, tagValue)}
-            title={`${formatTagName(tagName)}: ${displayValue}`}
+            title={`${formatTagName(tagName)}: ${displayValue}${isActive ? ' (Click to clear filter)' : ' (Click to filter)'}`}
           >
             {compact ? (
               <>
