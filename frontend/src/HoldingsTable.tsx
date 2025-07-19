@@ -469,11 +469,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
           e.stopPropagation();
           setTagManagerOpen(holding.symbol);
         }}
-        className="text-gray-500 hover:text-blue-400 transition-colors flex items-center gap-1 text-xs"
+        className="text-gray-500 hover:text-blue-400 transition-colors"
         title="Add tags"
       >
         <Tags size={14} />
-        Add tags
       </button>
     );
   };
