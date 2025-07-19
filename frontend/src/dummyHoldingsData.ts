@@ -22,6 +22,15 @@ export const dummyHoldingsData: HoldingsTableData = {
         { date: "2024-01-15", price: 190.50 },
         { date: "2024-01-08", price: 168.20 },
         { date: "2024-01-01", price: 162.80 }
+      ],
+      account_breakdown: [
+        {
+          account_name: "Brokerage Account",
+          account_type: "brokerage",
+          units: 150,
+          value: 28500.00,
+          owners: ["John Doe"]
+        }
       ]
     },
     {
@@ -43,6 +52,15 @@ export const dummyHoldingsData: HoldingsTableData = {
         { date: "2024-01-15", price: 335.75 },
         { date: "2024-01-08", price: 315.40 },
         { date: "2024-01-01", price: 308.90 }
+      ],
+      account_breakdown: [
+        {
+          account_name: "Brokerage Account",
+          account_type: "brokerage",
+          units: 80,
+          value: 22500.00,
+          owners: ["John Doe"]
+        }
       ]
     },
     {
@@ -64,6 +82,15 @@ export const dummyHoldingsData: HoldingsTableData = {
         { date: "2024-01-15", price: 148.30 },
         { date: "2024-01-08", price: 138.90 },
         { date: "2024-01-01", price: 135.20 }
+      ],
+      account_breakdown: [
+        {
+          account_name: "Brokerage Account",
+          account_type: "brokerage",
+          units: 45,
+          value: 8500.00,
+          owners: ["John Doe"]
+        }
       ]
     },
     {
@@ -85,6 +112,15 @@ export const dummyHoldingsData: HoldingsTableData = {
         { date: "2024-01-15", price: 185.20 },
         { date: "2024-01-08", price: 192.50 },
         { date: "2024-01-01", price: 198.30 }
+      ],
+      account_breakdown: [
+        {
+          account_name: "Brokerage Account",
+          account_type: "brokerage",
+          units: 60,
+          value: 12500.00,
+          owners: ["John Doe"]
+        }
       ]
     },
     {

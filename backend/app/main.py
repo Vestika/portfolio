@@ -13,7 +13,7 @@ import yaml
 
 from core import feature_generator
 from core.database import db_manager
-from models import User, Product, UserPreferences, Symbol
+from models import User, Product, UserPreferences, Symbol, TagDefinition, TagValue, HoldingTags, TagLibrary, TagType, ScalarDataType, DEFAULT_TAG_TEMPLATES
 from models.portfolio import Portfolio
 from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
@@ -29,6 +29,7 @@ from core.chat_manager import chat_manager
 import yfinance as yf
 from pymaya.maya import Maya
 from datetime import date
+from core.tag_service import TagService
 
 logger = logging.Logger(__name__)
 
@@ -421,7 +422,33 @@ async def get_holdings_table(
                     original_price = pricing_info["unit_price"]
                     historical_prices = []
                     try:
-                        if symbol.isdigit():
+                        if symbol == 'USD':
+                            # Handle currency holdings
+                            from_currency = symbol
+                            to_currency = str(portfolio.base_currency)
+                            if from_currency == to_currency:
+                                # No conversion needed, always 1
+                                for i in range(7, 0, -1):
+                                    day = today - timedelta(days=i)
+                                    historical_prices.append({
+                                        "date": day.strftime("%Y-%m-%d"),
+                                        "price": 1.0
+                                    })
+                            else:
+                                # Construct yfinance ticker for currency pair
+                                ticker = f"{from_currency}{to_currency}=X"
+                                logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
+                                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                                if not data.empty:
+                                    prices = data["Close"].dropna().round(6).to_dict().get(ticker)
+                                    for dt, price in prices.items():
+                                        historical_prices.append({
+                                            "date": dt,
+                                            "price": float(price)
+                                        })
+                                else:
+                                    logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
+                        elif symbol.isdigit():
                             logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
                             tase_id = getattr(security, 'tase_id', None) or symbol
                             price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
@@ -446,14 +473,6 @@ async def get_holdings_table(
                                     })
                             else:
                                 logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
-                        if not historical_prices:
-                            historical_prices = [
-                                {
-                                    "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                                    "price": original_price * (1 + 0.1 * math.sin(i / 5)),
-                                }
-                                for i in range(7)
-                            ]
                     except Exception as e:
                         logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
 
@@ -469,13 +488,25 @@ async def get_holdings_table(
                         "currency": portfolio.base_currency,
                         "price_source": pricing_info["price_source"],
                         "historical_prices": historical_prices,
+                        "account_breakdown": []  # Add account breakdown array
                     }
 
+                # Add account information to the breakdown
+                account_holding_value = calculator.calc_holding_value(security, holding.units)
+                holdings_aggregation[symbol]["account_breakdown"].append({
+                    "account_name": account.name,
+                    "account_type": account.properties.get("type", "bank-account"),
+                    "units": holding.units,
+                    "value": account_holding_value["total"],
+                    "owners": account.properties.get("owners", ["me"])
+                })
                 holdings_aggregation[symbol]["total_units"] += holding.units
 
         holdings = []
         for holding_data in holdings_aggregation.values():
             holding_data["total_value"] = holding_data["value_per_unit"] * holding_data["total_units"]
+            # Sort account breakdown by value descending
+            holding_data["account_breakdown"].sort(key=lambda x: x["value"], reverse=True)
             holdings.append(holding_data)
 
         return {
@@ -588,7 +619,7 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
-        
+
         # Add securities for options plans
         for plan in request.options_plans:
             symbol = plan.get('symbol')
@@ -706,7 +737,7 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                     'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
                     'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
                 }
-        
+
         # Add securities for options plans
         for plan in request.options_plans:
             symbol = plan.get('symbol')
@@ -1636,7 +1667,7 @@ async def exercise_options(
     Exercise options and create an exercise plan.
     """
     from core.options_exercise import OptionsExercise
-    
+
     collection = db_manager.get_collection("portfolios")
     doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
     if not doc:
@@ -1644,22 +1675,22 @@ async def exercise_options(
     account = next((a for a in doc.get("accounts", []) if a["name"] == account_name), None)
     if not account:
         raise HTTPException(status_code=404, detail=f"Account '{account_name}' not found")
-    
+
     # Extract request parameters
     plan_id = request.get("plan_id")
     units_to_exercise = request.get("units_to_exercise")
     exercise_date = request.get("exercise_date", datetime.now().strftime("%Y-%m-%d"))
     current_valuation = request.get("current_valuation")
-    
+
     if not plan_id or not units_to_exercise:
         raise HTTPException(status_code=400, detail="plan_id and units_to_exercise are required")
-    
+
     # Find the options plan
     options_plans = account.get("options_plans", [])
     plan = next((p for p in options_plans if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail=f"Options plan {plan_id} not found")
-    
+
     try:
         # Create exercise plan
         exercise_plan = OptionsExercise.create_exercise_plan(
@@ -1668,30 +1699,30 @@ async def exercise_options(
             exercise_date=exercise_date,
             current_valuation=current_valuation
         )
-        
+
         # Update the options plan to reflect the exercise
         plan["units"] = exercise_plan["remaining_units"]
-        
+
         # Add exercise history to the plan
         if "exercise_history" not in plan:
             plan["exercise_history"] = []
-        
+
         plan["exercise_history"].append({
             "exercise_date": exercise_date,
             "units_exercised": units_to_exercise,
             "exercise_cost": exercise_plan["total_cash_outlay"],
             "net_value": exercise_plan["net_after_tax_value"]
         })
-        
+
         # Update the database
         await collection.replace_one({"_id": doc["_id"]}, doc)
         invalidate_portfolio_cache(portfolio_id)
-        
+
         return {
             "message": "Options exercised successfully",
             "exercise_plan": exercise_plan
         }
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1725,7 +1756,7 @@ async def get_options_vesting(
     options_plans = account.get("options_plans", [])
     now = datetime.now().date()
     results = []
-    
+
     for plan in options_plans:
         # Calculate vesting schedule
         vesting_calc = OptionsCalculator.calculate_vesting_schedule(
@@ -1738,7 +1769,7 @@ async def get_options_vesting(
             left_company=plan.get("left_company", False),
             left_company_date=plan.get("left_company_date")
         )
-        
+
         # Calculate options value
         value_calc = OptionsCalculator.calculate_options_value(
             vested_units=vesting_calc["vested_units"],
@@ -1747,18 +1778,18 @@ async def get_options_vesting(
             company_valuation=plan.get("company_valuation"),
             option_type=plan.get("option_type", "iso")
         )
-        
+
         # Calculate time to expiry
         expiration_date = datetime.strptime(plan["expiration_date"], "%Y-%m-%d").date()
         time_to_expiry = (expiration_date - now).days / 365.25
-        
+
         # Calculate exchange rate for value conversion
         exchange_value = 1.0  # Default to 1 if no conversion needed
         if value_calc["current_valuation_per_share"] > 0:
             # For private companies, we might need to convert from USD to base currency
             # This is simplified - in reality you'd have proper currency conversion
             exchange_value = calculator.get_exchange_rate("USD", portfolio.base_currency.value)
-        
+
         results.append({
             "id": plan["id"],
             "symbol": plan["symbol"],
@@ -1792,13 +1823,13 @@ async def get_options_vesting(
         symbol = plan_result["symbol"]
         vested = plan_result["vested_units"]
         symbol_to_vested[symbol] = symbol_to_vested.get(symbol, 0) + math.ceil(vested)
-    
+
     # Update the holdings array for the account
     new_holdings = [
         {"symbol": symbol, "units": units}
         for symbol, units in symbol_to_vested.items()
     ]
-    
+
     # Update the account in the doc
     updated = False
     for acc in doc["accounts"]:
@@ -1810,6 +1841,162 @@ async def get_options_vesting(
         await collection.replace_one({"_id": doc["_id"]}, doc)
         invalidate_portfolio_cache(portfolio_id)
     # --- End update holdings ---
-    
+
     return {"plans": results}
+
+
+# =============================================================================
+# TAG MANAGEMENT API ENDPOINTS
+# =============================================================================
+
+async def get_tag_service() -> TagService:
+    """Dependency to get tag service"""
+    if db_manager.database is None:
+        await db_manager.connect()
+    return TagService(db_manager.database)
+
+# Tag Library Management
+@app.get("/tags/library")
+async def get_user_tag_library(
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Get user's tag library with all tag definitions"""
+    user_id = current_user.firebase_uid
+    library = await tag_service.get_user_tag_library(user_id)
+    return library.dict()
+
+@app.post("/tags/definitions")
+async def create_tag_definition(
+    tag_definition: TagDefinition,
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Create or update a tag definition"""
+    user_id = current_user.firebase_uid
+    result = await tag_service.add_tag_definition(user_id, tag_definition)
+    return result.dict()
+
+@app.delete("/tags/definitions/{tag_name}")
+async def delete_tag_definition(
+    tag_name: str,
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Delete a tag definition and all associated values"""
+    user_id = current_user.firebase_uid
+    success = await tag_service.delete_tag_definition(user_id, tag_name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Tag definition not found")
+    return {"message": f"Tag definition '{tag_name}' deleted successfully"}
+
+@app.post("/tags/adopt-template/{template_name}")
+async def adopt_template_tag(
+    template_name: str,
+    custom_name: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Adopt a template tag as a custom tag definition"""
+    user_id = current_user.firebase_uid
+    try:
+        result = await tag_service.adopt_template_tag(user_id, template_name, custom_name)
+        return result.dict()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Holding Tags Management
+@app.get("/holdings/{symbol}/tags")
+async def get_holding_tags(
+    symbol: str,
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Get all tags for a specific holding"""
+    user_id = current_user.firebase_uid
+    holding_tags = await tag_service.get_holding_tags(user_id, symbol, portfolio_id)
+    return holding_tags.dict()
+
+@app.put("/holdings/{symbol}/tags/{tag_name}")
+async def set_holding_tag(
+    symbol: str,
+    tag_name: str,
+    tag_value: TagValue,
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Set a tag value for a holding"""
+    user_id = current_user.firebase_uid
+    try:
+        result = await tag_service.set_holding_tag(user_id, symbol, tag_name, tag_value, portfolio_id)
+        return result.dict()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/holdings/{symbol}/tags/{tag_name}")
+async def remove_holding_tag(
+    symbol: str,
+    tag_name: str,
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Remove a tag from a holding"""
+    user_id = current_user.firebase_uid
+    success = await tag_service.remove_holding_tag(user_id, symbol, tag_name, portfolio_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Tag not found for this holding")
+    return {"message": f"Tag '{tag_name}' removed from {symbol}"}
+
+@app.get("/holdings/tags")
+async def get_all_holding_tags(
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Get tags for all holdings"""
+    user_id = current_user.firebase_uid
+    all_tags = await tag_service.get_all_holding_tags(user_id, portfolio_id)
+    return [tags.dict() for tags in all_tags]
+
+# Tag Search and Aggregation
+@app.get("/holdings/search")
+async def search_holdings_by_tags(
+    tag_filters: str = Query(..., description="JSON string of tag filters"),
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Search holdings by tag criteria"""
+    import json
+    user_id = current_user.firebase_uid
+
+    try:
+        filters = json.loads(tag_filters)
+        symbols = await tag_service.search_holdings_by_tags(user_id, filters, portfolio_id)
+        return {"symbols": symbols, "filters_used": filters}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in tag_filters parameter")
+
+@app.get("/tags/{tag_name}/aggregation")
+async def get_tag_aggregation(
+    tag_name: str,
+    portfolio_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """Get aggregation data for a specific tag across all holdings"""
+    user_id = current_user.firebase_uid
+    aggregation = await tag_service.get_tag_aggregations(user_id, tag_name, portfolio_id)
+    return aggregation
+
+# Template Tags
+@app.get("/tags/templates")
+async def get_template_tags():
+    """Get all available template tags"""
+    return {
+        "templates": {name: template.dict() for name, template in DEFAULT_TAG_TEMPLATES.items()}
+    }
 
