@@ -115,6 +115,23 @@ const HoldingTagManager: React.FC<HoldingTagManagerProps> = ({
     }
   };
 
+  const handleCustomTagCreatedForImmediate = async (tagName: string) => {
+    try {
+      // Reload the tag library to include the new custom definition
+      await loadData();
+      
+      // Find the newly created custom tag definition
+      const updatedLibrary = await TagAPI.getUserTagLibrary();
+      const tagDefinition = updatedLibrary.tag_definitions[tagName];
+      
+      if (tagDefinition) {
+        setEditingTag({ definition: tagDefinition });
+      }
+    } catch (error) {
+      console.error('Error preparing custom tag for immediate use:', error);
+    }
+  };
+
   const handleEditTagDefinition = (definition: TagDefinition) => {
     setDefinitionManager({ isOpen: true, definition });
   };
@@ -474,6 +491,7 @@ const HoldingTagManager: React.FC<HoldingTagManagerProps> = ({
         onClose={() => setDefinitionManager({ isOpen: false })}
         onSave={handleCreateTagDefinition}
         onTemplateSelectedForImmediate={handleTemplateSelectedForImmediate}
+        onCustomTagCreatedForImmediate={handleCustomTagCreatedForImmediate}
         existingDefinition={definitionManager.definition}
       />
     </>
