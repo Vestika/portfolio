@@ -22,6 +22,13 @@ import {
   Users,
 } from 'lucide-react';
 
+import israelFlag from './assets/israel-flag.svg';
+import usFlag from './assets/us-flag.svg';
+import metaLogo from './assets/meta.svg';
+import bitcoinLogo from './assets/bitcoin.svg';
+import googleLogo from './assets/google.svg';
+
+
 interface HoldingsTableProps {
   data: HoldingsTableData;
   isValueVisible: boolean;
@@ -45,6 +52,40 @@ const getSecurityTypeIcon = (type: string) => {
     default:
       return <Wallet {...iconProps} />;
   }
+};
+
+// Helper to get logo URL
+const getLogoUrl = (symbol: string, type: string) => {
+  if (symbol.toUpperCase() === 'META') {
+    // Special case: Meta Platforms logo
+    return metaLogo;
+  }
+  if (symbol.toUpperCase() === 'GOOGL' || symbol.toUpperCase() === 'GOOG') {
+    // Special case: Google logo
+    return googleLogo;
+  }
+  if (symbol.toUpperCase() === 'IBIT') {
+    // Special case: IBIT (BlackRock Bitcoin ETF) gets a Bitcoin logo
+    return bitcoinLogo;
+  }
+  if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
+    // ILS or digit-only stock: Israeli flag
+    return israelFlag;
+  }
+  if (symbol.toUpperCase() === 'USD') {
+    // USD: US flag from Wikimedia
+    return usFlag;
+  }
+  if (type.toLowerCase() === 'crypto') {
+    // CryptoIcons uses lowercase symbols
+    return `https://cryptoicons.org/api/icon/${symbol.toLowerCase()}/32`;
+  }
+  if (type.toLowerCase() === 'stock' || type.toLowerCase() === 'etf') {
+    // IEX Cloud logo endpoint (unofficial, fallback to placeholder on error)
+    return `https://storage.googleapis.com/iex/api/logos/${symbol.toUpperCase()}.png`;
+  }
+  // Default icon for other types
+  return null;
 };
 
 
@@ -340,13 +381,17 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       holding.security_type.toLowerCase().includes(filters.type.toLowerCase())
     )
     .sort((a, b) => {
+      // Stocks first, then by total_value desc (default)
+      const aIsStock = a.security_type.toLowerCase() === 'stock';
+      const bIsStock = b.security_type.toLowerCase() === 'stock';
+      if (aIsStock !== bIsStock) {
+        return aIsStock ? -1 : 1;
+      }
+      // Then sort by the selected key
       const key = sortConfig.key;
-
       const aValue = a[key];
       const bValue = b[key];
-
       if (aValue === undefined || bValue === undefined) return 0;
-
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -475,6 +520,29 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                     <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
                     <td className="px-2 md:px-4 font-medium text-blue-400">
                       <div className="flex items-center gap-2">
+                        {/* Logo image */}
+                        {(() => {
+                          const logoUrl = getLogoUrl(holding.symbol, holding.security_type);
+                          const isUsFlag = logoUrl === usFlag;
+                          const isFlag = logoUrl === israelFlag || isUsFlag;
+                          if (logoUrl) {
+                            return (
+                              <img
+                                src={logoUrl}
+                                alt={holding.symbol + ' logo'}
+                                className={
+                                  isFlag
+                                    ? 'w-5 h-5 rounded-full object-cover mr-1 transition-transform duration-200 hover:scale-150'
+                                    : 'w-5 h-5 rounded-full bg-white object-contain border border-gray-300/40 mr-1 transition-transform duration-200 hover:scale-150'
+                                }
+                                onError={e => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            );
+                          }
+                          return null;
+                        })()}
                         <span>{holding.symbol}</span>
                         {holding.account_breakdown && holding.account_breakdown.length > 1 && (
                           <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
