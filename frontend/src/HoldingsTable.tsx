@@ -49,23 +49,43 @@ const getSecurityTypeIcon = (type: string) => {
 
 
 const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string, baseCurrency: string }> = ({ data, symbol, currency, baseCurrency }) => {
-  // Determine solid color: green for positive/neutral, red for negative
-  let trendColor = '#4ade80'; // green by default
+  // Determine colors based on trend
+  let lineColor = '#10b981'; // green by default
+  let fillColor = 'rgba(16, 185, 129, 0.1)'; // light green fill
+  let gradientStart = 'rgba(16, 185, 129, 0.3)';
+  let gradientEnd = 'rgba(16, 185, 129, 0.0)';
+  
   if (data && data.length > 1) {
     const first = data[0].price;
     const last = data[data.length - 1].price;
     if (last < first) {
-      trendColor = '#f87171'; // red
+      lineColor = '#ef4444'; // red
+      fillColor = 'rgba(239, 68, 68, 0.1)'; // light red fill
+      gradientStart = 'rgba(239, 68, 68, 0.3)';
+      gradientEnd = 'rgba(239, 68, 68, 0.0)';
     }
   }
+
+  // Calculate min and max for better scaling
+  const prices = data.map(point => point.price);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const priceRange = maxPrice - minPrice;
+  
+  // Add padding to make variations more visible
+  const padding = priceRange * 0.1; // 10% padding
+  const yMin = minPrice - padding;
+  const yMax = maxPrice + padding;
+
   const options: Highcharts.Options = {
     chart: {
-      type: 'spline',
-      height: 32,
-      width: 100,
+      type: 'area',
+      height: 40,
+      width: 120,
       backgroundColor: 'transparent',
-      margin: [2, 0, 2, 0],
-      style: { overflow: 'visible' }
+      margin: [4, 4, 4, 4],
+      style: { overflow: 'visible' },
+      spacing: [0, 0, 0, 0]
     },
     title: { text: undefined },
     credits: { enabled: false },
@@ -73,98 +93,112 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
       type: 'datetime',
       visible: false,
       minPadding: 0,
-      maxPadding: 0
+      maxPadding: 0,
+      lineWidth: 0,
+      tickLength: 0
     },
     yAxis: {
       visible: false,
       minPadding: 0,
-      maxPadding: 0
+      maxPadding: 0,
+      lineWidth: 0,
+      tickLength: 0,
+      gridLineWidth: 0,
+      min: yMin,
+      max: yMax
     },
     legend: { enabled: false },
     tooltip: {
       enabled: true,
       useHTML: true,
-      backgroundColor: 'transparent', // No card background
+      backgroundColor: 'rgba(17, 24, 39, 0.95)',
       borderWidth: 0,
       shadow: false,
       style: {
-        color: '#e5e7eb', // Softer light gray
-        fontWeight: 'normal', // Softer font weight
-        textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-        padding: '0px',
-        zIndex: 300,
-        pointerEvents: 'none',
-        fontSize: '13px',
+        color: '#e5e7eb',
+        fontWeight: 'normal',
+        fontSize: '12px',
+        borderRadius: 8,
       },
-      borderRadius: 0,
-      outside: true, // Always float above the chart
-      hideDelay: 0, // Disappear immediately when not hovering
-      followPointer: true, // Tooltip follows the mouse
+      borderRadius: 8,
+      outside: true,
+      hideDelay: 0,
+      followPointer: true,
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        // If symbol is USD, show baseCurrency instead of currency
         const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
-        return `<span style="padding:2px 8px;display:inline-block;"><b>${date.toLocaleDateString()}</b><br/><b>${point.y?.toFixed(2)} ${displayCurrency}</b></span>`;
+        const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
+        const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
+        
+        return `
+          <div style="padding: 4px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString()}</div>
+            <div style="font-size: 14px; font-weight: 700; color: ${lineColor}; margin-bottom: 2px;">
+              ${point.y?.toFixed(2)} ${displayCurrency}
+            </div>
+            ${priceChange !== 0 ? `
+              <div style="font-size: 11px; color: ${priceChange > 0 ? '#10b981' : '#ef4444'};">
+                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)} (${priceChangePercent > 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%)
+              </div>
+            ` : ''}
+          </div>
+        `;
       }
     },
     plotOptions: {
-      series: {
-        animation: false,
-        lineWidth: 3,
-        shadow: {
-          color: 'rgba(96,165,250,0.5)',
-          width: 8,
-          offsetX: 0,
-          offsetY: 0
-        },
-        states: {
-          hover: {
-            enabled: true,
-            lineWidth: 4,
-            halo: {
-              size: 10,
-              opacity: 0.25
-            }
-          }
-        },
+      area: {
+        fillOpacity: 0.3,
+        lineWidth: 2,
         marker: {
           enabled: false,
           states: {
             hover: {
               enabled: true,
-              fillColor: 'rgba(96,165,250,0.8)',
-              lineColor: '#fff',
+              fillColor: lineColor,
+              lineColor: '#ffffff',
               lineWidth: 2,
-              radius: 5,
+              radius: 4
+            }
+          }
+        },
+        states: {
+          hover: {
+            lineWidth: 3,
+            halo: {
+              size: 8,
+              opacity: 0.2
             }
           }
         }
       }
     },
     series: [{
-      type: 'spline',
+      type: 'area',
       data: data.map(point => ({
         x: new Date(point.date).getTime(),
         y: point.price
       })),
-      color: trendColor,
-      linecap: 'round',
-      lineWidth: 3,
-      shadow: {
-        color: 'rgba(56,189,248,0.4)',
-        width: 10,
-        offsetX: 0,
-        offsetY: 0
+      color: lineColor,
+      fillColor: {
+        linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+        stops: [
+          [0, gradientStart],
+          [1, gradientEnd]
+        ]
       },
+      lineWidth: 2,
       states: {
         hover: {
-          lineWidth: 4,
+          lineWidth: 3,
           halo: {
-            size: 12,
-            opacity: 0.35
+            size: 8,
+            opacity: 0.2
           }
         }
+      },
+      animation: {
+        duration: 300
       }
     }]
   };
