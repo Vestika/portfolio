@@ -4,7 +4,8 @@ import {
   PortfolioFile,
   AccountInfo,
   RSUPlan,
-  ESPPPlan
+  ESPPPlan,
+  OptionsPlan
 } from './types';
 import {
   Eye,
@@ -45,6 +46,7 @@ import HamburgerMenu from "@/components/ui/HamburgerMenu";
 
 import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
+import OptionsPlanConfig from './components/OptionsPlanConfig';
 import api from './utils/api';
 
 interface AccountSelectorProps {
@@ -114,13 +116,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     holdings: { symbol: string; units: string }[];
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
+    options_plans: OptionsPlan[];
   }>({
     account_name: '',
     account_type: 'bank-account',
     owners: ['me'],
     holdings: [{ symbol: '', units: '' }],
     rsu_plans: [],
-    espp_plans: []
+    espp_plans: [],
+    options_plans: []
   });
   const [editAccount, setEditAccount] = useState<{
     account_name: string;
@@ -129,16 +133,19 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     holdings: { symbol: string; units: string }[];
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
+    options_plans: OptionsPlan[];
   }>({
     account_name: '',
     account_type: 'bank-account',
     owners: ['me'],
     holdings: [{ symbol: '', units: '' }],
     rsu_plans: [],
-    espp_plans: []
+    espp_plans: [],
+    options_plans: []
   });
   const [collapsedRSUPlans, setCollapsedRSUPlans] = useState<Set<string>>(new Set());
   const [collapsedESPPPlans, setCollapsedESPPPlans] = useState<Set<string>>(new Set());
+  const [collapsedOptionsPlans, setCollapsedOptionsPlans] = useState<Set<string>>(new Set());
   const [editCollapsedRSUPlans, setEditCollapsedRSUPlans] = useState<Set<string>>(new Set());
   const [editCollapsedESPPPlans, setEditCollapsedESPPPlans] = useState<Set<string>>(new Set());
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -247,10 +254,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       let validHoldings;
       // If company-custodian-account, generate holdings from plan symbols
       if (newAccount.account_type === 'company-custodian-account') {
-        // Collect all unique symbols from RSU and ESPP plans
+        // Collect all unique symbols from RSU, ESPP, and Options plans
         const planSymbols = [
           ...newAccount.rsu_plans.map(plan => plan.symbol.trim()),
-          ...newAccount.espp_plans.map(plan => plan.symbol.trim())
+          ...newAccount.espp_plans.map(plan => plan.symbol.trim()),
+          ...newAccount.options_plans.map(plan => plan.symbol.trim())
         ].filter(s => s);
         const uniqueSymbols = Array.from(new Set(planSymbols));
         validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
@@ -264,24 +272,28 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           }));
       }
 
-      // Filter out empty RSU and ESPP plans
+      // Filter out empty RSU, ESPP, and Options plans
       const validRSUPlans = newAccount.rsu_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const validESPPPlans = newAccount.espp_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
+      const validOptionsPlans = newAccount.options_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
+
       const accountData = {
         ...newAccount,
         holdings: validHoldings,
         rsu_plans: validRSUPlans,
-        espp_plans: validESPPPlans
+        espp_plans: validESPPPlans,
+        options_plans: validOptionsPlans
       };
 
       await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
       setShowAddAccountModal(false);
-      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [] } );
+      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] } );
       holdingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with new account
@@ -341,7 +353,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         owners: account.owners || ['me'],
         holdings: mappedHoldings,
         rsu_plans: account.rsu_plans || [],
-        espp_plans: account.espp_plans || []
+        espp_plans: account.espp_plans || [],
+        options_plans: account.options_plans || []
       });
       
       // Collapse all loaded plans by default
@@ -417,10 +430,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       let validHoldings;
       // If company-custodian-account, generate holdings from plan symbols
       if (editAccount.account_type === 'company-custodian-account') {
-        // Collect all unique symbols from RSU and ESPP plans
+        // Collect all unique symbols from RSU, ESPP, and Options plans
         const planSymbols = [
           ...editAccount.rsu_plans.map(plan => plan.symbol.trim()),
-          ...editAccount.espp_plans.map(plan => plan.symbol.trim())
+          ...editAccount.espp_plans.map(plan => plan.symbol.trim()),
+          ...editAccount.options_plans.map(plan => plan.symbol.trim())
         ].filter(s => s);
         const uniqueSymbols = Array.from(new Set(planSymbols));
         validHoldings = uniqueSymbols.map(symbol => ({ symbol, units: 0 }));
@@ -434,25 +448,29 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           }));
       }
 
-      // Filter out empty RSU and ESPP plans
+      // Filter out empty RSU, ESPP, and Options plans
       const validRSUPlans = editAccount.rsu_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const validESPPPlans = editAccount.espp_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
+      const validOptionsPlans = editAccount.options_plans
+        .filter(plan => plan.symbol.trim() && plan.units > 0);
+
       const accountData = {
         ...editAccount,
         holdings: validHoldings,
         rsu_plans: validRSUPlans,
-        espp_plans: validESPPPlans
+        espp_plans: validESPPPlans,
+        options_plans: validOptionsPlans
       };
 
       await api.put(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, accountData);
 
       setShowEditAccountModal(false);
       setAccountToEdit('');
-      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [] });
+      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] });
       editHoldingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with updated account
@@ -501,6 +519,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const toggleEditESPPPlanCollapse = (planId: string) => {
     setEditCollapsedESPPPlans(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(planId)) {
+        newSet.delete(planId);
+      } else {
+        newSet.add(planId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleOptionsPlanCollapse = (planId: string) => {
+    setCollapsedOptionsPlans(prev => {
       const newSet = new Set(prev);
       if (newSet.has(planId)) {
         newSet.delete(planId);
@@ -928,6 +958,76 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
+
+                    {/* Options Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Options Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newOptionsPlan: OptionsPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              grant_date: new Date().toISOString().split('T')[0],
+                              exercise_price: 0.10,
+                              strike_price: 0.10,
+                              expiration_date: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                              has_cliff: false,
+                              vesting_period_years: 4,
+                              vesting_frequency: 'quarterly',
+                              option_type: 'iso'
+                            };
+                            setNewAccount({
+                              ...newAccount,
+                              options_plans: [...newAccount.options_plans, newOptionsPlan]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Options Plan
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {newAccount.options_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                Options Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = newAccount.options_plans.filter((_, i) => i !== index);
+                                  setNewAccount({ ...newAccount, options_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <OptionsPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = newAccount.options_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setNewAccount({ ...newAccount, options_plans: updatedPlans });
+                              }}
+                              isCollapsed={collapsedOptionsPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleOptionsPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -1225,6 +1325,76 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               }}
                               isCollapsed={editCollapsedESPPPlans.has(plan.id)}
                               onToggleCollapse={() => toggleEditESPPPlanCollapse(plan.id)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Options Plans */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Options Plans</Label>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const newOptionsPlan: OptionsPlan = {
+                              id: Date.now().toString(),
+                              symbol: '',
+                              units: 0,
+                              grant_date: new Date().toISOString().split('T')[0],
+                              exercise_price: 0.10,
+                              strike_price: 0.10,
+                              expiration_date: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                              has_cliff: false,
+                              vesting_period_years: 4,
+                              vesting_frequency: 'quarterly',
+                              option_type: 'iso'
+                            };
+                            setEditAccount({
+                              ...editAccount,
+                              options_plans: [...editAccount.options_plans, newOptionsPlan]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Options Plan
+                        </Button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {editAccount.options_plans.map((plan, index) => (
+                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="flex items-center justify-between mb-3">
+                              <Label className="text-sm font-medium">
+                                Options Plan - {plan.symbol || 'New Plan'}
+                              </Label>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  const updatedPlans = editAccount.options_plans.filter((_, i) => i !== index);
+                                  setEditAccount({ ...editAccount, options_plans: updatedPlans });
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <OptionsPlanConfig
+                              plan={plan}
+                              onChange={(updatedPlan) => {
+                                const updatedPlans = editAccount.options_plans.map((p, i) =>
+                                  i === index ? updatedPlan : p
+                                );
+                                setEditAccount({ ...editAccount, options_plans: updatedPlans });
+                              }}
+                              isCollapsed={collapsedOptionsPlans.has(plan.id)}
+                              onToggleCollapse={() => toggleOptionsPlanCollapse(plan.id)}
                             />
                           </div>
                         ))}

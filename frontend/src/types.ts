@@ -30,6 +30,25 @@ export interface ESPPPlan {
   base_stock_price: number;
 }
 
+export interface OptionsPlan {
+  id: string;
+  symbol: string;
+  units: number;
+  grant_date: string;
+  exercise_price: number;
+  strike_price: number;
+  expiration_date: string;
+  has_cliff: boolean;
+  cliff_duration_months?: number;
+  vesting_period_years: 3 | 4;
+  vesting_frequency: 'monthly' | 'quarterly' | 'annually';
+  option_type: 'iso' | 'nso' | 'eso';
+  left_company?: boolean;
+  left_company_date?: string | null;
+  company_valuation?: number;
+  company_valuation_date?: string;
+}
+
 export interface AccountInfo {
   account_name: string;
   account_total: number;
@@ -41,6 +60,7 @@ export interface AccountInfo {
   }[];
   rsu_plans?: RSUPlan[];
   espp_plans?: ESPPPlan[];
+  options_plans?: OptionsPlan[];
   account_properties?: {
     [currency: string]: number;
   };

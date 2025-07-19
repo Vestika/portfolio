@@ -43,6 +43,9 @@ class PortfolioAnalyzer:
             # Get concentration analysis
             concentration_analysis = self._analyze_concentration(portfolio, calculator)
             
+            # Get options analysis
+            options_analysis = self._analyze_options(portfolio, calculator)
+            
             return {
                 "total_value": total_value,
                 "base_currency": portfolio.base_currency.value,
@@ -53,6 +56,7 @@ class PortfolioAnalyzer:
                 "sector_distribution": sector_distribution,
                 "risk_metrics": risk_metrics,
                 "concentration_analysis": concentration_analysis,
+                "options_analysis": options_analysis,
                 "total_holdings": len(portfolio.securities),
                 "total_accounts": len(portfolio.accounts)
             }
@@ -341,6 +345,85 @@ class PortfolioAnalyzer:
             "concentration_risk": "Unknown",
             "total_unique_symbols": 0
         }
+    
+    def _analyze_options(self, portfolio: Portfolio, calculator: PortfolioCalculator) -> Dict[str, Any]:
+        """Analyze options across all accounts in the portfolio"""
+        try:
+            total_options_value = 0.0
+            total_options_units = 0
+            total_vested_units = 0
+            options_by_symbol = defaultdict(lambda: {
+                "total_units": 0,
+                "vested_units": 0,
+                "total_value": 0.0,
+                "plans": []
+            })
+            
+            for account in portfolio.accounts:
+                if hasattr(account, 'options_plans') and account.options_plans:
+                    for plan in account.options_plans:
+                        options_value = calculator.calc_options_value(plan)
+                        
+                        total_options_value += options_value["total_value"]
+                        total_options_units += options_value["total_units"]
+                        total_vested_units += options_value["vested_units"]
+                        
+                        symbol = options_value["symbol"]
+                        options_by_symbol[symbol]["total_units"] += options_value["total_units"]
+                        options_by_symbol[symbol]["vested_units"] += options_value["vested_units"]
+                        options_by_symbol[symbol]["total_value"] += options_value["total_value"]
+                        options_by_symbol[symbol]["plans"].append({
+                            "account_name": account.name,
+                            "plan_id": plan.get("id"),
+                            "units": options_value["total_units"],
+                            "vested_units": options_value["vested_units"],
+                            "value": options_value["total_value"],
+                            "exercise_price": options_value["exercise_price"],
+                            "strike_price": options_value["strike_price"],
+                            "option_type": options_value["option_type"],
+                            "grant_date": options_value["grant_date"],
+                            "expiration_date": options_value["expiration_date"]
+                        })
+            
+            # Convert to list format
+            options_breakdown = []
+            for symbol, data in options_by_symbol.items():
+                vesting_percentage = (data["vested_units"] / data["total_units"] * 100) if data["total_units"] > 0 else 0
+                options_breakdown.append({
+                    "symbol": symbol,
+                    "total_units": data["total_units"],
+                    "vested_units": data["vested_units"],
+                    "unvested_units": data["total_units"] - data["vested_units"],
+                    "vesting_percentage": round(vesting_percentage, 2),
+                    "total_value": round(data["total_value"], 2),
+                    "plans_count": len(data["plans"]),
+                    "plans": data["plans"]
+                })
+            
+            # Sort by value descending
+            options_breakdown.sort(key=lambda x: x["total_value"], reverse=True)
+            
+            return {
+                "total_options_value": round(total_options_value, 2),
+                "total_options_units": total_options_units,
+                "total_vested_units": total_vested_units,
+                "total_unvested_units": total_options_units - total_vested_units,
+                "overall_vesting_percentage": round((total_vested_units / total_options_units * 100) if total_options_units > 0 else 0, 2),
+                "options_breakdown": options_breakdown,
+                "symbols_count": len(options_breakdown)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing options: {e}")
+            return {
+                "total_options_value": 0.0,
+                "total_options_units": 0,
+                "total_vested_units": 0,
+                "total_unvested_units": 0,
+                "overall_vesting_percentage": 0.0,
+                "options_breakdown": [],
+                "symbols_count": 0
+            }
 
 # Global portfolio analyzer instance
 portfolio_analyzer = PortfolioAnalyzer() 

@@ -18,6 +18,7 @@ import {
   HoldingsTableData,
 } from './types';
 import RSUVestingTimeline from './components/RSUVestingTimeline';
+import OptionsVestingTimeline from './components/OptionsVestingTimeline';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
@@ -53,6 +54,7 @@ const App: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
+  const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, any>>({});
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -218,7 +220,28 @@ const App: React.FC = () => {
       );
       setMainRSUVesting(vestingMap);
     };
+
+    // Fetch Options vesting for all company-custodian-accounts in the selected portfolio
+    const fetchAllOptionsVesting = async () => {
+      const vestingMap: Record<string, any> = {};
+      await Promise.all(
+        (portfolioMetadata.accounts || []).map(async (account) => {
+          const type = account.account_type || account.account_properties?.type;
+          if (type === 'company-custodian-account') {
+            try {
+              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/options-vesting`);
+              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
+            } catch (e) {
+              vestingMap[account.account_name] = [];
+            }
+          }
+        })
+      );
+      setMainOptionsVesting(vestingMap);
+    };
+
     fetchAllRSUVesting();
+    fetchAllOptionsVesting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioMetadata, selectedPortfolioId]);
 
@@ -549,6 +572,68 @@ const App: React.FC = () => {
                                 <RSUVestingTimeline
                                 plan={displayPlan}
                                 baseCurrency={displayMetadata.base_currency}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  
+                  {/* Options Vesting grouped by symbol */}
+                  {(() => {
+                    // 1. Gather all plans with their account names
+                    const allPlans: Array<{ plan: any; accountName: string }> = [];
+                    Object.entries(mainOptionsVesting).forEach(([accountName, plans]) => {
+                      (plans as any[]).forEach(plan => {
+                        allPlans.push({ plan, accountName });
+                      });
+                    });
+                    // 2. Group by symbol
+                    const grouped: Record<string, Array<{ plan: any; accountName: string }>> = {};
+                    allPlans.forEach(({ plan, accountName }) => {
+                      if (!grouped[plan.symbol]) grouped[plan.symbol] = [];
+                      grouped[plan.symbol].push({ plan, accountName });
+                    });
+                    // 3. Render
+                    return Object.entries(grouped).map(([symbol, plans]) => (
+                      <div key={`options-${symbol}`} className="bg-muted/30 rounded-lg p-4">
+                        <div className="text-base font-bold mb-2">{symbol} - Options</div>
+                        <div className="space-y-4">
+                          {plans.map(({ plan, accountName }, idx) => {
+                            let displayPlan = plan;
+                            if (plan.left_company && plan.left_company_date) {
+                              // Find the last vested event before or on left_company_date
+                              const leftDate = new Date(plan.left_company_date);
+                              let vested = 0;
+                              let trimmedSchedule = [];
+                              if (Array.isArray(plan.schedule)) {
+                                trimmedSchedule = plan.schedule.filter((event: any) => new Date(event.date) <= leftDate);
+                                for (const event of trimmedSchedule as any[]) {
+                                  vested += event.units;
+                                }
+                              }
+                              displayPlan = {
+                                ...plan,
+                                total_units: vested,
+                                vested_units: vested,
+                                schedule: trimmedSchedule,
+                                next_vest_date: null,
+                                next_vest_units: 0,
+                              };
+                            }
+                            return (
+                              <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
+                                <div className="text-sm font-semibold mb-1">
+                                  {accountName}
+                                  {plans.length > 1 && (
+                                    <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
+                                  )}
+                                </div>
+                                <OptionsVestingTimeline
+                                  plan={displayPlan}
+                                  baseCurrency={displayMetadata.base_currency}
                                 />
                               </div>
                             );
