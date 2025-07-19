@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, Quote } from './types';
+import { SecurityHolding, HoldingsTableData, Quote, HoldingTags } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import api from './utils/api';
 import { useMediaQuery } from './hooks/useMediaQuery';
+import TagDisplay from './components/TagDisplay';
+import HoldingTagManager from './components/HoldingTagManager';
+import TagAPI from './utils/tag-api';
 
 import {
   Search,
@@ -17,6 +20,7 @@ import {
   ChartNoAxesCombined,
   Table,
   Flame,
+  Tags,
   ChevronDown,
   ChevronRight,
   Users,
@@ -94,7 +98,7 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
   let lineColor = '#10b981'; // green by default
   let gradientStart = 'rgba(16, 185, 129, 0.3)';
   let gradientEnd = 'rgba(16, 185, 129, 0.0)';
-  
+
   if (data && data.length > 1) {
     const first = data[0].price;
     const last = data[data.length - 1].price;
@@ -110,7 +114,7 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice;
-  
+
   // Add padding to make variations more visible
   const padding = priceRange * 0.1; // 10% padding
   const yMin = minPrice - padding;
@@ -169,7 +173,7 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
         const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
         const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
         const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
-        
+
         return `
           <div style="padding: 4px;">
             <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString()}</div>
@@ -245,31 +249,17 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
   return <HighchartsReact highcharts={Highcharts} options={options} />;
 };
 
-const renderTags = (tags: Record<string, string>) => {
-  return Object.entries(tags).map(([key, value]) => {
-    const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
-    return (
-      <span
-        key={`${key}-${value}`}
-        className="inline-block bg-gray-700/50 text-blue-300 text-xs px-2 py-0.5 rounded mr-1 mb-1"
-      >
-        {`${key}: ${displayValue}`}
-      </span>
-    );
-  });
-};
-
-const AccountBreakdownRow: React.FC<{ 
-  accountBreakdown: SecurityHolding['account_breakdown'], 
+const AccountBreakdownRow: React.FC<{
+  accountBreakdown: SecurityHolding['account_breakdown'],
   baseCurrency: string,
-  isValueVisible: boolean 
+  isValueVisible: boolean
 }> = ({ accountBreakdown, baseCurrency, isValueVisible }) => {
   if (!accountBreakdown || accountBreakdown.length === 0) {
     return null;
   }
-  
+
   const totalValue = accountBreakdown.reduce((sum, account) => sum + account.value, 0);
-  
+
   return (
     <div className="bg-gray-800/40 border-t border-blue-400/20 p-4">
       <div className="mb-4">
@@ -364,6 +354,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
   });
 
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // Tag management state
+  const [structuredTags, setStructuredTags] = useState<Record<string, HoldingTags>>({});
+  const [tagManagerOpen, setTagManagerOpen] = useState<string | null>(null);
 
   // Fetch live quotes for holdings
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -375,11 +370,66 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       .catch(() => setQuotes({}));
   }, [data.holdings]);
 
+  // Load structured tags for all holdings
+  useEffect(() => {
+    const loadStructuredTags = async () => {
+      try {
+        const allTags = await TagAPI.getAllHoldingTags();
+        const tagsMap = allTags.reduce((acc, holdingTags) => {
+          acc[holdingTags.symbol] = holdingTags;
+          return acc;
+        }, {} as Record<string, HoldingTags>);
+        setStructuredTags(tagsMap);
+      } catch (error) {
+        console.error('Error loading structured tags:', error);
+      }
+    };
+
+    if (data.holdings.length > 0) {
+      loadStructuredTags();
+    }
+  }, [data.holdings]);
+
+  // Handle tag updates
+  const handleTagsUpdated = async () => {
+    try {
+      const allTags = await TagAPI.getAllHoldingTags();
+      const tagsMap = allTags.reduce((acc, holdingTags) => {
+        acc[holdingTags.symbol] = holdingTags;
+        return acc;
+      }, {} as Record<string, HoldingTags>);
+      setStructuredTags(tagsMap);
+    } catch (error) {
+      console.error('Error reloading tags:', error);
+    }
+  };
+
+  // Handle tag click for filtering
+  const handleTagClick = (tagName: string) => {
+    if (tagFilter === tagName) {
+      // Clicking the same tag clears the filter
+      setTagFilter(null);
+    } else {
+      // Set new tag filter
+      setTagFilter(tagName);
+    }
+  };
+
   const filteredAndSortedHoldings = [...data.holdings]
-    .filter(holding =>
-      holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase()) &&
-      holding.security_type.toLowerCase().includes(filters.type.toLowerCase())
-    )
+    .filter(holding => {
+      // Apply symbol and type filters
+      const matchesSymbol = holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase());
+      const matchesType = holding.security_type.toLowerCase().includes(filters.type.toLowerCase());
+
+      // Apply tag filter if active
+      let matchesTag = true;
+      if (tagFilter) {
+        const holdingTags = structuredTags[holding.symbol];
+        matchesTag = holdingTags && Object.keys(holdingTags.tags).includes(tagFilter);
+      }
+
+      return matchesSymbol && matchesType && matchesTag;
+    })
     .sort((a, b) => {
       // Stocks first, then by total_value desc (default)
       const aIsStock = a.security_type.toLowerCase() === 'stock';
@@ -409,11 +459,74 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
+  const renderTags = (holding: SecurityHolding) => {
+    const structuredTag = structuredTags[holding.symbol];
+
+    if (structuredTag && Object.keys(structuredTag.tags).length > 0) {
+      return (
+        <div className="flex items-center gap-2">
+          <TagDisplay
+            tags={structuredTag.tags}
+            maxTags={0}
+            compact={isMobile}
+            onTagClick={(tagName) => handleTagClick(tagName)}
+            activeFilter={tagFilter}
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setTagManagerOpen(holding.symbol);
+            }}
+            className="text-gray-400 hover:text-blue-400 transition-colors"
+            title="Manage tags"
+          >
+            <Tags size={14} />
+          </button>
+        </div>
+      );
+    }
+
+    // No structured tags - show add button
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setTagManagerOpen(holding.symbol);
+        }}
+        className="text-gray-500 hover:text-blue-400 transition-colors"
+        title="Add tags"
+      >
+        <Tags size={14} />
+      </button>
+    );
+  };
+
   return (
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
-        <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
+
+          {/* Tag Filter Indicator */}
+          {tagFilter && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-400/30 rounded-md">
+              <span className="text-sm text-blue-200">
+                Filtered by: <span className="font-medium">{tagFilter.replace(/_/g, ' ')}</span>
+                <span className="text-xs ml-1 opacity-75">
+                  ({filteredAndSortedHoldings.length} of {data.holdings.length})
+                </span>
+              </span>
+              <button
+                onClick={() => setTagFilter(null)}
+                className="text-blue-300 hover:text-blue-100 transition-colors"
+                title="Clear filter"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
         
         {/* View Toggle */}
         <div 
@@ -552,7 +665,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </div>
                     </td>
                     <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
-                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding.tags)}</td>
+                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding)}</td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
                       <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
@@ -579,10 +692,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
                     <tr>
                       <td colSpan={isValueVisible ? 9 : 7} className="p-0">
-                        <AccountBreakdownRow 
-                          accountBreakdown={holding.account_breakdown} 
-                          baseCurrency={data.base_currency} 
-                          isValueVisible={isValueVisible} 
+                        <AccountBreakdownRow
+                          accountBreakdown={holding.account_breakdown}
+                          baseCurrency={data.base_currency}
+                          isValueVisible={isValueVisible}
                         />
                       </td>
                     </tr>
@@ -597,7 +710,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                           </div>
                           <div>
                             <p className="font-bold text-gray-400">Tags</p>
-                            <div>{renderTags(holding.tags)}</div>
+                            <div>{renderTags(holding)}</div>
                           </div>
                           {isValueVisible && (
                             <div>
@@ -618,6 +731,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
 
       {viewMode === 'heatmap' && (
         <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
+      )}
+
+      {/* Tag Manager Dialog */}
+      {tagManagerOpen && (
+        <HoldingTagManager
+          isOpen={true}
+          onClose={() => setTagManagerOpen(null)}
+          symbol={tagManagerOpen}
+          onTagsUpdated={handleTagsUpdated}
+        />
       )}
     </div>
   );
