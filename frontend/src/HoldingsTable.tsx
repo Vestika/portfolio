@@ -17,6 +17,9 @@ import {
   ChartNoAxesCombined,
   Table,
   Flame,
+  ChevronDown,
+  ChevronRight,
+  Users,
 } from 'lucide-react';
 
 interface HoldingsTableProps {
@@ -45,27 +48,42 @@ const getSecurityTypeIcon = (type: string) => {
 };
 
 
-const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string }> = ({ data, symbol, currency }) => {
-  if (symbol === 'USD' || symbol === 'ILS') {
-    return null;
-  }
-  // Determine solid color: green for positive/neutral, red for negative
-  let trendColor = '#4ade80'; // green by default
+const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string, baseCurrency: string }> = ({ data, symbol, currency, baseCurrency }) => {
+  // Determine colors based on trend
+  let lineColor = '#10b981'; // green by default
+  let gradientStart = 'rgba(16, 185, 129, 0.3)';
+  let gradientEnd = 'rgba(16, 185, 129, 0.0)';
+  
   if (data && data.length > 1) {
     const first = data[0].price;
     const last = data[data.length - 1].price;
     if (last < first) {
-      trendColor = '#f87171'; // red
+      lineColor = '#ef4444'; // red
+      gradientStart = 'rgba(239, 68, 68, 0.3)';
+      gradientEnd = 'rgba(239, 68, 68, 0.0)';
     }
   }
+
+  // Calculate min and max for better scaling
+  const prices = data.map(point => point.price);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const priceRange = maxPrice - minPrice;
+  
+  // Add padding to make variations more visible
+  const padding = priceRange * 0.1; // 10% padding
+  const yMin = minPrice - padding;
+  const yMax = maxPrice + padding;
+
   const options: Highcharts.Options = {
     chart: {
-      type: 'spline',
-      height: 32,
-      width: 100,
+      type: 'area',
+      height: 40,
+      width: 120,
       backgroundColor: 'transparent',
-      margin: [2, 0, 2, 0],
-      style: { overflow: 'visible' }
+      margin: [4, 4, 4, 4],
+      style: { overflow: 'visible' },
+      spacing: [0, 0, 0, 0]
     },
     title: { text: undefined },
     credits: { enabled: false },
@@ -73,96 +91,112 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
       type: 'datetime',
       visible: false,
       minPadding: 0,
-      maxPadding: 0
+      maxPadding: 0,
+      lineWidth: 0,
+      tickLength: 0
     },
     yAxis: {
       visible: false,
       minPadding: 0,
-      maxPadding: 0
+      maxPadding: 0,
+      lineWidth: 0,
+      tickLength: 0,
+      gridLineWidth: 0,
+      min: yMin,
+      max: yMax
     },
     legend: { enabled: false },
     tooltip: {
       enabled: true,
       useHTML: true,
-      backgroundColor: 'transparent', // No card background
+      backgroundColor: 'rgba(17, 24, 39, 0.95)',
       borderWidth: 0,
       shadow: false,
       style: {
-        color: '#e5e7eb', // Softer light gray
-        fontWeight: 'normal', // Softer font weight
-        textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-        padding: '0px',
-        zIndex: 300,
-        pointerEvents: 'none',
-        fontSize: '13px',
+        color: '#e5e7eb',
+        fontWeight: 'normal',
+        fontSize: '12px',
+        borderRadius: 8,
       },
-      borderRadius: 0,
-      outside: true, // Always float above the chart
-      hideDelay: 0, // Disappear immediately when not hovering
-      followPointer: true, // Tooltip follows the mouse
+      borderRadius: 8,
+      outside: true,
+      hideDelay: 0,
+      followPointer: true,
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        return `<span style="padding:2px 8px;display:inline-block;"><b>${date.toLocaleDateString()}</b><br/><b>${point.y?.toFixed(2)} ${currency}</b></span>`;
+        const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+        const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
+        const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
+        
+        return `
+          <div style="padding: 4px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString()}</div>
+            <div style="font-size: 14px; font-weight: 700; color: ${lineColor}; margin-bottom: 2px;">
+              ${point.y?.toFixed(2)} ${displayCurrency}
+            </div>
+            ${priceChange !== 0 ? `
+              <div style="font-size: 11px; color: ${priceChange > 0 ? '#10b981' : '#ef4444'};">
+                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)} (${priceChangePercent > 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%)
+              </div>
+            ` : ''}
+          </div>
+        `;
       }
     },
     plotOptions: {
-      series: {
-        animation: false,
-        lineWidth: 3,
-        shadow: {
-          color: 'rgba(96,165,250,0.5)',
-          width: 8,
-          offsetX: 0,
-          offsetY: 0
-        },
-        states: {
-          hover: {
-            enabled: true,
-            lineWidth: 4,
-            halo: {
-              size: 10,
-              opacity: 0.25
-            }
-          }
-        },
+      area: {
+        fillOpacity: 0.3,
+        lineWidth: 2,
         marker: {
           enabled: false,
           states: {
             hover: {
               enabled: true,
-              fillColor: 'rgba(96,165,250,0.8)',
-              lineColor: '#fff',
+              fillColor: lineColor,
+              lineColor: '#ffffff',
               lineWidth: 2,
-              radius: 5,
+              radius: 4
+            }
+          }
+        },
+        states: {
+          hover: {
+            lineWidth: 3,
+            halo: {
+              size: 8,
+              opacity: 0.2
             }
           }
         }
       }
     },
     series: [{
-      type: 'spline',
+      type: 'area',
       data: data.map(point => ({
         x: new Date(point.date).getTime(),
         y: point.price
       })),
-      color: trendColor,
-      linecap: 'round',
-      lineWidth: 3,
-      shadow: {
-        color: 'rgba(56,189,248,0.4)',
-        width: 10,
-        offsetX: 0,
-        offsetY: 0
+      color: lineColor,
+      fillColor: {
+        linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+        stops: [
+          [0, gradientStart],
+          [1, gradientEnd]
+        ]
       },
+      lineWidth: 2,
       states: {
         hover: {
-          lineWidth: 4,
+          lineWidth: 3,
           halo: {
-            size: 12,
-            opacity: 0.35
+            size: 8,
+            opacity: 0.2
           }
         }
+      },
+      animation: {
+        duration: 300
       }
     }]
   };
@@ -182,6 +216,74 @@ const renderTags = (tags: Record<string, string>) => {
       </span>
     );
   });
+};
+
+const AccountBreakdownRow: React.FC<{ 
+  accountBreakdown: SecurityHolding['account_breakdown'], 
+  baseCurrency: string,
+  isValueVisible: boolean 
+}> = ({ accountBreakdown, baseCurrency, isValueVisible }) => {
+  if (!accountBreakdown || accountBreakdown.length === 0) {
+    return null;
+  }
+  
+  const totalValue = accountBreakdown.reduce((sum, account) => sum + account.value, 0);
+  
+  return (
+    <div className="bg-gray-800/40 border-t border-blue-400/20 p-4">
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
+          <Users size={16} className="text-blue-400" />
+          Account Distribution
+          <span className="text-xs text-gray-400 font-normal ml-2">
+            ({accountBreakdown.length} account{accountBreakdown.length > 1 ? 's' : ''})
+          </span>
+        </h4>
+      </div>
+      <div className="space-y-3">
+        {accountBreakdown.map((account) => {
+          const percentage = totalValue > 0 ? ((account.value / totalValue) * 100).toFixed(1) : '0.0';
+          return (
+            <div key={account.account_name} className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30 hover:border-blue-400/30 transition-colors">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-blue-300 truncate">{account.account_name}</span>
+                  <span className="text-xs text-gray-400 bg-gray-600/60 px-2 py-0.5 rounded-md border border-gray-500/30">
+                    {account.account_type}
+                  </span>
+                </div>
+                {account.owners.length > 0 && (
+                  <span className="text-xs text-gray-400 bg-gray-600/40 px-2 py-0.5 rounded-md border border-gray-500/20">
+                    {account.owners.join(', ')}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-sm text-gray-300">
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-400">Units:</span>
+                  <span className="font-medium">{Math.round(account.units).toLocaleString()}</span>
+                </span>
+                {isValueVisible && (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <span className="text-gray-400">Value:</span>
+                      <span className="font-medium text-blue-200">
+                        {Math.round(account.value).toLocaleString()} {baseCurrency}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-gray-400">Share:</span>
+                      <span className="font-medium text-green-300">{percentage}%</span>
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 const SortableHeader: React.FC<{
@@ -297,7 +399,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
           <table className="min-w-full">
             <thead>
               <tr className="h-14 bg-blue-500/10 backdrop-blur-sm border-b border-blue-400/30">
-                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md">Type</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md w-8"></th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">Type</th>
                 <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">
                   <div className="flex items-center gap-2">
                     <SortableHeader
@@ -355,11 +458,31 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
               {filteredAndSortedHoldings.map((holding) => (
                 <React.Fragment key={holding.symbol}>
                   <tr
-                    className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer md:cursor-default"
+                    className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
                     onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                   >
+                    <td className="px-2 md:px-4">
+                      {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                        <div className="flex items-center justify-center">
+                          {expandedRow === holding.symbol ? (
+                            <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
+                          ) : (
+                            <ChevronRight size={18} className="text-gray-400 hover:text-blue-400 transition-colors cursor-pointer" />
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
-                    <td className="px-2 md:px-4 font-medium text-blue-400">{holding.symbol}</td>
+                    <td className="px-2 md:px-4 font-medium text-blue-400">
+                      <div className="flex items-center gap-2">
+                        <span>{holding.symbol}</span>
+                        {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                          <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
+                            {holding.account_breakdown.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
                     <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding.tags)}</td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
@@ -380,14 +503,25 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </>
                     )}
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {(holding.symbol !== 'USD' && holding.symbol !== 'ILS') ? (
-                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} />
+                      {( holding.symbol !== data.base_currency) ? (
+                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} baseCurrency={data.base_currency} />
                       ) : null}
                     </td>
                   </tr>
-                  {expandedRow === holding.symbol && (
+                  {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                    <tr>
+                      <td colSpan={isValueVisible ? 9 : 7} className="p-0">
+                        <AccountBreakdownRow 
+                          accountBreakdown={holding.account_breakdown} 
+                          baseCurrency={data.base_currency} 
+                          isValueVisible={isValueVisible} 
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  {expandedRow === holding.symbol && isMobile && (
                     <tr className="bg-gray-800/50 md:hidden">
-                      <td colSpan={4} className="p-4">
+                      <td colSpan={isValueVisible ? 9 : 7} className="p-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-bold text-gray-400">Name</p>

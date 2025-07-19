@@ -78,6 +78,19 @@ export interface ChartBreakdown {
   chart_data: ChartDataItem[];
 }
 
+export interface HistoricalPrice {
+  date: string;
+  price: number;
+}
+
+export interface AccountBreakdown {
+  account_name: string;
+  account_type: string;
+  units: number;
+  value: number;
+  owners: string[];
+}
+
 export interface SecurityHolding {
   symbol: string;
   security_type: string;
@@ -91,11 +104,7 @@ export interface SecurityHolding {
   currency: string;
   price_source?: string;
   historical_prices: HistoricalPrice[];
-}
-
-export interface HistoricalPrice {
-  date: string;
-  price: number;
+  account_breakdown?: AccountBreakdown[];
 }
 
 export interface Quote {
