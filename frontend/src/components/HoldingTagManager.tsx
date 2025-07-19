@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { TagDefinition, TagValue, HoldingTags, TagLibrary, TagType } from '../types';
 import TagEditor from './TagEditor';
 import TagDisplay from './TagDisplay';
 import TagDefinitionManager from './TagDefinitionManager';
 import TagAPI from '../utils/tag-api';
-import { Edit, Plus, Trash2, Tag, Settings, Users, Sparkles } from 'lucide-react';
+import { Edit, Plus, Trash2, Tag } from 'lucide-react';
 
 interface HoldingTagManagerProps {
   isOpen: boolean;
@@ -172,13 +171,7 @@ const HoldingTagManager: React.FC<HoldingTagManagerProps> = ({
     });
   };
 
-  const getAvailableTemplateTags = (): TagDefinition[] => {
-    if (!tagLibrary || !holdingTags) return [];
-    
-    const usedTagNames = Object.keys(holdingTags.tags);
-    
-    return Object.values(tagLibrary.template_tags).filter(def => !usedTagNames.includes(def.name));
-  };
+
 
   const getCurrentTags = (): Array<{ definition: TagDefinition; value: TagValue }> => {
     if (!tagLibrary || !holdingTags) return [];

@@ -4,11 +4,11 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { TagDefinition, TagType, ScalarDataType } from '../types';
 import TagAPI from '../utils/tag-api';
-import { Plus, X, Check, ArrowRight, Sparkles } from 'lucide-react';
+import { Plus, X, ArrowRight, Sparkles } from 'lucide-react';
 
 interface TagDefinitionManagerProps {
   isOpen: boolean;
@@ -16,10 +16,6 @@ interface TagDefinitionManagerProps {
   onSave: (tagDefinition: TagDefinition) => Promise<void>;
   onTemplateSelectedForImmediate?: (tagName: string) => Promise<void>;
   existingDefinition?: TagDefinition;
-}
-
-interface TemplateTagsResponse {
-  templates: Record<string, TagDefinition>;
 }
 
 const TAG_TYPE_INFO = {
