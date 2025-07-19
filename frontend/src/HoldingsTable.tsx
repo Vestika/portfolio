@@ -525,9 +525,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                           const logoUrl = getLogoUrl(holding.symbol, holding.security_type);
                           const isUsFlag = logoUrl === usFlag;
                           const isFlag = logoUrl === israelFlag || isUsFlag;
-                          const isMeta = logoUrl === metaLogo;
-                          const isBitcoin = logoUrl === bitcoinLogo;
-                          const isGoogle = logoUrl === googleLogo;
                           if (logoUrl) {
                             return (
                               <img
