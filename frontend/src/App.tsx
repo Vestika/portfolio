@@ -522,7 +522,7 @@ const App: React.FC = () => {
                             </span>
                         </div>
                         <div className="space-y-4">
-                          {plans.map(({ plan, accountName }, idx) => {
+                          {plans.map(({ plan }) => {
                             let displayPlan = plan;
                             if (plan.left_company && plan.left_company_date) {
                               // Find the last vested event before or on left_company_date

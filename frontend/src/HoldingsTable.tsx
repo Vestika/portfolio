@@ -51,7 +51,6 @@ const getSecurityTypeIcon = (type: string) => {
 const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: string, currency: string, baseCurrency: string }> = ({ data, symbol, currency, baseCurrency }) => {
   // Determine colors based on trend
   let lineColor = '#10b981'; // green by default
-  let fillColor = 'rgba(16, 185, 129, 0.1)'; // light green fill
   let gradientStart = 'rgba(16, 185, 129, 0.3)';
   let gradientEnd = 'rgba(16, 185, 129, 0.0)';
   
@@ -60,7 +59,6 @@ const MiniChart: React.FC<{ data: SecurityHolding['historical_prices'], symbol: 
     const last = data[data.length - 1].price;
     if (last < first) {
       lineColor = '#ef4444'; // red
-      fillColor = 'rgba(239, 68, 68, 0.1)'; // light red fill
       gradientStart = 'rgba(239, 68, 68, 0.3)';
       gradientEnd = 'rgba(239, 68, 68, 0.0)';
     }
@@ -225,6 +223,10 @@ const AccountBreakdownRow: React.FC<{
   baseCurrency: string,
   isValueVisible: boolean 
 }> = ({ accountBreakdown, baseCurrency, isValueVisible }) => {
+  if (!accountBreakdown || accountBreakdown.length === 0) {
+    return null;
+  }
+  
   const totalValue = accountBreakdown.reduce((sum, account) => sum + account.value, 0);
   
   return (
@@ -239,7 +241,7 @@ const AccountBreakdownRow: React.FC<{
         </h4>
       </div>
       <div className="space-y-3">
-        {accountBreakdown.map((account, index) => {
+        {accountBreakdown.map((account) => {
           const percentage = totalValue > 0 ? ((account.value / totalValue) * 100).toFixed(1) : '0.0';
           return (
             <div key={account.account_name} className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30 hover:border-blue-400/30 transition-colors">

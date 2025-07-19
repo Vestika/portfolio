@@ -104,7 +104,7 @@ export interface SecurityHolding {
   currency: string;
   price_source?: string;
   historical_prices: HistoricalPrice[];
-  account_breakdown: AccountBreakdown[];
+  account_breakdown?: AccountBreakdown[];
 }
 
 export interface Quote {
