@@ -40,7 +40,7 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
     <div className="space-y-2 relative pt-8 pb-2">
       <div className="w-full h-3 bg-gray-200 rounded-full overflow-visible relative">
         <div
-          className="h-full bg-green-500 transition-all rounded-full"
+          className="h-full bg-green-400 transition-all rounded-full"
           style={{ width: `${percentVested}%` }}
         />
         {/* Cliff indicator */}
@@ -63,7 +63,7 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
         {/* Next Vest positioned like cliff indicator */}
         {plan.next_vest_date && (
           <div
-            className="absolute -top-8 right-0 text-xs font-medium text-green-700 dark:text-green-400 whitespace-nowrap z-20"
+            className="absolute -top-8 right-0 text-xs font-medium text-green-400 dark:text-green-400 whitespace-nowrap z-20"
           >
             Next Vest: {plan.next_vest_date} ({plan.next_vest_units})
           </div>
@@ -79,7 +79,7 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
           {plan.schedule.map((event, idx) => (
             <div key={idx} className="flex flex-col items-center mx-1">
               <div
-                className={`w-2 h-6 rounded-full ${new Date(event.date) <= new Date() ? 'bg-green-500' : 'bg-gray-300'}`}
+                className={`w-2 h-6 rounded-full ${new Date(event.date) <= new Date() ? 'bg-green-400' : 'bg-gray-300'}`}
                 title={`${event.date}: ${event.units} units`}
               />
               <span className="text-[10px] mt-1 text-center whitespace-nowrap">{event.date.slice(2)}</span>
@@ -91,7 +91,7 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
           <div className="flex flex-row justify-center items-center gap-4 mt-2 text-xs">
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-gray-500">Vested</span>
-              <span className="font-mono font-semibold text-green-700 dark:text-green-400 text-xs">
+              <span className="font-mono font-semibold text-green-400 dark:text-green-400 text-xs">
                 {plan.vested_value?.toLocaleString(undefined, { maximumFractionDigits: 2 })} {baseCurrency}
               </span>
             </div>
