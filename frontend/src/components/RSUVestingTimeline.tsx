@@ -31,18 +31,38 @@ interface RSUVestingTimelineProps {
 
 const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurrency }) => {
   const percentVested = plan.total_units > 0 ? (plan.vested_units / plan.total_units) * 100 : 0;
+  
+  // Calculate cliff position as percentage of total vesting period
+  const totalVestingMonths = plan.vesting_period_years * 12;
+  const cliffPositionPercent = totalVestingMonths > 0 ? (plan.cliff_months / totalVestingMonths) * 100 : 0;
 
   return (
     <div className="space-y-2">
-      <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+      <div className="w-full h-3 bg-gray-200 rounded-full overflow-visible relative">
         <div
-          className="h-full bg-green-500 transition-all"
+          className="h-full bg-green-500 transition-all rounded-full"
           style={{ width: `${percentVested}%` }}
         />
+        {/* Cliff indicator */}
+        {plan.cliff_months > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-yellow-500 z-10"
+            style={{ left: `${cliffPositionPercent}%` }}
+            title={`Cliff: ${plan.cliff_months} months`}
+          />
+        )}
+        {/* Cliff label */}
+        {plan.cliff_months > 0 && (
+          <div
+            className="absolute -top-6 transform -translate-x-1/2 text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap z-20"
+            style={{ left: `${cliffPositionPercent}%` }}
+          >
+            Cliff: {plan.cliff_months}m
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between text-xs mt-1">
         <span className="text-muted-foreground">Grant: {plan.grant_date}</span>
-        <span className="text-muted-foreground">Cliff: {plan.cliff_months}m</span>
         <span className="text-muted-foreground">Period: {plan.vesting_period_years}y</span>
         <span className="text-muted-foreground">Freq: {plan.vesting_frequency}</span>
       </div>
