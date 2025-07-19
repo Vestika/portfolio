@@ -37,7 +37,7 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
   const cliffPositionPercent = totalVestingMonths > 0 ? (plan.cliff_months / totalVestingMonths) * 100 : 0;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
       <div className="w-full h-3 bg-gray-200 rounded-full overflow-visible relative">
         <div
           className="h-full bg-green-500 transition-all rounded-full"
@@ -60,17 +60,20 @@ const RSUVestingTimeline: React.FC<RSUVestingTimelineProps> = ({ plan, baseCurre
             Cliff: {plan.cliff_months}m
           </div>
         )}
+        {/* Next Vest positioned like cliff indicator */}
+        {plan.next_vest_date && (
+          <div
+            className="absolute -top-6 right-0 text-xs font-medium text-green-700 dark:text-green-400 whitespace-nowrap z-20"
+          >
+            Next Vest: {plan.next_vest_date} ({plan.next_vest_units})
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between text-xs mt-1">
         <span className="text-muted-foreground">Grant: {plan.grant_date}</span>
         <span className="text-muted-foreground">Period: {plan.vesting_period_years}y</span>
         <span className="text-muted-foreground">Freq: {plan.vesting_frequency}</span>
       </div>
-      {plan.next_vest_date && (
-        <div className="text-xs mt-1">
-          <span className="font-medium text-green-700">Next Vest:</span> {plan.next_vest_date} ({plan.next_vest_units} units)
-        </div>
-      )}
       <div className="mt-2">
         <div className="flex flex-row items-center gap-1 overflow-x-auto">
           {plan.schedule.map((event, idx) => (

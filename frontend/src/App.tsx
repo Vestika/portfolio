@@ -514,7 +514,7 @@ const App: React.FC = () => {
                     });
                     // 3. Render
                     return Object.entries(grouped).map(([symbol, plans]) => (
-                      <div key={symbol} className="bg-muted/30 rounded-lg p-4">
+                      <div key={symbol} className="rounded-lg p-4">
                         <div className="text-base font-bold mb-2">{symbol}</div>
                         <div className="space-y-4">
                           {plans.map(({ plan, accountName }, idx) => {
@@ -540,7 +540,7 @@ const App: React.FC = () => {
                               };
                             }
                             return (
-                              <div key={plan.id} className="border rounded-lg p-3 bg-muted/10">
+                              <div key={plan.id} className="border rounded-lg p-3">
                                 <div className="text-sm font-semibold mb-1">
                                   {accountName}
                                   {plans.length > 1 && (
