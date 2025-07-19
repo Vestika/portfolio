@@ -72,8 +72,8 @@ const RSUPlanConfig: React.FC<RSUPlanConfigProps> = ({
               type="number"
               min="0"
               step="1"
-              value={plan.units}
-              onChange={(e) => updatePlan({ units: parseInt(e.target.value) || 0 })}
+              value={plan.units === 0 ? '' : plan.units}
+              onChange={(e) => updatePlan({ units: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 })}
               placeholder="e.g., 1000"
             />
           </div>

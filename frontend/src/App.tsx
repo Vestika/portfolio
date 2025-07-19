@@ -515,7 +515,12 @@ const App: React.FC = () => {
                     // 3. Render
                     return Object.entries(grouped).map(([symbol, plans]) => (
                       <div key={symbol} className="rounded-lg p-4">
-                        <div className="text-base font-bold mb-2">{symbol}</div>
+                        <div className="text-base font-bold mb-2">
+                          {symbol}
+                            <span className="ml-2 text-sm font-normal text-gray-400">
+                              ({plans[0].accountName})
+                            </span>
+                        </div>
                         <div className="space-y-4">
                           {plans.map(({ plan, accountName }, idx) => {
                             let displayPlan = plan;
@@ -541,12 +546,6 @@ const App: React.FC = () => {
                             }
                             return (
                               <div key={plan.id} className="border rounded-lg p-3">
-                                <div className="text-sm font-semibold mb-1">
-                                  {accountName}
-                                  {plans.length > 1 && (
-                                    <span className="ml-2 text-xs text-gray-400">Plan {idx + 1}</span>
-                                  )}
-                                </div>
                                 <RSUVestingTimeline
                                 plan={displayPlan}
                                 baseCurrency={displayMetadata.base_currency}
