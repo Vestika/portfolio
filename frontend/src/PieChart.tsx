@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { ChartDataItem } from './types';
@@ -19,34 +19,8 @@ const PieChart: React.FC<PieChartProps> = ({
   hideValues = false
 }) => {
   const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
-  const [is3DLoaded, setIs3DLoaded] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
   console.log(selectedSeries);
-
-  // Initialize 3D module
-  useEffect(() => {
-    const load3D = async () => {
-      try {
-        await import('highcharts/highcharts-3d');
-        setIs3DLoaded(true);
-      } catch (error) {
-        console.error('Failed to load 3D module:', error);
-        setIs3DLoaded(true); // Still render the chart, just without 3D
-      }
-    };
-    load3D();
-  }, []);
-
-  // Don't render until 3D module is loaded
-  if (!is3DLoaded) {
-    return (
-      <div className="p-4">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-white">Loading chart...</div>
-        </div>
-      </div>
-    );
-  }
 
   // Format number with comma separators and no decimal
   const formatNumber = (value: number) =>
@@ -61,13 +35,6 @@ const PieChart: React.FC<PieChartProps> = ({
       backgroundColor: 'transparent',
       style: {
         fontFamily: 'Arial, sans-serif'
-      },
-      options3d: {
-        enabled: true,
-        alpha: 45,
-        beta: 0,
-        depth: 50,
-        viewDistance: 25
       }
     },
     colors: [
@@ -115,8 +82,7 @@ const PieChart: React.FC<PieChartProps> = ({
         allowPointSelect: true,
         cursor: 'pointer',
         borderColor: '#242424', // Dark gray border to match theme
-        borderWidth: 1,
-        depth: 35,
+        borderWidth: 0.75,
         dataLabels: {
           enabled: !isMobile,
           format: '{point.percentage:.2f}%',
