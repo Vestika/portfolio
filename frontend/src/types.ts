@@ -49,6 +49,14 @@ export interface OptionsPlan {
   company_valuation_date?: string;
 }
 
+export interface IBKRAccountConfig {
+  flex_query_token: string;
+  flex_query_id: string;
+  last_sync?: string;
+  sync_status?: 'idle' | 'syncing' | 'success' | 'error';
+  sync_error?: string;
+}
+
 export interface AccountInfo {
   account_name: string;
   account_total: number;
@@ -68,6 +76,7 @@ export interface AccountInfo {
     [currency: string]: number;
   };
   isSelected?: boolean;
+  ibkr_config?: IBKRAccountConfig;
 }
 
 export interface ChartDataItem {

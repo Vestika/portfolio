@@ -5,7 +5,8 @@ import {
   AccountInfo,
   RSUPlan,
   ESPPPlan,
-  OptionsPlan
+  OptionsPlan,
+  IBKRAccountConfig
 } from './types';
 import {
   Eye,
@@ -19,7 +20,8 @@ import {
   User,
   MessageCircle,
   Settings,
-  LogOut
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ import HamburgerMenu from "@/components/ui/HamburgerMenu";
 import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
 import OptionsPlanConfig from './components/OptionsPlanConfig';
+import IBKRConfig from './components/IBKRConfig';
 import api from './utils/api';
 
 interface AccountSelectorProps {
@@ -117,6 +120,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
     options_plans: OptionsPlan[];
+    ibkr_config?: {
+      flex_query_token: string;
+      flex_query_id: string;
+    };
   }>({
     account_name: '',
     account_type: 'bank-account',
@@ -134,6 +141,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
     options_plans: OptionsPlan[];
+    ibkr_config?: IBKRAccountConfig;
   }>({
     account_name: '',
     account_type: 'bank-account',
@@ -287,8 +295,17 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: validHoldings,
         rsu_plans: validRSUPlans,
         espp_plans: validESPPPlans,
-        options_plans: validOptionsPlans
+        options_plans: validOptionsPlans,
+        ibkr_config: newAccount.ibkr_config
       };
+      
+      console.log('Creating account with data:', {
+        account_type: accountData.account_type,
+        ibkr_config: accountData.ibkr_config,
+        has_ibkr_config: !!accountData.ibkr_config,
+        flex_query_token: accountData.ibkr_config?.flex_query_token,
+        flex_query_id: accountData.ibkr_config?.flex_query_id
+      });
 
       await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
@@ -298,6 +315,29 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       // Trigger refresh to reload the portfolio with new account
       await onAccountAdded();
+      
+      // If this was an IBKR account with valid config, offer to sync immediately
+      if (accountData.account_type === 'ibkr-account' && accountData.ibkr_config?.flex_query_token && accountData.ibkr_config?.flex_query_id) {
+        const shouldSync = confirm('IBKR account created successfully! Would you like to sync holdings now?');
+        if (shouldSync) {
+          try {
+            const { syncIBKRHoldings } = await import('./utils/ibkr-api');
+            const result = await syncIBKRHoldings(selectedFile, accountData.account_name, {
+              flex_query_token: accountData.ibkr_config.flex_query_token,
+              flex_query_id: accountData.ibkr_config.flex_query_id
+            });
+            if (result.success) {
+              alert(`✅ Successfully synced ${result.holdings_count} holdings from IBKR!`);
+              await onAccountAdded(); // Refresh again to show synced holdings
+            } else {
+              alert(`❌ Sync failed: ${result.error}`);
+            }
+          } catch (error) {
+            console.error('IBKR sync error:', error);
+            alert('❌ Failed to sync IBKR account');
+          }
+        }
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error adding account';
       alert(`Error adding account: ${errorMessage}`);
@@ -608,7 +648,22 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         <Circle size={16}/>
                     )}
                     <div>
-                      <p className="text-xs font-medium">{account.account_name}</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-xs font-medium">{account.account_name}</p>
+                        {account.account_type === 'ibkr-account' && account.ibkr_config && (
+                          <div className="flex items-center gap-1">
+                            {account.ibkr_config.sync_status === 'syncing' && (
+                              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Syncing..." />
+                            )}
+                            {account.ibkr_config.sync_status === 'success' && (
+                              <div className="w-2 h-2 bg-green-400 rounded-full" title="Last sync successful" />
+                            )}
+                            {account.ibkr_config.sync_status === 'error' && (
+                              <div className="w-2 h-2 bg-red-400 rounded-full" title="Sync error" />
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {isValueVisible ? (
                           <p className="text-xs text-gray-300">
                             {new Intl.NumberFormat('en-US', {
@@ -631,6 +686,35 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   {hoveredAccount === account.account_name && (
                     <div className="absolute top-full left-1/2 transform -translate-x-1/2 pt-1 z-10">
                       <div className="flex space-x-1">
+                        {account.account_type === 'ibkr-account' && account.ibkr_config && (
+                          <Button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const { syncIBKRHoldings } = await import('./utils/ibkr-api');
+                                const result = await syncIBKRHoldings(selectedFile, account.account_name, {
+                                  flex_query_token: account.ibkr_config!.flex_query_token,
+                                  flex_query_id: account.ibkr_config!.flex_query_id
+                                });
+                                if (result.success) {
+                                  alert(`✅ Successfully synced ${result.holdings_count} holdings from IBKR`);
+                                  await onAccountAdded(); // Refresh the portfolio
+                                } else {
+                                  alert(`❌ Sync failed: ${result.error}`);
+                                }
+                              } catch (error) {
+                                console.error('IBKR sync error:', error);
+                                alert('❌ Failed to sync IBKR account');
+                              }
+                            }}
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 border border-transparent bg-green-500/20 backdrop-blur-sm text-green-200 hover:text-green-100 hover:bg-green-500/30 hover:border-green-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
+                            title="Sync IBKR holdings"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -774,6 +858,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     <SelectContent>
                       <SelectItem value="bank-account">Bank Account</SelectItem>
                       <SelectItem value="investment-account">Investment Account</SelectItem>
+                      <SelectItem value="ibkr-account">Interactive Brokers Account</SelectItem>
                       <SelectItem value="education-fund">Education Fund</SelectItem>
                       <SelectItem value="retirement-account">Retirement Account</SelectItem>
                       <SelectItem value="company-custodian-account">Company Custodian Account</SelectItem>
@@ -1028,6 +1113,34 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
+                  </div>
+                ) : newAccount.account_type === 'ibkr-account' ? (
+                  <div className="space-y-4">
+                    <IBKRConfig
+                      flexQueryToken={newAccount.ibkr_config?.flex_query_token || ''}
+                      flexQueryId={newAccount.ibkr_config?.flex_query_id || ''}
+                      onConfigChange={(token, queryId) => {
+                        setNewAccount({
+                          ...newAccount,
+                          ibkr_config: { flex_query_token: token, flex_query_id: queryId }
+                        });
+                      }}
+                      onTestConnection={(result) => {
+                        // Handle test result - could show a toast or update UI
+                        console.log('IBKR test result:', result);
+                        if (result.success) {
+                          alert(`✅ ${result.message}`);
+                        } else {
+                          alert(`❌ ${result.error}`);
+                        }
+                      }}
+                      portfolioId={selectedFile}
+                      accountName={newAccount.account_name}
+                      onSyncComplete={(holdings) => {
+                        console.log('IBKR sync completed with holdings:', holdings);
+                        // Optionally update the account with synced holdings
+                      }}
+                    />
                   </div>
                 ) : (
                   <>
@@ -1400,6 +1513,33 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
+                  </div>
+                ) : editAccount.account_type === 'ibkr-account' ? (
+                  <div className="space-y-4">
+                    <IBKRConfig
+                      flexQueryToken={editAccount.ibkr_config?.flex_query_token || ''}
+                      flexQueryId={editAccount.ibkr_config?.flex_query_id || ''}
+                      onConfigChange={(token, queryId) => {
+                        setEditAccount({
+                          ...editAccount,
+                          ibkr_config: { flex_query_token: token, flex_query_id: queryId }
+                        });
+                      }}
+                      onTestConnection={(result) => {
+                        console.log('IBKR test result:', result);
+                        if (result.success) {
+                          alert(`✅ ${result.message}`);
+                        } else {
+                          alert(`❌ ${result.error}`);
+                        }
+                      }}
+                      portfolioId={selectedFile}
+                      accountName={editAccount.account_name}
+                      onSyncComplete={(holdings) => {
+                        console.log('IBKR sync completed with holdings:', holdings);
+                        // Optionally update the account with synced holdings
+                      }}
+                    />
                   </div>
                 ) : (
                   <>

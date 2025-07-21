@@ -30,6 +30,8 @@ import yfinance as yf
 from pymaya.maya import Maya
 from datetime import date
 from core.tag_service import TagService
+from core.ibkr_flex_service import IBKRFlexServiceManager
+from models.ibkr_account import IBKRAccountConfig
 
 logger = logging.Logger(__name__)
 
@@ -532,6 +534,7 @@ class CreateAccountRequest(BaseModel):
     rsu_plans: list[Any] = []
     espp_plans: list[Any] = []
     options_plans: list[Any] = []
+    ibkr_config: Optional[dict[str, Any]] = None
 
 
 @app.post("/portfolio")
@@ -639,7 +642,8 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
             "espp_plans": request.espp_plans,
-            "options_plans": request.options_plans
+            "options_plans": request.options_plans,
+            "ibkr_config": request.ibkr_config
         }
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
@@ -647,6 +651,103 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+        
+        # If this is an IBKR account with valid config, automatically sync holdings
+        logger.info(f"=== IBKR Auto-Sync Check ===")
+        logger.info(f"Account type: '{request.account_type}' (type: {type(request.account_type)})")
+        logger.info(f"Account type == 'ibkr-account': {request.account_type == 'ibkr-account'}")
+        logger.info(f"IBKR config present: {request.ibkr_config is not None}")
+        logger.info(f"IBKR config type: {type(request.ibkr_config)}")
+        
+        if request.ibkr_config:
+            logger.info(f"IBKR config keys: {list(request.ibkr_config.keys())}")
+            logger.info(f"Flex query token: '{request.ibkr_config.get('flex_query_token')}'")
+            logger.info(f"Flex query ID: '{request.ibkr_config.get('flex_query_id')}'")
+            logger.info(f"Flex query token present: {bool(request.ibkr_config.get('flex_query_token'))}")
+            logger.info(f"Flex query ID present: {bool(request.ibkr_config.get('flex_query_id'))}")
+        else:
+            logger.info("IBKR config is None or empty")
+        
+        condition1 = request.account_type == 'ibkr-account'
+        condition2 = request.ibkr_config is not None
+        condition3 = request.ibkr_config.get('flex_query_token') if request.ibkr_config else False
+        condition4 = request.ibkr_config.get('flex_query_id') if request.ibkr_config else False
+        
+        logger.info(f"Condition 1 (account_type == 'ibkr-account'): {condition1}")
+        logger.info(f"Condition 2 (ibkr_config is not None): {condition2}")
+        logger.info(f"Condition 3 (flex_query_token present): {condition3}")
+        logger.info(f"Condition 4 (flex_query_id present): {condition4}")
+        logger.info(f"All conditions met: {condition1 and condition2 and condition3 and condition4}")
+        
+        if (request.account_type == 'ibkr-account' and 
+            request.ibkr_config and 
+            request.ibkr_config.get('flex_query_token') and 
+            request.ibkr_config.get('flex_query_id')):
+            
+            try:
+                from core.ibkr_flex_service import IBKRFlexServiceManager
+                from models.ibkr_account import IBKRAccountConfig
+                
+                # Create IBKR config
+                ibkr_config = IBKRAccountConfig(
+                    flex_query_token=request.ibkr_config['flex_query_token'],
+                    flex_query_id=request.ibkr_config['flex_query_id']
+                )
+                
+                # Sync holdings
+                logger.info("Starting IBKR auto-sync...")
+                flex_manager = IBKRFlexServiceManager()
+                result = await flex_manager.sync_account_holdings(ibkr_config)
+                logger.info(f"IBKR sync result: {result}")
+                
+                if result["success"]:
+                    # Update the account with synced holdings
+                    holdings_data = result["holdings"]
+                    logger.info(f"Auto-sync successful: received {len(holdings_data)} holdings from IBKR")
+                    logger.info(f"Holding details: {[(h.get('symbol', 'unknown'), h.get('units', 0)) for h in holdings_data]}")
+                    
+                    # Convert holdings data to proper Holding objects
+                    from models.holding import Holding
+                    holdings = []
+                    for i, holding_data in enumerate(holdings_data):
+                        logger.info(f"Creating holding {i+1}: {holding_data.get('symbol', 'unknown')} - {holding_data.get('units', 0)} units")
+                        holding = Holding(
+                            symbol=holding_data["symbol"],
+                            units=holding_data["units"]
+                        )
+                        holdings.append(holding)
+                        logger.info(f"✓ Created holding: {holding.symbol} - {holding.units} units")
+                    
+                    new_account["holdings"] = [h.to_dict() for h in holdings]
+                    logger.info(f"Final account holdings: {len(new_account['holdings'])} holdings saved")
+                    logger.info(f"Holdings in account: {[(h.get('symbol', 'unknown'), h.get('units', 0)) for h in new_account['holdings']]}")
+                    
+                    # Update IBKR config with sync status
+                    new_account["ibkr_config"] = {
+                        **request.ibkr_config,
+                        "sync_status": "success",
+                        "last_sync": datetime.now().isoformat(),
+                        "account_id": result.get("account_data", {}).get("account_id", "")
+                    }
+                    
+                    # Save updated account
+                    portfolio_data['accounts'] = [acc for acc in portfolio_data['accounts'] if acc['name'] != request.account_name]
+                    portfolio_data['accounts'].append(new_account)
+                    await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
+                    invalidate_portfolio_cache(portfolio_id)
+                    
+                    return {
+                        "message": f"Account '{request.account_name}' added and synced {len(holdings)} holdings from IBKR successfully",
+                        "holdings_count": len(holdings),
+                        "auto_synced": True
+                    }
+                else:
+                    logger.warning(f"Auto-sync failed for new IBKR account: {result.get('error', 'Unknown error')}")
+                    
+            except Exception as e:
+                logger.error(f"Error auto-syncing IBKR account: {e}")
+                # Continue without sync - account was still created successfully
+        
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
@@ -756,7 +857,8 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
             "espp_plans": request.espp_plans,
-            "options_plans": request.options_plans
+            "options_plans": request.options_plans,
+            "ibkr_config": request.ibkr_config
         }
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
@@ -1999,4 +2101,448 @@ async def get_template_tags():
     return {
         "templates": {name: template.dict() for name, template in DEFAULT_TAG_TEMPLATES.items()}
     }
+
+
+# =============================================================================
+# IBKR FLEX WEB SERVICE API ENDPOINTS
+# =============================================================================
+
+class IBKRTestConnectionRequest(BaseModel):
+    flex_query_token: str
+    flex_query_id: str
+
+
+class IBKRSyncRequest(BaseModel):
+    flex_query_token: str
+    flex_query_id: str
+
+
+@app.post("/ibkr/test-connection")
+async def test_ibkr_flex_connection(
+    request: IBKRTestConnectionRequest,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Test connection to IBKR Flex Web Service
+    
+    Args:
+        request: Flex Query Token and Query ID
+        
+    Returns:
+        Test result with success status and details
+    """
+    try:
+        flex_manager = IBKRFlexServiceManager()
+        result = await flex_manager.test_connection(
+            request.flex_query_token,
+            request.flex_query_id
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error testing IBKR Flex connection: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to test IBKR Flex connection: {str(e)}"
+        )
+
+
+@app.post("/portfolio/{portfolio_id}/accounts/{account_name}/ibkr-sync")
+async def sync_ibkr_account(
+    portfolio_id: str,
+    account_name: str,
+    request: IBKRSyncRequest,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    logger.info(f"IBKR sync endpoint called for portfolio {portfolio_id}, account {account_name}")
+    logger.info(f"Request data: {request}")
+    """
+    Synchronize holdings from IBKR Flex Web Service
+    
+    Args:
+        portfolio_id: Portfolio ID
+        account_name: Account name
+        request: Flex Query Token and Query ID
+        
+    Returns:
+        Sync result with holdings data
+    """
+    try:
+        # Get the portfolio
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        
+        # Find the account
+        account = None
+        for acc in portfolio.accounts:
+            if acc.name == account_name:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Create IBKR config
+        ibkr_config = IBKRAccountConfig(
+            flex_query_token=request.flex_query_token,
+            flex_query_id=request.flex_query_id
+        )
+        
+        # Sync holdings
+        flex_manager = IBKRFlexServiceManager()
+        result = await flex_manager.sync_account_holdings(ibkr_config)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to sync IBKR holdings: {result.get('error', 'Unknown error')}"
+            )
+        
+        # Update account holdings with synced data
+        holdings = result["holdings"]
+        logger.info(f"Received {len(holdings)} holdings from IBKR sync")
+        logger.info(f"Holding details: {[(h.get('symbol', 'unknown'), h.get('units', 0)) for h in holdings]}")
+        
+        account.holdings = []
+        
+        for i, holding_data in enumerate(holdings):
+            logger.info(f"Creating holding {i+1}: {holding_data.get('symbol', 'unknown')} - {holding_data.get('units', 0)} units")
+            from models.holding import Holding
+            holding = Holding(
+                symbol=holding_data["symbol"],
+                units=holding_data["units"]
+            )
+            account.holdings.append(holding)
+            logger.info(f"✓ Added holding to account: {holding.symbol} - {holding.units} units")
+        
+        logger.info(f"Final account holdings count: {len(account.holdings)}")
+        logger.info(f"Account holdings: {[(h.symbol, h.units) for h in account.holdings]}")
+        
+        # Update IBKR config in account
+        account.ibkr_config = ibkr_config
+        
+        # Save updated portfolio
+        await collection.replace_one(
+            {"_id": ObjectId(portfolio_id)},
+            portfolio.to_dict()
+        )
+        
+        # Invalidate cache
+        invalidate_portfolio_cache(portfolio_id)
+        
+        return {
+            "success": True,
+            "message": f"Successfully synced {len(holdings)} holdings from IBKR",
+            "holdings_count": len(holdings),
+            "total_value": result.get("total_value", 0),
+            "currency": result.get("currency", "USD")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing IBKR account: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to sync IBKR account: {str(e)}"
+        )
+
+
+@app.get("/portfolio/{portfolio_id}/accounts/{account_name}/ibkr-summary")
+async def get_ibkr_account_summary(
+    portfolio_id: str,
+    account_name: str,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Get account summary from IBKR Flex Web Service
+    
+    Args:
+        portfolio_id: Portfolio ID
+        account_name: Account name
+        
+    Returns:
+        Account summary with balances and metadata
+    """
+    try:
+        # Get the portfolio
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        
+        # Find the account
+        account = None
+        for acc in portfolio.accounts:
+            if acc.name == account_name:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        if not account.ibkr_config:
+            raise HTTPException(
+                status_code=400,
+                detail="Account is not configured for IBKR Flex Web Service"
+            )
+        
+        # Get account summary
+        flex_manager = IBKRFlexServiceManager()
+        result = await flex_manager.get_account_summary(account.ibkr_config)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to get IBKR account summary: {result.get('error', 'Unknown error')}"
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting IBKR account summary: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get IBKR account summary: {str(e)}"
+        )
+
+
+class IBKRPeriodicSyncRequest(BaseModel):
+    interval_minutes: int = 60
+    enable: bool = True
+
+
+class IBKRDisconnectRequest(BaseModel):
+    confirm: bool = True
+
+
+@app.post("/portfolio/{portfolio_id}/accounts/{account_name}/ibkr-periodic-sync")
+async def configure_ibkr_periodic_sync(
+    portfolio_id: str,
+    account_name: str,
+    request: IBKRPeriodicSyncRequest,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Configure periodic synchronization for IBKR account
+    
+    Args:
+        portfolio_id: Portfolio ID
+        account_name: Account name
+        request: Periodic sync configuration
+        
+    Returns:
+        Configuration result
+    """
+    try:
+        # Get the portfolio
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        
+        # Find the account
+        account = None
+        for acc in portfolio.accounts:
+            if acc.name == account_name:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        if not account.ibkr_config:
+            raise HTTPException(
+                status_code=400,
+                detail="Account is not configured for IBKR Flex Web Service"
+            )
+        
+        flex_manager = IBKRFlexServiceManager()
+        
+        if request.enable:
+            # Start periodic sync
+            task_id = await flex_manager.start_periodic_sync(
+                account.ibkr_config,
+                request.interval_minutes
+            )
+            
+            return {
+                "success": True,
+                "message": f"Started periodic sync with {request.interval_minutes} minute interval",
+                "task_id": task_id,
+                "interval_minutes": request.interval_minutes
+            }
+        else:
+            # Stop periodic sync (this would need to be implemented with task tracking)
+            return {
+                "success": True,
+                "message": "Periodic sync disabled",
+                "task_id": None
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error configuring IBKR periodic sync: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to configure periodic sync: {str(e)}"
+        )
+
+
+@app.post("/portfolio/{portfolio_id}/accounts/{account_name}/ibkr-disconnect")
+async def disconnect_ibkr_account(
+    portfolio_id: str,
+    account_name: str,
+    request: IBKRDisconnectRequest,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Disconnect IBKR account and clean up resources
+    
+    Args:
+        portfolio_id: Portfolio ID
+        account_name: Account name
+        request: Disconnect confirmation
+        
+    Returns:
+        Disconnection result
+    """
+    try:
+        if not request.confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Disconnection must be confirmed"
+            )
+        
+        # Get the portfolio
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        
+        # Find the account
+        account = None
+        for acc in portfolio.accounts:
+            if acc.name == account_name:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        if not account.ibkr_config:
+            raise HTTPException(
+                status_code=400,
+                detail="Account is not configured for IBKR Flex Web Service"
+            )
+        
+        # Disconnect the account
+        flex_manager = IBKRFlexServiceManager()
+        result = await flex_manager.disconnect_account(account.ibkr_config)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to disconnect account: {result.get('error', 'Unknown error')}"
+            )
+        
+        # Clear IBKR config from account
+        account.ibkr_config = None
+        
+        # Save updated portfolio
+        await collection.replace_one(
+            {"_id": ObjectId(portfolio_id)},
+            portfolio.to_dict()
+        )
+        
+        # Invalidate cache
+        invalidate_portfolio_cache(portfolio_id)
+        
+        return {
+            "success": True,
+            "message": f"Successfully disconnected IBKR account {account_name}",
+            "stopped_tasks": result.get("stopped_tasks", 0)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disconnecting IBKR account: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to disconnect IBKR account: {str(e)}"
+        )
+
+
+@app.get("/portfolio/{portfolio_id}/accounts/{account_name}/ibkr-sync-status")
+async def get_ibkr_sync_status(
+    portfolio_id: str,
+    account_name: str,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Get IBKR account sync status and history
+    
+    Args:
+        portfolio_id: Portfolio ID
+        account_name: Account name
+        
+    Returns:
+        Sync status information
+    """
+    try:
+        # Get the portfolio
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        portfolio = Portfolio.from_dict(doc)
+        
+        # Find the account
+        account = None
+        for acc in portfolio.accounts:
+            if acc.name == account_name:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        if not account.ibkr_config:
+            raise HTTPException(
+                status_code=400,
+                detail="Account is not configured for IBKR Flex Web Service"
+            )
+        
+        return {
+            "account_name": account_name,
+            "sync_status": account.ibkr_config.sync_status,
+            "last_sync": account.ibkr_config.last_sync.isoformat() if account.ibkr_config.last_sync else None,
+            "sync_error": account.ibkr_config.sync_error,
+            "account_id": account.ibkr_config.account_id,
+            "account_name_ibkr": account.ibkr_config.account_name,
+            "holdings_count": len(account.holdings)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting IBKR sync status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get sync status: {str(e)}"
+        )
 
