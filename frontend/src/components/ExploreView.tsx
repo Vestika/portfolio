@@ -1,4 +1,4 @@
-import React from 'react'
+// React is not needed for JSX in modern React
 import { Search } from 'lucide-react'
 
 export function ExploreView() {
