@@ -1,4 +1,4 @@
-import React from 'react'
+// React is not needed for JSX in modern React
 import PieChart from '../PieChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUVestingTimeline from './RSUVestingTimeline'

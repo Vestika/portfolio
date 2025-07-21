@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, Quote, HoldingTags } from './types';
+import { SecurityHolding, HoldingsTableData, Quote, HoldingTags, TagDefinition, TagLibrary, TagType } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import api from './utils/api';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import TagDisplay from './components/TagDisplay';
-import HoldingTagManager from './components/HoldingTagManager';
+import TagEditor from './components/TagEditor';
+import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
 import TagAPI from './utils/tag-api';
 
 import {
@@ -20,10 +21,10 @@ import {
   ChartNoAxesCombined,
   Table,
   Flame,
-  Tags,
   ChevronDown,
   ChevronRight,
   Users,
+  Plus,
 } from 'lucide-react';
 
 import israelFlag from './assets/israel-flag.svg';
@@ -31,6 +32,16 @@ import usFlag from './assets/us-flag.svg';
 import metaLogo from './assets/meta.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
 import googleLogo from './assets/google.svg';
+
+const TAG_TYPE_INFO = {
+  [TagType.ENUM]: { icon: "🏷️" },
+  [TagType.MAP]: { icon: "🗺️" },
+  [TagType.SCALAR]: { icon: "📊" },
+  [TagType.HIERARCHICAL]: { icon: "🌳" },
+  [TagType.BOOLEAN]: { icon: "✅" },
+  [TagType.TIME_BASED]: { icon: "⏰" },
+  [TagType.RELATIONSHIP]: { icon: "🔗" }
+};
 
 
 interface HoldingsTableProps {
@@ -358,7 +369,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
 
   // Tag management state
   const [structuredTags, setStructuredTags] = useState<Record<string, HoldingTags>>({});
-  const [tagManagerOpen, setTagManagerOpen] = useState<string | null>(null);
+  const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
+  const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
   // Fetch live quotes for holdings
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -370,23 +382,29 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       .catch(() => setQuotes({}));
   }, [data.holdings]);
 
-  // Load structured tags for all holdings
+  // Load structured tags and tag library for all holdings
   useEffect(() => {
-    const loadStructuredTags = async () => {
+    const loadTagData = async () => {
       try {
-        const allTags = await TagAPI.getAllHoldingTags();
+        const [allTags, library] = await Promise.all([
+          TagAPI.getAllHoldingTags(),
+          TagAPI.getUserTagLibrary()
+        ]);
+        
         const tagsMap = allTags.reduce((acc, holdingTags) => {
           acc[holdingTags.symbol] = holdingTags;
           return acc;
         }, {} as Record<string, HoldingTags>);
+        
         setStructuredTags(tagsMap);
+        setTagLibrary(library);
       } catch (error) {
-        console.error('Error loading structured tags:', error);
+        console.error('Error loading tag data:', error);
       }
     };
 
     if (data.holdings.length > 0) {
-      loadStructuredTags();
+      loadTagData();
     }
   }, [data.holdings]);
 
@@ -459,45 +477,91 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
-  const renderTags = (holding: SecurityHolding) => {
-    const structuredTag = structuredTags[holding.symbol];
+  const handleRemoveTag = async (symbol: string, tagName: string) => {
+    try {
+      await TagAPI.removeHoldingTag(symbol, tagName);
+      await handleTagsUpdated();
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
 
-    if (structuredTag && Object.keys(structuredTag.tags).length > 0) {
-      return (
-        <div className="flex items-center gap-2">
+  const handleAddTag = async (symbol: string, tagName: string) => {
+    if (!tagLibrary) return;
+    
+    const tagDefinition = tagLibrary.tag_definitions[tagName];
+    if (tagDefinition) {
+      setEditingTag({ symbol, definition: tagDefinition });
+    }
+  };
+
+  const handleSaveTag = async (tagValue: any) => {
+    if (!editingTag) return;
+    
+    try {
+      await TagAPI.setHoldingTag(editingTag.symbol, tagValue.tag_name, tagValue);
+      await handleTagsUpdated();
+      setEditingTag(null);
+    } catch (error) {
+      console.error('Error saving tag:', error);
+      throw error;
+    }
+  };
+
+  const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
+    const structuredTag = structuredTags[holding.symbol];
+    const userDefinedTags = tagLibrary ? Object.values(tagLibrary.tag_definitions) : [];
+
+    return (
+      <div className="flex items-center gap-2 group">
+        {structuredTag && Object.keys(structuredTag.tags).length > 0 && (
           <TagDisplay
             tags={structuredTag.tags}
             maxTags={0}
             compact={isMobile}
             onTagClick={(tagName) => handleTagClick(tagName)}
             activeFilter={tagFilter}
+            onRemoveTag={showManagementControls ? (tagName) => handleRemoveTag(holding.symbol, tagName) : undefined}
+            showRemoveButtons={showManagementControls}
           />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setTagManagerOpen(holding.symbol);
-            }}
-            className="text-gray-400 hover:text-blue-400 transition-colors"
-            title="Manage tags"
-          >
-            <Tags size={14} />
-          </button>
-        </div>
-      );
-    }
-
-    // No structured tags - show add button
-    return (
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setTagManagerOpen(holding.symbol);
-        }}
-        className="text-gray-500 hover:text-blue-400 transition-colors"
-        title="Add tags"
-      >
-        <Tags size={14} />
-      </button>
+        )}
+        
+        {showManagementControls && userDefinedTags.length > 0 && (
+          <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
+            <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
+              <Plus size={14} className="text-gray-400 hover:text-blue-400" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 border-gray-600/30 backdrop-blur-sm shadow-lg">
+              <div className="p-2">
+                <p className="text-xs text-gray-400 mb-2 px-2">Add tag to {holding.symbol}:</p>
+                {userDefinedTags.map((tagDef) => {
+                  // Don't show tags that are already assigned
+                  const isAlreadyAssigned = structuredTag && structuredTag.tags[tagDef.name];
+                  if (isAlreadyAssigned) return null;
+                  
+                  return (
+                    <SelectItem 
+                      key={tagDef.name} 
+                      value={tagDef.name}
+                      className="text-gray-200 hover:bg-gray-700/50 focus:bg-gray-700/50 cursor-pointer rounded-md"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{TAG_TYPE_INFO[tagDef.tag_type]?.icon || '🏷️'}</span>
+                        <span>{tagDef.display_name}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+                {userDefinedTags.filter(tagDef => !(structuredTag && structuredTag.tags[tagDef.name])).length === 0 && (
+                  <div className="px-2 py-3 text-xs text-gray-500 text-center">
+                    All your tags are already assigned
+                  </div>
+                )}
+              </div>
+            </SelectContent>
+          </Select>
+        )}
+      </div>
     );
   };
 
@@ -665,7 +729,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                       </div>
                     </td>
                     <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
-                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">{renderTags(holding)}</td>
+                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">
+                      {renderTags(holding, true)} {/* Show all functionality: filter on click, remove buttons, add dropdown */}
+                    </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
                       <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
@@ -710,7 +776,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
                           </div>
                           <div>
                             <p className="font-bold text-gray-400">Tags</p>
-                            <div>{renderTags(holding)}</div>
+                            <div>{renderTags(holding, true)}</div> {/* Show all functionality: filter on click, remove buttons, add dropdown */}
                           </div>
                           {isValueVisible && (
                             <div>
@@ -733,13 +799,15 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
         <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
       )}
 
-      {/* Tag Manager Dialog */}
-      {tagManagerOpen && (
-        <HoldingTagManager
+      {/* Tag Editor Dialog */}
+      {editingTag && (
+        <TagEditor
           isOpen={true}
-          onClose={() => setTagManagerOpen(null)}
-          symbol={tagManagerOpen}
-          onTagsUpdated={handleTagsUpdated}
+          onClose={() => setEditingTag(null)}
+          onSave={handleSaveTag}
+          tagDefinition={editingTag.definition}
+          initialValue={editingTag.value}
+          symbol={editingTag.symbol}
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Badge } from './ui/badge';
 import { TagValue, TagType } from '../types';
+import { X } from 'lucide-react';
 
 interface TagDisplayProps {
   tags: Record<string, TagValue>;
@@ -8,6 +9,8 @@ interface TagDisplayProps {
   compact?: boolean;
   onTagClick?: (tagName: string, tagValue: TagValue) => void;
   activeFilter?: string | null;
+  onRemoveTag?: (tagName: string) => void; // Add remove callback
+  showRemoveButtons?: boolean; // Control when to show remove buttons
 }
 
 const TagDisplay: React.FC<TagDisplayProps> = ({ 
@@ -15,7 +18,9 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
   maxTags = 5, 
   compact = false,
   onTagClick,
-  activeFilter 
+  activeFilter,
+  onRemoveTag,
+  showRemoveButtons = false
 }) => {
   const tagEntries = Object.entries(tags);
   const displayTags = maxTags && maxTags > 0 ? tagEntries.slice(0, maxTags) : tagEntries;
@@ -104,6 +109,18 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
     return tagName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  const handleTagClick = (tagName: string, tagValue: TagValue) => {
+    // Always allow tag clicking for filtering, regardless of remove buttons
+    if (onTagClick) {
+      onTagClick(tagName, tagValue);
+    }
+  };
+
+  const handleRemoveClick = (e: React.MouseEvent, tagName: string) => {
+    e.stopPropagation();
+    onRemoveTag?.(tagName);
+  };
+
   if (tagEntries.length === 0) {
     return (
       <span className="text-xs text-gray-500 italic">No tags</span>
@@ -122,35 +139,57 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
           <Badge
             key={tagName}
             variant="outline"
-            className={`${getTagColor(tagValue)} cursor-pointer transition-all text-xs ${
+            className={`${getTagColor(tagValue)} transition-all text-xs group ${
+              showRemoveButtons 
+                ? 'pr-1' // Less padding when showing remove button
+                : (onTagClick ? 'cursor-pointer' : '')
+            } ${
               isActive 
                 ? 'ring-2 ring-blue-400 ring-opacity-60 shadow-lg scale-105' 
-                : 'hover:opacity-80 hover:scale-105'
+                : (!showRemoveButtons && onTagClick ? 'hover:opacity-80 hover:scale-105' : '')
             }`}
-            onClick={() => onTagClick?.(tagName, tagValue)}
-            title={`${formatTagName(tagName)}: ${displayValue}${isActive ? ' (Click to clear filter)' : ' (Click to filter)'}`}
+            onClick={() => handleTagClick(tagName, tagValue)}
+            title={
+              showRemoveButtons 
+                ? `${formatTagName(tagName)}: ${displayValue}${isActive ? ' (Click to clear filter)' : (onTagClick ? ' (Click to filter)' : '')}` 
+                : `${formatTagName(tagName)}: ${displayValue}${isActive ? ' (Click to clear filter)' : (onTagClick ? ' (Click to filter)' : '')}`
+            }
           >
-            {compact ? (
-              <>
-                <span className="font-medium">{formatTagName(tagName).split(' ')[0]}</span>
-                {displayValue && (
+            <div className="flex items-center gap-1">
+              <div className="flex items-center">
+                {compact ? (
                   <>
-                    <span className="mx-1">:</span>
-                    <span className="truncate max-w-16">{displayValue}</span>
+                    <span className="font-medium">{formatTagName(tagName).split(' ')[0]}</span>
+                    {displayValue && (
+                      <>
+                        <span className="mx-1">:</span>
+                        <span className="truncate max-w-16">{displayValue}</span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">{formatTagName(tagName)}</span>
+                    {displayValue && (
+                      <>
+                        <span className="mx-1">:</span>
+                        <span>{displayValue}</span>
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            ) : (
-              <>
-                <span className="font-medium">{formatTagName(tagName)}</span>
-                {displayValue && (
-                  <>
-                    <span className="mx-1">:</span>
-                    <span>{displayValue}</span>
-                  </>
-                )}
-              </>
-            )}
+              </div>
+              
+              {showRemoveButtons && onRemoveTag && (
+                <button
+                  onClick={(e) => handleRemoveClick(e, tagName)}
+                  className="ml-1 p-0.5 rounded-full hover:bg-red-500/20 transition-colors opacity-60 hover:opacity-100"
+                  title={`Remove ${formatTagName(tagName)} tag`}
+                >
+                  <X size={10} className="text-red-400" />
+                </button>
+              )}
+            </div>
           </Badge>
         );
       })}
