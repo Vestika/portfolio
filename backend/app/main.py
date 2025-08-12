@@ -21,6 +21,7 @@ from utils import filter_security
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
 from services.closing_price.stock_fetcher import fetch_quotes
+from services.interactive_brokers.service import IBFlexWebServiceClient
 from core.auth import get_current_user
 from core.firebase import FirebaseAuthMiddleware
 from core.ai_analyst import ai_analyst
@@ -532,7 +533,20 @@ class CreateAccountRequest(BaseModel):
     rsu_plans: list[Any] = []
     espp_plans: list[Any] = []
     options_plans: list[Any] = []
+    # Optional IBKR Flex credentials (saved only if provided)
+    ibkr_flex: Optional[dict[str, str]] = None
 
+
+class IBFlexPreviewRequest(BaseModel):
+    access_token: str
+    query_id: str
+
+
+class IBFlexImportRequest(BaseModel):
+    access_token: str
+    query_id: str
+    target_account_name: str
+    owners: list[str] | None = None
 
 @app.post("/portfolio")
 async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_current_user)) -> dict[str, str]:
@@ -641,6 +655,9 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             "espp_plans": request.espp_plans,
             "options_plans": request.options_plans
         }
+        # Save IBKR Flex credentials if provided
+        if request.ibkr_flex:
+            new_account["ibkr_flex"] = request.ibkr_flex
         if 'accounts' not in portfolio_data:
             portfolio_data['accounts'] = []
         portfolio_data['accounts'].append(new_account)
@@ -758,6 +775,9 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             "espp_plans": request.espp_plans,
             "options_plans": request.options_plans
         }
+        # Save or update IBKR Flex credentials if provided
+        if request.ibkr_flex is not None:
+            updated_account["ibkr_flex"] = request.ibkr_flex
         accounts[account_index] = updated_account
         doc['accounts'] = accounts
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
@@ -781,6 +801,34 @@ async def root(user=Depends(get_current_user)):
         "docs_url": "/docs",
         "user": user.email
     }
+
+
+# ==============================
+# IBKR Flex Web Service Endpoints
+# ==============================
+
+@app.post("/ibkr/flex/preview")
+async def ibkr_flex_preview_global(
+    request: IBFlexPreviewRequest,
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Global preview endpoint: generate and retrieve a Flex statement (XML), parse OpenPositions and
+    return aggregated holdings by symbol. No portfolio context required; nothing is persisted.
+    """
+    try:
+        async with IBFlexWebServiceClient() as client:
+            xml_text = await client.fetch_statement(request.access_token, request.query_id)
+            holdings = client.parse_holdings_from_flex(xml_text)
+            return {
+                "success": True,
+                "symbols_count": len(holdings),
+                "holdings": holdings
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Flex preview failed: {str(e)}")
+
+
 
 @app.get("/ai/status")
 async def get_ai_status(user=Depends(get_current_user)):
