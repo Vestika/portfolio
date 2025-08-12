@@ -19,7 +19,8 @@ import {
   User,
   MessageCircle,
   Settings,
-  LogOut
+  LogOut,
+  Info
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -162,6 +163,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [editIbkrTesting, setEditIbkrTesting] = useState<boolean>(false);
   const [saveIbkrCredentials, setSaveIbkrCredentials] = useState<boolean>(false);
   const [editSaveIbkrCredentials, setEditSaveIbkrCredentials] = useState<boolean>(false);
+  const [showIbkrHelp, setShowIbkrHelp] = useState<boolean>(false);
+  const [showEditIbkrHelp, setShowEditIbkrHelp] = useState<boolean>(false);
+  const [suppressIbkrHover, setSuppressIbkrHover] = useState<boolean>(false);
+  const [suppressEditIbkrHover, setSuppressEditIbkrHover] = useState<boolean>(false);
 
   useEffect(() => {
     setAccounts(
@@ -797,7 +802,72 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm font-medium">Link IBKR (Flex Web Service)</Label>
-                      <span className="text-xs text-gray-400">Optional</span>
+                      <div className="flex items-center text-xs text-gray-400">
+                        <span>Optional</span>
+                        <div
+                          className="relative group inline-block ml-2"
+                          onMouseLeave={() => {
+                            setSuppressIbkrHover(false);
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-label="How to get IBKR Flex Query ID and Access Token"
+                            className="p-1 rounded-full hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+                            onClick={() => setShowIbkrHelp((v) => !v)}
+                          >
+                            <Info className="h-4 w-4" />
+                          </button>
+                          <div
+                            className={`absolute right-0 mt-2 z-50 w-[360px] max-w-[80vw] ${showIbkrHelp ? 'block' : 'hidden'} ${!suppressIbkrHover ? 'group-hover:block' : ''}`}
+                          >
+                            <div className="rounded-md border border-gray-700 bg-gray-800 text-white shadow-lg p-4 max-h-[70vh] overflow-y-auto">
+                              <div className="flex items-start justify-between mb-1">
+                                <p className="text-sm font-semibold">IBKR Flex setup guide</p>
+                                <button
+                                  type="button"
+                                  className="text-gray-400 hover:text-white"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setShowIbkrHelp(false);
+                                    setSuppressIbkrHover(true);
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <p className="text-sm font-semibold mb-2">IBKR Flex setup guide</p>
+                              <ol className="list-decimal list-inside space-y-2 text-xs text-gray-200">
+                                <li>
+                                  In IBKR Client Portal, go to <span className="font-medium">Reports</span> → <span className="font-medium">Flex Queries</span>.
+                                </li>
+                                <li>
+                                  Create a new <span className="font-medium">Activity Statement</span> Flex Query:
+                                  <ul className="list-disc list-inside mt-1 space-y-1 ml-4">
+                                    <li>Date range: <span className="font-medium">Last Business Day</span> (recommended)</li>
+                                    <li>Include section: <span className="font-medium">Open Positions</span></li>
+                                    <li>Save the query</li>
+                                  </ul>
+                                </li>
+                                <li>
+                                  In the Flex Queries list, copy the <span className="font-medium">Query ID</span> for the query you just saved.
+                                </li>
+                                <li>
+                                  Go to <span className="font-medium">Reports</span> → <span className="font-medium">Flex Web Service</span> and generate an <span className="font-medium">Access Token</span> (or copy your existing token).
+                                </li>
+                                <li>
+                                  Paste the <span className="font-medium">Access Token</span> and <span className="font-medium">Query ID</span> here, then click <span className="font-medium">Import from IBKR Flex</span> to preview holdings.
+                                </li>
+                              </ol>
+                              <div className="mt-3 text-[11px] text-gray-400 space-y-1">
+                                <p>We only use IBKR Flex Web Service (Generate + Retrieve). No IBKR Web API is used.</p>
+                                <p>See local guide: INTERACTIVE_BROKERS_INTEGRATION.md for screenshots and details.</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="ibkr-token">Access Token</Label>
@@ -1255,7 +1325,71 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm font-medium">Link IBKR (Flex Web Service)</Label>
-                      <span className="text-xs text-gray-400">Optional</span>
+                      <div className="flex items-center text-xs text-gray-400">
+                        <span>Optional</span>
+                        <div
+                          className="relative group inline-block ml-2"
+                          onMouseLeave={() => {
+                            setSuppressEditIbkrHover(false);
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-label="How to get IBKR Flex Query ID and Access Token"
+                            className="p-1 rounded-full hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+                            onClick={() => setShowEditIbkrHelp((v) => !v)}
+                          >
+                            <Info className="h-4 w-4" />
+                          </button>
+                          <div
+                            className={`absolute right-0 mt-2 z-50 w-[360px] max-w-[80vw] ${showEditIbkrHelp ? 'block' : 'hidden'} ${!suppressEditIbkrHover ? 'group-hover:block' : ''}`}
+                          >
+                            <div className="rounded-md border border-gray-700 bg-gray-800 text-white shadow-lg p-4 max-h-[70vh] overflow-y-auto">
+                              <div className="flex items-start justify-between mb-1">
+                                <p className="text-sm font-semibold">IBKR Flex setup guide</p>
+                                <button
+                                  type="button"
+                                  className="text-gray-400 hover:text-white"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setShowEditIbkrHelp(false);
+                                    setSuppressEditIbkrHover(true);
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <p className="text-sm font-semibold mb-2">IBKR Flex setup guide</p>
+                              <ol className="list-decimal list-inside space-y-2 text-xs text-gray-200">
+                                <li>
+                                  In IBKR Client Portal, go to <span className="font-medium">Reports</span> → <span className="font-medium">Flex Queries</span>.
+                                </li>
+                                <li>
+                                  Create a new <span className="font-medium">Activity Statement</span> Flex Query:
+                                  <ul className="list-disc list-inside mt-1 space-y-1 ml-4">
+                                    <li>Date range: <span className="font-medium">Last Business Day</span> (recommended)</li>
+                                    <li>Include section: <span className="font-medium">Open Positions</span></li>
+                                    <li>Save the query</li>
+                                  </ul>
+                                </li>
+                                <li>
+                                  In the Flex Queries list, copy the <span className="font-medium">Query ID</span> for the query you just saved.
+                                </li>
+                                <li>
+                                  Go to <span className="font-medium">Reports</span> → <span className="font-medium">Flex Web Service</span> and generate an <span className="font-medium">Access Token</span> (or copy your existing token).
+                                </li>
+                                <li>
+                                  Paste the <span className="font-medium">Access Token</span> and <span className="font-medium">Query ID</span> here, then click <span className="font-medium">Import from IBKR Flex</span> to preview holdings.
+                                </li>
+                              </ol>
+                              <div className="mt-3 text-[11px] text-gray-400 space-y-1">
+                                <p>We only use IBKR Flex Web Service (Generate + Retrieve). No IBKR Web API is used.</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="edit-ibkr-token">Access Token</Label>
