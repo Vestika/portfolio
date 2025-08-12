@@ -1,206 +1,104 @@
 import httpx
 import asyncio
-from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Any
 from loguru import logger
 from urllib.parse import urljoin
 
-from config import settings
-from models.account import AccountConnection, AccountProvider
+import xml.etree.ElementTree as ET
 
 
-class InteractiveBrokersService:
-    """Service for integrating with Interactive Brokers Web API"""
-    
-    def __init__(self, base_url: str = "https://localhost:5000/v1/api"):
-        self.base_url = base_url
-        self.client = httpx.AsyncClient(verify=False)  # For local CP Gateway
-        self.session_authenticated = False
-        
+
+class IBFlexWebServiceClient:
+    """Client for IBKR Flex Web Service (SendRequest/GetStatement)"""
+
+    BASE_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/"
+
+    def __init__(self):
+        self.client = httpx.AsyncClient(timeout=20.0)
+
     async def __aenter__(self):
         return self
-        
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.client.aclose()
-    
-    async def authenticate_session(self, username: str, password: str) -> bool:
+
+    async def send_request(self, access_token: str, query_id: str) -> str:
         """
-        Authenticate with Interactive Brokers.
-        For individual users using Client Portal Gateway.
+        Generate a report and return the reference code.
+        Endpoint: FlexStatementService.SendRequest?t={token}&q={queryId}&v=3
         """
+        params = {"t": access_token, "q": query_id, "v": "3"}
+        url = urljoin(self.BASE_URL, "FlexStatementService.SendRequest")
+        resp = await self.client.get(url, params=params)
+        resp.raise_for_status()
+        # Parse small XML with ReferenceCode
         try:
-            # Check current authentication status
-            auth_status = await self._check_auth_status()
-            if auth_status.get("authenticated", False):
-                logger.info("Already authenticated with IBKR")
-                self.session_authenticated = True
-                return True
-            
-            # For Client Portal Gateway, user needs to authenticate through browser
-            # We can only check status, not programmatically authenticate
-            logger.warning("IBKR authentication required. Please log in through Client Portal Gateway at https://localhost:5000")
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error during IBKR authentication: {e}")
-            return False
-    
-    async def _check_auth_status(self) -> Dict[str, Any]:
-        """Check current authentication status"""
-        try:
-            response = await self.client.get(
-                urljoin(self.base_url, "/iserver/auth/status"),
-                timeout=10.0
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Failed to check auth status: {e}")
-            return {}
-    
-    async def get_accounts(self) -> List[Dict[str, Any]]:
-        """Get list of available accounts from IBKR"""
-        try:
-            response = await self.client.get(
-                urljoin(self.base_url, "/portfolio/accounts"),
-                timeout=10.0
-            )
-            response.raise_for_status()
-            accounts = response.json()
-            logger.info(f"Retrieved {len(accounts)} IBKR accounts")
-            return accounts
-        except Exception as e:
-            logger.error(f"Failed to get IBKR accounts: {e}")
-            return []
-    
-    async def get_account_positions(self, account_id: str) -> List[Dict[str, Any]]:
-        """Get positions for a specific account"""
-        try:
-            # First call the required endpoint to initialize
-            await self.client.get(
-                urljoin(self.base_url, "/portfolio/accounts"),
-                timeout=10.0
-            )
-            
-            # Get positions
-            response = await self.client.get(
-                urljoin(self.base_url, f"/portfolio/{account_id}/positions/0"),
-                timeout=10.0
-            )
-            response.raise_for_status()
-            positions = response.json()
-            logger.info(f"Retrieved {len(positions)} positions for account {account_id}")
-            return positions
-        except Exception as e:
-            logger.error(f"Failed to get positions for account {account_id}: {e}")
-            return []
-    
-    async def get_account_summary(self, account_id: str) -> Dict[str, Any]:
-        """Get account summary including cash balances"""
-        try:
-            response = await self.client.get(
-                urljoin(self.base_url, f"/portfolio/{account_id}/summary"),
-                timeout=10.0
-            )
-            response.raise_for_status()
-            summary = response.json()
-            logger.info(f"Retrieved account summary for {account_id}")
-            return summary
-        except Exception as e:
-            logger.error(f"Failed to get account summary for {account_id}: {e}")
-            return {}
-    
-    def convert_ibkr_positions_to_holdings(self, positions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert IBKR positions format to our internal holdings format"""
-        holdings = []
-        
-        for position in positions:
+            root = ET.fromstring(resp.text)
+            ref_code_elem = root.find("ReferenceCode")
+            if ref_code_elem is None or not ref_code_elem.text:
+                raise ValueError("Missing ReferenceCode in SendRequest response")
+            return ref_code_elem.text
+        except ET.ParseError as e:
+            logger.error(f"Failed parsing SendRequest XML: {e}\n{resp.text}")
+            raise
+
+    async def get_statement(self, access_token: str, reference_code: str) -> str:
+        """
+        Retrieve a generated statement as XML.
+        Endpoint: FlexStatementService.GetStatement?t={token}&q={referenceCode}&v=3
+        Returns XML text for further parsing.
+        """
+        params = {"t": access_token, "q": reference_code, "v": "3"}
+        url = urljoin(self.BASE_URL, "FlexStatementService.GetStatement")
+        resp = await self.client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.text
+
+    async def fetch_statement(self, access_token: str, query_id: str, retries: int = 6, delay_seconds: float = 2.0) -> str:
+        """Send request and then retrieve the statement with brief retries."""
+        ref_code = await self.send_request(access_token, query_id)
+        last_exc: Optional[Exception] = None
+        for attempt in range(retries):
             try:
-                # Extract relevant fields from IBKR position
-                symbol = position.get("ticker", position.get("conid", "UNKNOWN"))
-                units = float(position.get("position", 0))
-                
-                # Skip positions with zero units
+                xml_text = await self.get_statement(access_token, ref_code)
+                # Some failures return error XML; detect basic error tag
+                if "FlexQueryResponse" in xml_text or "<FlexStatement" in xml_text:
+                    return xml_text
+                # else try next
+            except Exception as e:
+                last_exc = e
+            await asyncio.sleep(delay_seconds)
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Failed to fetch Flex statement after retries")
+
+    @staticmethod
+    def parse_holdings_from_flex(xml_text: str) -> list[dict[str, Any]]:
+        """
+        Parse Flex XML OpenPositions, aggregate units by symbol.
+        Returns list of {symbol, units}.
+        """
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as e:
+            logger.error(f"Failed to parse Flex statement XML: {e}")
+            raise
+
+        aggregates: dict[str, float] = {}
+
+        # Find all OpenPosition nodes regardless of nesting
+        for pos in root.findall('.//OpenPosition'):
+            try:
+                symbol = pos.attrib.get('symbol')
+                position_str = pos.attrib.get('position', '0')
+                if not symbol:
+                    continue
+                units = float(position_str)
                 if units == 0:
                     continue
-                
-                holding = {
-                    "symbol": symbol,
-                    "units": units,
-                    # Additional metadata from IBKR
-                    "market_value": position.get("mktValue", 0),
-                    "avg_cost": position.get("avgCost", 0),
-                    "conid": position.get("conid"),
-                    "exchange": position.get("listingExchange"),
-                    "currency": position.get("currency", "USD"),
-                }
-                holdings.append(holding)
-                
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Skipping invalid position data: {position}, error: {e}")
+                aggregates[symbol] = aggregates.get(symbol, 0.0) + units
+            except Exception as e:
+                logger.warning(f"Skipping position due to parse error: {e}; raw={pos.attrib}")
                 continue
-        
-        return holdings
-    
-    async def sync_account_holdings(self, connection: AccountConnection) -> List[Dict[str, Any]]:
-        """
-        Synchronize holdings for an account connected to Interactive Brokers
-        """
-        if not connection.account_id:
-            raise ValueError("Account ID is required for IBKR synchronization")
-        
-        if not self.session_authenticated:
-            logger.error("IBKR session not authenticated")
-            return []
-        
-        try:
-            # Get current positions from IBKR
-            positions = await self.get_account_positions(connection.account_id)
-            
-            # Convert to our holdings format
-            holdings = self.convert_ibkr_positions_to_holdings(positions)
-            
-            logger.info(f"Synchronized {len(holdings)} holdings for IBKR account {connection.account_id}")
-            return holdings
-            
-        except Exception as e:
-            logger.error(f"Failed to sync holdings for IBKR account {connection.account_id}: {e}")
-            return []
-    
-    async def test_connection(self, username: str = None, account_id: str = None) -> Dict[str, Any]:
-        """Test the connection to Interactive Brokers"""
-        result = {
-            "success": False,
-            "authenticated": False,
-            "accounts_accessible": False,
-            "positions_accessible": False,
-            "error": None
-        }
-        
-        try:
-            # Check authentication
-            auth_status = await self._check_auth_status()
-            result["authenticated"] = auth_status.get("authenticated", False)
-            
-            if not result["authenticated"]:
-                result["error"] = "Not authenticated with IBKR. Please log in through Client Portal Gateway."
-                return result
-            
-            # Test account access
-            accounts = await self.get_accounts()
-            result["accounts_accessible"] = len(accounts) > 0
-            
-            if account_id and result["accounts_accessible"]:
-                # Test positions access for specific account
-                positions = await self.get_account_positions(account_id)
-                result["positions_accessible"] = True
-                result["positions_count"] = len(positions)
-            
-            result["success"] = result["authenticated"] and result["accounts_accessible"]
-            result["accounts_found"] = len(accounts)
-            
-        except Exception as e:
-            result["error"] = str(e)
-            logger.error(f"IBKR connection test failed: {e}")
-        
-        return result 
+
+        return [{"symbol": s, "units": round(u, 6)} for s, u in aggregates.items()]

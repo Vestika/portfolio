@@ -151,6 +151,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
+  // IBKR Flex (Add modal)
+  const [ibkrAccessToken, setIbkrAccessToken] = useState<string>('');
+  const [ibkrQueryId, setIbkrQueryId] = useState<string>('');
+  const [ibkrTesting, setIbkrTesting] = useState<boolean>(false);
+
+  // IBKR Flex (Edit modal)
+  const [editIbkrAccessToken, setEditIbkrAccessToken] = useState<string>('');
+  const [editIbkrQueryId, setEditIbkrQueryId] = useState<string>('');
+  const [editIbkrTesting, setEditIbkrTesting] = useState<boolean>(false);
+  const [saveIbkrCredentials, setSaveIbkrCredentials] = useState<boolean>(false);
+  const [editSaveIbkrCredentials, setEditSaveIbkrCredentials] = useState<boolean>(false);
+
   useEffect(() => {
     setAccounts(
       portfolioMetadata.accounts.map(account => ({
@@ -781,6 +793,61 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   </Select>
                 </div>
 
+                {newAccount.account_type === 'investment-account' && (
+                  <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Link IBKR (Flex Web Service)</Label>
+                      <span className="text-xs text-gray-400">Optional</span>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ibkr-token">Access Token</Label>
+                      <Input id="ibkr-token" value={ibkrAccessToken} onChange={(e) => setIbkrAccessToken(e.target.value)} placeholder="Paste your IBKR Flex Access Token" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ibkr-query">Flex Query ID</Label>
+                      <Input id="ibkr-query" value={ibkrQueryId} onChange={(e) => setIbkrQueryId(e.target.value)} placeholder="Enter Flex Query ID (Activity Statement)" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!ibkrAccessToken || !ibkrQueryId || ibkrTesting}
+                        onClick={async () => {
+                          try {
+                            setIbkrTesting(true);
+                            const res = await api.post(`/ibkr/flex/preview`, {
+                              access_token: ibkrAccessToken,
+                              query_id: ibkrQueryId,
+                            });
+                            const holdings = res.data?.holdings ?? [];
+                            setNewAccount({
+                              ...newAccount,
+                              holdings: [...holdings.map((h: {symbol: string; units: number}) => ({ symbol: h.symbol, units: String(h.units) })), { symbol: '', units: '' }]
+                            });
+                          } catch {
+                            alert('IBKR Flex import failed. Please verify Access Token and Query ID.');
+                          } finally {
+                            setIbkrTesting(false);
+                          }
+                        }}
+                      >
+                        {ibkrTesting ? 'Importing…' : 'Import from IBKR Flex'}
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input id="save-ibkr" type="checkbox" className="rounded border-border bg-background" checked={saveIbkrCredentials} onChange={(e) => setSaveIbkrCredentials(e.target.checked)} />
+                      <Label htmlFor="save-ibkr" className="text-xs">Save IBKR Access Token + Flex Query for auto-sync (optional)</Label>
+                    </div>
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <p>
+                        Create an Activity Statement Flex Query for "Last Business Day" and include the
+                        "Open Positions" section. Copy the Flex Access Token and Flex Query ID from Client Portal.
+                      </p>
+                      <p>We only use IBKR Flex Web Service (Generate + Retrieve). No IBKR Web API is used.</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-2">
                   <Label>Owners</Label>
                   <div className="space-y-2">
@@ -1101,7 +1168,38 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               Cancel
             </Button>
             <Button 
-              onClick={handleAddAccount}
+              onClick={async () => {
+                // If user opted to save credentials, include them in the account payload
+                if (newAccount.account_type === 'investment-account' && saveIbkrCredentials && ibkrAccessToken && ibkrQueryId) {
+                  // Build payload matching backend schema
+                  const payload = {
+                    account_name: newAccount.account_name,
+                    account_type: newAccount.account_type,
+                    owners: newAccount.owners,
+                    holdings: newAccount.holdings
+                      .filter(h => (h.symbol?.trim() && h.units?.toString().trim()))
+                      .map(h => ({ symbol: h.symbol.trim(), units: parseFloat(String(h.units)) })),
+                    rsu_plans: newAccount.rsu_plans,
+                    espp_plans: newAccount.espp_plans,
+                    options_plans: newAccount.options_plans,
+                    ibkr_flex: { access_token: ibkrAccessToken, query_id: ibkrQueryId },
+                  };
+                  try {
+                    await api.post(`/portfolio/${selectedFile}/accounts`, payload);
+                    setShowAddAccountModal(false);
+                    setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] } );
+                    setIbkrAccessToken('');
+                    setIbkrQueryId('');
+                    await onAccountAdded();
+                    return;
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : 'Error adding account';
+                    alert(msg);
+                    return;
+                  }
+                }
+                await handleAddAccount();
+              }}
               disabled={!newAccount.account_name || newAccount.owners.length === 0}
             >
               Add Account
@@ -1152,6 +1250,64 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {editAccount.account_type === 'investment-account' && (
+                  <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Link IBKR (Flex Web Service)</Label>
+                      <span className="text-xs text-gray-400">Optional</span>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="edit-ibkr-token">Access Token</Label>
+                      <Input id="edit-ibkr-token" value={editIbkrAccessToken} onChange={(e) => setEditIbkrAccessToken(e.target.value)} placeholder="Paste your IBKR Flex Access Token" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="edit-ibkr-query">Flex Query ID</Label>
+                      <Input id="edit-ibkr-query" value={editIbkrQueryId} onChange={(e) => setEditIbkrQueryId(e.target.value)} placeholder="Enter Flex Query ID (Activity Statement)" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!editIbkrAccessToken || !editIbkrQueryId || editIbkrTesting}
+                        onClick={async () => {
+                          try {
+                            setEditIbkrTesting(true);
+                            const res = await api.post(`/ibkr/flex/preview`, {
+                              access_token: editIbkrAccessToken,
+                              query_id: editIbkrQueryId,
+                            });
+                            const holdings = res.data?.holdings ?? [];
+                            setEditAccount({
+                              ...editAccount,
+                              holdings: [...holdings.map((h: {symbol: string; units: number}) => ({ symbol: h.symbol, units: String(h.units) })), { symbol: '', units: '' }]
+                            });
+                          } catch {
+                            alert('IBKR Flex import failed. Please verify Access Token and Query ID.');
+                          } finally {
+                            setEditIbkrTesting(false);
+                          }
+                        }}
+                      >
+                        {editIbkrTesting ? 'Importing…' : 'Import from IBKR Flex'}
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input id="edit-save-ibkr" type="checkbox" className="rounded border-border bg-background" checked={editSaveIbkrCredentials} onChange={(e) => setEditSaveIbkrCredentials(e.target.checked)} />
+                      <Label htmlFor="edit-save-ibkr" className="text-xs">Save IBKR Access Token + Flex Query for auto-sync (optional)</Label>
+                    </div>
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <p>
+                        Create an Activity Statement Flex Query for "Last Business Day" and include the
+                        "Open Positions" section. Copy the Flex Access Token and Flex Query ID from Client Portal.
+                      </p>
+                      <p>
+                        We only use IBKR Flex Web Service (Generate + Retrieve). No IBKR Web API is used.
+                      </p>
+                    </div>
+                    
+                  </div>
+                )}
 
                 <div className="grid gap-2">
                   <Label>Owners</Label>

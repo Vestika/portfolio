@@ -1,5 +1,5 @@
-from .service import InteractiveBrokersService
+from .service import IBFlexWebServiceClient
 
 __all__ = [
-    "InteractiveBrokersService",
-] 
+    "IBFlexWebServiceClient",
+]
