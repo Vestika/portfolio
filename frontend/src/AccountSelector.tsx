@@ -660,20 +660,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        {accounts.length > 1 && (
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              confirmDeleteAccount(account.account_name);
-                            }}
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 border border-transparent bg-red-500/20 backdrop-blur-sm text-red-200 hover:text-red-100 hover:bg-red-500/30 hover:border-red-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
-                            title="Delete account"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmDeleteAccount(account.account_name);
+                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 border border-transparent bg-red-500/20 backdrop-blur-sm text-red-200 hover:text-red-100 hover:bg-red-500/30 hover:border-red-400/20 focus:ring-0 focus:outline-none focus:border-transparent cursor-pointer transition-colors rounded-md"
+                          title="Delete account"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   )}
