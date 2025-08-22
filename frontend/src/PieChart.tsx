@@ -81,8 +81,9 @@ const PieChart: React.FC<PieChartProps> = ({
       pie: {
         allowPointSelect: true,
         cursor: 'pointer',
-        borderColor: '#242424', // Dark gray border to match theme
-        borderWidth: 0.75,
+        borderColor: '#111827', // border color to match page background
+        borderWidth: 0,
+        borderRadius: 0,
         dataLabels: {
           enabled: !isMobile,
           format: '{point.percentage:.2f}%',
