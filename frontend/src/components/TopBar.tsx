@@ -7,7 +7,6 @@ import {
   X
 } from 'lucide-react'
 import { useState } from 'react'
-import logoImage from '../assets/logo.png'
 import { AboutModal } from './AboutModal'
 
 export type NavigationView = 'portfolios' | 'explore' | 'tags' | 'tools'
