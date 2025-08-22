@@ -5,7 +5,7 @@ import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
 import AIChat from './components/AIChat';
 import Login from './components/Login';
-import { FloatingNavigation, NavigationView } from './components/FloatingNavigation';
+import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
 import { ExploreView } from './components/ExploreView';
 import { ManageTagsView } from './components/ManageTagsView';
@@ -434,8 +434,8 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
-      {/* Floating Navigation */}
-      <FloatingNavigation 
+      {/* Top Bar Navigation */}
+      <TopBar 
         activeView={activeView} 
         onViewChange={setActiveView} 
       />
@@ -443,8 +443,8 @@ const App: React.FC = () => {
             {/* Sticky Header Section - only show for portfolios view */}
       {activeView === 'portfolios' && displayMetadata && (
         <div
-          className="sticky top-0 z-30 bg-gray-900"
-          style={{ height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
+          className="sticky z-30 bg-gray-900"
+          style={{ top: '37px', height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
         >
           <AccountSelector
             portfolioMetadata={displayMetadata}
