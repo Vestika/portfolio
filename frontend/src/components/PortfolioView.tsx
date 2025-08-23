@@ -1,7 +1,7 @@
 // React is not needed for JSX in modern React
 import PieChart from '../PieChart'
 import HoldingsTable from '../HoldingsTable'
-import RSUVestingTimeline from './RSUVestingTimeline'
+import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
 import {
   PortfolioMetadata,
@@ -100,50 +100,44 @@ export function PortfolioView({
               if (!grouped[plan.symbol]) grouped[plan.symbol] = [];
               grouped[plan.symbol].push({ plan, accountName });
             });
-            // 3. Render
-            return Object.entries(grouped).map(([symbol, plans]) => (
-              <div key={symbol} className="rounded-lg p-4">
-                <div className="text-base font-bold mb-2">
-                  {symbol}
-                    <span className="ml-2 text-sm font-normal text-gray-400">
-                      ({plans[0].accountName})
-                    </span>
-                </div>
-                <div className="space-y-4">
-                  {plans.map(({ plan }) => {
-                    let displayPlan = plan;
-                    if (plan.left_company && plan.left_company_date) {
-                      // Find the last vested event before or on left_company_date
-                      const leftDate = new Date(plan.left_company_date);
-                      let vested = 0;
-                      let trimmedSchedule = [];
-                      if (Array.isArray(plan.schedule)) {
-                        trimmedSchedule = plan.schedule.filter((event: any) => new Date(event.date) <= leftDate);
-                        for (const event of trimmedSchedule as any[]) {
-                          vested += event.units;
-                        }
-                      }
-                      displayPlan = {
-                        ...plan,
-                        total_units: vested,
-                        vested_units: vested,
-                        schedule: trimmedSchedule,
-                        next_vest_date: null,
-                        next_vest_units: 0,
-                      };
+            // 3. Render each symbol group with the new chart component
+            return Object.entries(grouped).map(([symbol, plans]) => {
+              // Process plans to handle left company scenario
+              const processedPlans = plans.map(({ plan }) => {
+                let displayPlan = plan;
+                if (plan.left_company && plan.left_company_date) {
+                  // Find the last vested event before or on left_company_date
+                  const leftDate = new Date(plan.left_company_date);
+                  let vested = 0;
+                  let trimmedSchedule = [];
+                  if (Array.isArray(plan.schedule)) {
+                    trimmedSchedule = plan.schedule.filter((event: any) => new Date(event.date) <= leftDate);
+                    for (const event of trimmedSchedule as any[]) {
+                      vested += event.units;
                     }
-                    return (
-                      <div key={plan.id} className="border rounded-lg p-3">
-                        <RSUVestingTimeline
-                        plan={displayPlan}
-                        baseCurrency={displayMetadata.base_currency}
-                        />
-                      </div>
-                    );
-                  })}
+                  }
+                  displayPlan = {
+                    ...plan,
+                    total_units: vested,
+                    vested_units: vested,
+                    schedule: trimmedSchedule,
+                    next_vest_date: null,
+                    next_vest_units: 0,
+                  };
+                }
+                return displayPlan;
+              });
+
+              return (
+                <div key={symbol} className="col-span-1 md:col-span-2">
+                  <RSUTimelineChart
+                    plans={processedPlans}
+                    symbol={symbol}
+                    baseCurrency={displayMetadata.base_currency}
+                  />
                 </div>
-              </div>
-            ));
+              );
+            });
           })()}
           
           {/* Options Vesting grouped by symbol */}
