@@ -102,6 +102,9 @@ export function PortfolioView({
             });
             // 3. Render each symbol group with the new chart component
             return Object.entries(grouped).map(([symbol, plans]) => {
+              // Extract account name (all plans for the same symbol should come from the same account)
+              const accountName = plans[0]?.accountName || 'Account';
+              
               // Process plans to handle left company scenario
               const processedPlans = plans.map(({ plan }) => {
                 let displayPlan = plan;
@@ -133,6 +136,7 @@ export function PortfolioView({
                   <RSUTimelineChart
                     plans={processedPlans}
                     symbol={symbol}
+                    accountName={accountName}
                     baseCurrency={displayMetadata.base_currency}
                   />
                 </div>

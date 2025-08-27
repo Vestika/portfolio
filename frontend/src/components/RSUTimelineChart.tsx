@@ -1,7 +1,10 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { Card } from './ui/card';
+
+// Import the required modules - they will automatically extend Highcharts
+import 'highcharts/highcharts-more';
+import 'highcharts/modules/solid-gauge';
 
 interface VestingEvent {
   date: string;
@@ -30,13 +33,26 @@ interface RSUVestingPlan {
 interface RSUTimelineChartProps {
   plans: RSUVestingPlan[];
   symbol: string;
+  accountName: string;
   baseCurrency: string;
 }
 
 // Removed unused ChartDataPoint interface
 
-const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, baseCurrency }) => {
+const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency }) => {
   const chartRef = useRef<HighchartsReact.RefObject>(null);
+  const [hoveredGauge, setHoveredGauge] = useState<number | null>(null);
+  
+  // Utility function to format numbers with K/M suffix
+  const formatShortNumber = (num: number): string => {
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`;
+    }
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(0)}K`;
+    }
+    return num.toString();
+  };
   
   // Use the same colors as pie charts
   const pieChartColors = [
@@ -55,332 +71,260 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, base
   ];
 
   const chartData = useMemo(() => {
-    if (!plans.length) return { series: [], categories: [] };
+    if (!plans.length) return { grantData: [], totalVested: 0, totalUnvested: 0, overallPercentage: 0, totalVestedShares: 0, totalShares: 0 };
 
-    const now = new Date();
-    const allDates = new Set<string>();
-
-    // Sort plans by grant date (older first, so they appear at bottom of stack)
-    const sortedPlans = [...plans].sort((a, b) => 
-      new Date(a.grant_date).getTime() - new Date(b.grant_date).getTime()
-    );
-
-    // Collect all unique dates and prepare data for each plan
-    sortedPlans.forEach((plan) => {
-      const price = plan.price || 0;
-
-      if (price > 0 && plan.schedule) {
-        // Add grant date as starting point
-        allDates.add(plan.grant_date);
-
-        plan.schedule.forEach((event) => {
-          allDates.add(event.date);
-        });
-
-        // Add a point 2 years into the future for better visualization
-        const futureDate = new Date();
-        futureDate.setFullYear(futureDate.getFullYear() + 2);
-        allDates.add(futureDate.toISOString().split('T')[0]);
-      }
-    });
-
-    // Convert to sorted array of dates
-    const sortedDates = Array.from(allDates).sort();
-
-    // Create one series per plan with color zones for vested/unvested
-    const series = sortedPlans.map((plan, index) => {
-      const price = plan.price || 0;
+    // Calculate totals for aggregate display
+    let totalVested = 0;
+    let totalUnvested = 0;
+    let totalVestedShares = 0;
+    let totalShares = 0;
+    
+    const grantData = plans.map((plan, index) => {
+      const vestedValue = (plan.vested_value || 0);
+      const unvestedValue = (plan.unvested_value || 0);
+      const totalValue = vestedValue + unvestedValue;
+      const vestedPercentage = totalValue > 0 ? (vestedValue / totalValue) * 100 : 0;
       
-      // Create cumulative values for area chart
-      const seriesData = sortedDates.map(date => {
-        const timestamp = new Date(date).getTime();
-        const dateObj = new Date(date);
-        
-        // Calculate cumulative vested value up to this date
-        let cumulativeValue = 0;
-        if (price > 0 && plan.schedule) {
-          plan.schedule.forEach(event => {
-            if (new Date(event.date) <= dateObj) {
-              cumulativeValue += event.units * price;
-            }
-          });
-        }
-
-        // Find if there's a vesting event on this exact date
-        const vestingEvent = plan.schedule?.find(event => event.date === date);
-
-        return {
-          x: timestamp,
-          y: cumulativeValue,
-          marker: vestingEvent ? {
-            enabled: true,
-            radius: 3,
-            symbol: 'circle',
-            lineWidth: 1,
-            lineColor: 'rgba(255, 255, 255, 0.2)',
-          } : { enabled: false },
-          vestingInfo: vestingEvent ? {
-            date: vestingEvent.date,
-            units: vestingEvent.units,
-            valueILS: vestingEvent.units * price,
-            percentageOfPlan: plan.total_units > 0 ? (vestingEvent.units / plan.total_units) * 100 : 0
-          } : undefined,
-          planId: plan.id,
-          // Mark points without vesting events as non-interactive
-          allowPointSelect: !!vestingEvent
-        };
-      });
-
-      const baseColor = pieChartColors[index % pieChartColors.length];
+      totalVested += vestedValue;
+      totalUnvested += unvestedValue;
+      totalVestedShares += (plan.vested_units || 0);
+      totalShares += (plan.total_units || 0);
       
-      // Create grayed out version by converting to a more muted color
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        } : null;
-      };
-      
-      const rgb = hexToRgb(baseColor);
-      const grayedColor = rgb ? 
-        `rgb(${Math.floor(rgb.r * 0.6 + 128 * 0.4)}, ${Math.floor(rgb.g * 0.6 + 128 * 0.4)}, ${Math.floor(rgb.b * 0.6 + 128 * 0.4)})` 
-        : '#888888';
-
       return {
-        name: `${plan.symbol} - Grant ${plan.grant_date}`,
-        data: seriesData,
-        type: 'area',
-        stacking: 'normal',
         planInfo: plan,
-        color: baseColor, // Use base color for legend
-        zones: [{
-          value: now.getTime(), // Up to today
-          color: baseColor,
-          fillColor: baseColor
-        }, {
-          // After today
-          color: grayedColor,
-          fillColor: grayedColor
-        }],
-        fillOpacity: 0.7
+        vestedValue,
+        unvestedValue,
+        totalValue,
+        vestedPercentage,
+        color: pieChartColors[index % pieChartColors.length]
       };
     });
 
-    // Calculate the maximum STACKED value across all time points for optimal y-axis scaling
-    const stackedValues: { [key: string]: number } = {};
-    
-    // Sum values for each time point across all series
-    series.forEach(s => {
-      s.data.forEach((point: any) => {
-        const key = String(point.x);
-        if (!stackedValues[key]) stackedValues[key] = 0;
-        stackedValues[key] += (point.y || 0);
-      });
-    });
-    
-    // Find the maximum stacked value
-    const maxValue = Math.max(...Object.values(stackedValues), 0);
+    const totalPortfolioValue = totalVested + totalUnvested;
+    const overallPercentage = totalPortfolioValue > 0 ? (totalVested / totalPortfolioValue) * 100 : 0;
 
-    return { series, categories: sortedDates, maxValue };
+    return { grantData, totalVested, totalUnvested, overallPercentage, totalVestedShares, totalShares };
   }, [plans, baseCurrency, pieChartColors]);
+
+  // Hover state is now defined above
 
   const chartOptions: Highcharts.Options = {
     chart: {
-      type: 'area',
+      type: 'solidgauge',
       backgroundColor: 'transparent',
-      height: 400,
+      height: 600,
       borderWidth: 0,
       plotBorderWidth: 0,
-    //   margin: [80, 20, 60, 80], // Increase top margin to prevent clipping
-      spacingTop: 20 // Add extra spacing at the top
+      spacingTop: 20,
+      spacingBottom: 20,
+      spacingLeft: 20,
+      spacingRight: 20
     },
     credits: {
       enabled: false
     },
     title: {
-      text: `${symbol} RSU Vesting Timeline`,
+      text: hoveredGauge !== null ? 
+        `${symbol} (${accountName || 'Account'}) Grant ${chartData.grantData[hoveredGauge]?.planInfo?.grant_date || ''}` :
+        `${symbol} (${accountName || 'Account'})`,
       align: 'left',
       style: { 
         color: '#ffffff',
-        fontSize: '18px',
+        fontSize: '20px',
         fontWeight: 'bold'
       }
     },
-    xAxis: {
-      type: 'datetime',
-      title: { text: '' },
-      labels: {
-        format: '{value:%Y-%m}',
-        style: { color: '#ffffff' }
-      },
-      gridLineColor: 'rgba(255, 255, 255, 0.1)',
-      lineColor: 'rgba(255, 255, 255, 0.2)',
-      tickColor: 'rgba(255, 255, 255, 0.2)',
-      plotLines: [{
-        color: '#ef4444', // red color for "today" line
-        width: 2,
-        value: new Date().getTime(),
-        label: {
-          text: 'Today',
-          align: 'center',
-          style: {
-            color: '#ef4444',
-            fontSize: '12px',
-            fontWeight: 'bold'
-          }
-        },
-        zIndex: 5
-      }]
-    },
-    yAxis: {
-      title: { 
-        text: `Value (${baseCurrency})`,
-        style: { color: '#ffffff' }
-      },
-      labels: {
-        formatter: function() {
-          return `${(this.value as number).toLocaleString()}`;
-        },
-        style: { color: '#ffffff' }
-      },
-      gridLineColor: 'rgba(255, 255, 255, 0.1)', // Delicate grid lines
-      min: 0,
-    },
-    plotOptions: {
-      area: {
-        stacking: 'normal',
-        marker: {
-          enabled: false, // Disable by default, enable only for specific points with vesting events
-          radius: 0,
-          lineWidth: 0,
-        },
-        states: {
-          hover: {
-            enabled: false // Re-enable hover
-          }
-        },
-        enableMouseTracking: true, // Re-enable mouse tracking
-        point: {
-          events: {
-            mouseOver: function() {
-              // Only show marker on hover for vesting events
-              const point = this as any;
-              if (!point.vestingInfo) {
-                // Prevent hover effects for non-vesting points
-                point.setState('');
-                return false;
+    subtitle: {
+      text: hoveredGauge !== null ? 
+        (() => {
+          const grant = chartData.grantData[hoveredGauge];
+          const grantColor = grant?.color || '#ffffff';
+          // Grant-specific information in same format as base subtitle (replaces base when hovering)
+          const grantVestedInfo = `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${(grant?.planInfo?.vested_units || 0).toLocaleString()} of ${(grant?.planInfo?.total_units || 0).toLocaleString()} shares  |  ${Math.round(grant?.vestedValue || 0).toLocaleString()} of ${Math.round(grant?.totalValue || 0).toLocaleString()} ${baseCurrency}`;
+          
+          // Next vesting information
+          const nextVestInfo = grant?.planInfo?.next_vest_date ? 
+            `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * (grant.planInfo.price || 0)).toLocaleString()} ${baseCurrency}` :
+            `No upcoming vesting`;
+          
+          return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
+            <div style="color: ${grantColor}; margin: 0; padding: 0;">${grantVestedInfo}</div>
+            <div style="color: ${grantColor}; margin: 0; padding: 0;">${nextVestInfo}</div>
+          </div>`;
+        })() :
+        (() => {
+          // Find the next vesting event across all plans
+          let nextVestDate: string | null = null;
+          let nextVestUnits = 0;
+          let nextVestValue = 0;
+          
+          plans.forEach(plan => {
+            if (plan.next_vest_date) {
+              if (!nextVestDate || new Date(plan.next_vest_date) < new Date(nextVestDate)) {
+                nextVestDate = plan.next_vest_date;
+                nextVestUnits = plan.next_vest_units || 0;
+                nextVestValue = Math.round((plan.next_vest_units || 0) * (plan.price || 0));
               }
             }
+          });
+          
+          const overallInfo = `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${chartData.totalVestedShares.toLocaleString()} of ${chartData.totalShares.toLocaleString()} shares  |  ${Math.round(chartData.totalVested).toLocaleString()} of ${Math.round(chartData.totalVested + chartData.totalUnvested).toLocaleString()} ${baseCurrency}`;
+          
+          let nextVestInfo = '';
+          if (nextVestDate) {
+            const today = new Date();
+            const vestDate = new Date(nextVestDate);
+            const daysUntil = Math.ceil((vestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (daysUntil > 0) {
+              nextVestInfo = `Next Vest: ${daysUntil} days`;
+            } else {
+              nextVestInfo = `Next Vest: Today`;
+            }
+          } else {
+            nextVestInfo = 'No upcoming vesting events';
           }
-        }
+          
+          return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
+            <div style="color: #cccccc; margin: 0; padding: 0;">${overallInfo}</div>
+            <div style="color: #999999; margin: 0; padding: 0;">${nextVestInfo}</div>
+          </div>`;
+        })(),
+      useHTML: true,
+      style: {
+        color: '#cccccc',
+        fontSize: '16px',
+        textAlign: 'left'
+      }
+    },
+    pane: {
+      center: ['50%', '50%'],
+      size: '80%',
+      startAngle: 0,
+      endAngle: 360,
+      background: chartData.grantData.map((_, index) => ({
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 0,
+        borderColor: 'transparent',
+        outerRadius: `${100 - index * 15}%`,
+        innerRadius: `${85 - index * 15}%`
+      }))
+    },
+    yAxis: {
+      min: 0,
+      max: 100,
+      title: {
+        text: ''
+      },
+      labels: {
+        enabled: false
+      },
+      lineWidth: 0,
+      tickWidth: 0,
+      tickAmount: 0,
+      gridLineWidth: 0,
+      minorGridLineWidth: 0,
+      tickLength: 0,
+      minorTickLength: 0
+    },
+    plotOptions: {
+      solidgauge: {
+        dataLabels: {
+          enabled: false, // Disabled globally, will be enabled per point
+          borderWidth: 0,
+          backgroundColor: 'transparent',
+          shadow: false
+        },
+        linecap: 'round',
+        stickyTracking: false,
+        rounded: true,
+        enableMouseTracking: true
       }
     },
     tooltip: {
-      shared: false,
-      formatter: function() {
-        const context = this as any;
-        const point = context.point;
-        const series = context.series;
-        const planInfo = series.userOptions.planInfo;
-        
-        // Only show tooltips for points with vesting events
-        if (!(point as any).vestingInfo) {
-          return false; // Hide tooltip for non-vesting points
-        }
-        
-        if ((point as any).vestingInfo) {
-          // Vesting event tooltip
-          return `
-            <b>🎯 Vesting Event</b><br/>
-            <b>Date:</b> ${(point as any).vestingInfo.date}<br/>
-            <b>Units:</b> ${(point as any).vestingInfo.units.toLocaleString()}<br/>
-            <b>Value:</b> ${(point as any).vestingInfo.valueILS.toLocaleString()} ${baseCurrency}<br/>
-            <b>% of Plan:</b> ${(point as any).vestingInfo.percentageOfPlan.toFixed(1)}%<br/>
-            <i>Grant: ${planInfo?.grant_date}</i>
-          `;
-        } else {
-          // Plan area tooltip - determine if this point is vested based on date
-          const pointDate = new Date((point as any).x);
-          const now = new Date();
-          const isVested = pointDate <= now;
-          
-          return `
-            <b>${planInfo?.symbol} - Grant ${planInfo?.grant_date}</b><br/>
-            <b>Status:</b> ${isVested ? '✅ Vested Portion' : '⏳ Future Vesting'}<br/>
-            <b>Total Units:</b> ${planInfo?.total_units?.toLocaleString()}<br/>
-            <b>Vested Units:</b> ${planInfo?.vested_units?.toLocaleString()}<br/>
-            ${planInfo?.next_vest_date ? `<b>Next Vest:</b> ${planInfo.next_vest_date} (${planInfo?.next_vest_units?.toLocaleString()})<br/>` : ''}
-            <b>Frequency:</b> ${planInfo?.vesting_frequency}<br/>
-            <b>Period:</b> ${planInfo?.vesting_period_years}y<br/>
-            <b>Vested Value:</b> ${planInfo?.vested_value?.toLocaleString()} ${baseCurrency}<br/>
-            <b>Unvested Value:</b> ${planInfo?.unvested_value?.toLocaleString()} ${baseCurrency}<br/>
-            <b>Point Value:</b> ${(point as any).y?.toLocaleString()} ${baseCurrency}
-          `;
-        }
-      }
+      enabled: false
     },
-    legend: {
-      enabled: true,
-      align: 'center',
-      verticalAlign: 'bottom',
-      layout: 'horizontal',
-      itemStyle: {
-        color: '#ffffff',
-        fontSize: '12px'
-      },
-      itemHoverStyle: {
-        color: '#cccccc'
-      }
-    },
-    series: chartData.series as any
+    series: chartData.grantData.flatMap((grant, index) => {
+      // Pre-compute formatted values
+      const grantVestedShort = formatShortNumber(Math.round(grant.vestedValue));
+      const grantTotalShort = formatShortNumber(Math.round(grant.totalValue));
+      const totalVestedShort = formatShortNumber(Math.round(chartData.totalVested));
+      const totalPortfolioShort = formatShortNumber(Math.round(chartData.totalVested + chartData.totalUnvested));
+      
+      return [
+        // Unvested portion (transparent) - full circle background
+        {
+          name: `Grant ${grant.planInfo.grant_date} Unvested`,
+          data: [{
+            color: grant.color + '40', // 40 = 25% transparency in hex
+            radius: `${100 - index * 15}%`,
+            innerRadius: `${85 - index * 15}%`,
+            y: 100, // Full circle
+            dataLabels: {
+              enabled: false
+            }
+          }],
+          enableMouseTracking: false,
+          zIndex: 0 // Behind the vested portion
+        },
+        // Vested portion (colored) - on top
+        {
+          name: `Grant ${grant.planInfo.grant_date}`,
+          data: [{
+            color: grant.color,
+            radius: `${100 - index * 15}%`,
+            innerRadius: `${85 - index * 15}%`,
+            y: grant.vestedPercentage,
+            dataLabels: {
+              enabled: hoveredGauge !== null ? (hoveredGauge === index) : (index === 0),
+              borderWidth: 0,
+              backgroundColor: 'transparent',
+              shadow: false,
+              format: hoveredGauge === index ? 
+                `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
+                  <div style="font-size: 32px; font-weight: bold; color: ${grant.color}; line-height: 1.2; white-space: nowrap;">
+                    ${grantVestedShort} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+                  </div>
+                  <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
+                    ${Math.round(grant.vestedPercentage)}% of ${grantTotalShort}
+                  </div>
+                </div>` : 
+                (hoveredGauge === null && index === 0 ? 
+                  `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
+                    <div style="font-size: 32px; font-weight: bold; color: #ffffff; line-height: 1.2; white-space: nowrap;">
+                      ${totalVestedShort} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+                    </div>
+                    <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
+                      ${Math.round(chartData.overallPercentage)}% of ${totalPortfolioShort}
+                    </div>
+                  </div>` : 
+                  ''),
+              useHTML: true
+            }
+          }],
+          enableMouseTracking: true,
+          events: {
+            mouseOver: function() {
+              setHoveredGauge(index);
+            },
+            mouseOut: function() {
+              setHoveredGauge(null);
+            }
+          },
+          zIndex: 1 // On top of the unvested portion
+        }
+      ];
+    }).flat() as any
   };
 
   return (
-    <>
+    <div className="w-1/2" onMouseLeave={() => setHoveredGauge(null)}>
       <HighchartsReact
         ref={chartRef}
         highcharts={Highcharts}
         options={chartOptions}
       />
-      
-      {/* Plan Summary Cards */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {plans.map((plan, index) => {
-          const cardColor = pieChartColors[index % pieChartColors.length];
-          
-          return (
-            <Card key={plan.id} className="p-3 border-l-4" 
-                  style={{borderLeftColor: cardColor}}>
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Grant: {plan.grant_date}</span>
-                  <span className="text-xs text-muted-foreground">{plan.vesting_frequency}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span>Vested: {plan.vested_units?.toLocaleString()}/{plan.total_units?.toLocaleString()}</span>
-                  <span>{((plan.vested_units / plan.total_units) * 100).toFixed(1)}%</span>
-                </div>
-                {plan.next_vest_date && (
-                  <div className="text-xs text-green-600">
-                    Next: {plan.next_vest_date} ({plan.next_vest_units})
-                  </div>
-                )}
-                {plan.vested_value && (
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-green-600">{plan.vested_value.toLocaleString()} {baseCurrency}</span>
-                    {plan.unvested_value && plan.unvested_value > 0 && (
-                      <span className="text-yellow-600">{plan.unvested_value.toLocaleString()} {baseCurrency}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </>
+    </div>
   );
 };
 
