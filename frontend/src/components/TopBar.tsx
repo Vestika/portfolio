@@ -57,14 +57,7 @@ export function TopBar({ activeView, onViewChange }: TopBarProps) {
       <div className="flex items-center justify-between px-4 sm:px-6 py-1">
         {/* Left side - Logo and App Name */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={handleAboutClick}>
-          {/* <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center">
-            <img 
-              src={logoImage} 
-              alt="Vestika Logo" 
-              className="w-6 h-6 object-contain rounded-full"
-            />
-          </div> */}
-          <h1 className="text-lg sm:text-xl text-white hover:text-gray-300 transition-colors" style={{ fontFamily: "'Poiret One', sans-serif", textShadow: '0 0 4px rgba(255, 192, 203, 1), 0 0 6px rgba(255, 192, 203, 0.9), 0 0 5px rgba(255, 192, 203, 0.7)' }}>
+          <h1 className="text-lg sm:text-xl text-white hover:text-gray-300 transition-colors" style={{ fontFamily: "'Poiret One', sans-serif", textShadow: '0 0 3px rgb(251, 46, 118), 0 0 5px rgba(251, 46, 118, 0.7), 0 0 6px rgba(251, 46, 118, 0.4)' }}>
             Vestika
           </h1>
         </div>

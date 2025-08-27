@@ -1,6 +1,6 @@
 import { Github } from 'lucide-react'
 import { useEffect } from 'react'
-import benSterensonImage from '../assets/ben-sterenson.jpg'
+import benSterensonImage from '../assets/v-ben.png'
 import danSterensonImage from '../assets/v-dan.png'
 import michaelPalaryaImage from '../assets/v-michael.png'
 
@@ -74,7 +74,7 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-1" style={{ fontFamily: "'Poiret One', sans-serif" }}>
+              <h1 className="text-6xl font-bold text-white mb-1" style={{ fontFamily: "'Poiret One', sans-serif" }}>
                 Vestika
               </h1>
             </div>
