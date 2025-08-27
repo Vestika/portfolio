@@ -155,15 +155,11 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
         (() => {
           // Find the next vesting event across all plans
           let nextVestDate: string | null = null;
-          let nextVestUnits = 0;
-          let nextVestValue = 0;
           
           plans.forEach(plan => {
             if (plan.next_vest_date) {
               if (!nextVestDate || new Date(plan.next_vest_date) < new Date(nextVestDate)) {
                 nextVestDate = plan.next_vest_date;
-                nextVestUnits = plan.next_vest_units || 0;
-                nextVestValue = Math.round((plan.next_vest_units || 0) * (plan.price || 0));
               }
             }
           });
