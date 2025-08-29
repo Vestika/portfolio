@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, CheckCircle2, Circle, Plus, Eye, EyeOff, User, MessageCircle, Settings, LogOut } from 'lucide-react';
+import { Menu, CheckCircle2, Circle, Plus, Eye, EyeOff, User, Settings, LogOut } from 'lucide-react';
 import { AccountInfo } from '@/types';
 import { Button } from "@/components/ui/button";
 
@@ -9,9 +9,6 @@ interface HamburgerMenuProps {
   isValueVisible: boolean;
   toggleValueVisibility: () => void;
   setShowAddAccountModal: (show: boolean) => void;
-  aiChatEnabled: boolean;
-  isAIChatOpen: boolean;
-  onToggleAIChat: () => void;
   anchorEl: null | HTMLElement;
   onMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
   onMenuClose: () => void;
@@ -26,9 +23,6 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
   isValueVisible,
   toggleValueVisibility,
   setShowAddAccountModal,
-  aiChatEnabled,
-  isAIChatOpen,
-  onToggleAIChat,
   anchorEl,
   onMenuOpen,
   onMenuClose,
@@ -77,15 +71,6 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
               <span className="text-xs font-medium">{isValueVisible ? 'Hide' : 'Show'} Values</span>
             </Button>
             <div className="border-t border-gray-700 my-2" />
-            {aiChatEnabled && (
-              <Button
-                onClick={onToggleAIChat}
-                className={`w-full flex items-center justify-center space-x-2 ${isAIChatOpen ? "bg-blue-500/30" : "bg-gray-700"} text-white`}
-              >
-                <MessageCircle size={16} />
-                <span className="text-xs font-medium">AI Chat</span>
-              </Button>
-            )}
             <Button
               onClick={onProfileClick}
               className="w-full flex items-center justify-center space-x-2 bg-gray-700 text-white hover:bg-gray-600"

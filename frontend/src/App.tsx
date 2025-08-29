@@ -1,18 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from './utils/api';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
-import AIChat from './components/AIChat';
 import Login from './components/Login';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
 import { ExploreView } from './components/ExploreView';
+import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { useAuth } from './contexts/AuthContext';
 import { signOutUser } from './firebase';
-import { useAIChatFlag } from './hooks/useFeatureFlag';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -21,12 +20,10 @@ import {
   HoldingsTableData,
 } from './types';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const maybeResponse = (err as any).response;
-  return (
+  const maybeResponse = (err as { response?: { status?: number } }).response;
+  return !!(
     maybeResponse &&
     typeof maybeResponse === 'object' &&
     'status' in maybeResponse &&
@@ -38,7 +35,7 @@ const HEADER_HEIGHT = 128; // px, adjust if needed
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
-  const aiChatEnabled = useAIChatFlag();
+  
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -50,12 +47,9 @@ const App: React.FC = () => {
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [chatWidth, setChatWidth] = useState(500);
-  const [isResizing, setIsResizing] = useState(false);
-  const resizeRef = useRef<HTMLDivElement>(null);
-  const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, any>>({});
-  const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, any>>({});
+  
+  const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
+  const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
 
   // Get default portfolio from backend API
@@ -206,7 +200,7 @@ const App: React.FC = () => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
     // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllRSUVesting = async () => {
-      const vestingMap: Record<string, any> = {};
+      const vestingMap: Record<string, unknown> = {};
       await Promise.all(
         (portfolioMetadata.accounts || []).map(async (account) => {
           const type = account.account_type || account.account_properties?.type;
@@ -214,7 +208,7 @@ const App: React.FC = () => {
             try {
               const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/rsu-vesting`);
               vestingMap[account.account_name] = (res.data && res.data.plans) || [];
-            } catch (e) {
+            } catch {
               vestingMap[account.account_name] = [];
             }
           }
@@ -225,7 +219,7 @@ const App: React.FC = () => {
 
     // Fetch Options vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllOptionsVesting = async () => {
-      const vestingMap: Record<string, any> = {};
+      const vestingMap: Record<string, unknown> = {};
       await Promise.all(
         (portfolioMetadata.accounts || []).map(async (account) => {
           const type = account.account_type || account.account_properties?.type;
@@ -233,7 +227,7 @@ const App: React.FC = () => {
             try {
               const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/options-vesting`);
               vestingMap[account.account_name] = (res.data && res.data.plans) || [];
-            } catch (e) {
+            } catch {
               vestingMap[account.account_name] = [];
             }
           }
@@ -244,7 +238,6 @@ const App: React.FC = () => {
 
     fetchAllRSUVesting();
     fetchAllOptionsVesting();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioMetadata, selectedPortfolioId]);
 
   const handleAccountsChange = (accountNames: string[]) => {
@@ -351,39 +344,9 @@ const App: React.FC = () => {
     await handleSignOut();
   };
 
-  const toggleAIChat = () => {
-    setIsAIChatOpen(!isAIChatOpen);
-  };
+  
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth >= 280 && newWidth <= 600) { // Min 280px, Max 600px
-        setChatWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing]);
+  
 
   // Show loading screen while auth is loading
   if (authLoading) return <LoadingScreen />;
@@ -458,10 +421,6 @@ const App: React.FC = () => {
             onPortfolioDeleted={handlePortfolioDeleted}
             onAccountDeleted={handleAccountDeleted}
             onDefaultPortfolioSet={handleDefaultPortfolioSet}
-            // New props for the moved buttons
-            aiChatEnabled={aiChatEnabled}
-            isAIChatOpen={isAIChatOpen}
-            onToggleAIChat={toggleAIChat}
             anchorEl={anchorEl}
             onMenuOpen={handleMenuOpen}
             onMenuClose={handleMenuClose}
@@ -483,9 +442,7 @@ const App: React.FC = () => {
         {/* Main View Content */}
         <div
           className="flex-1 transition-all duration-300 w-full"
-          style={{
-            marginRight: aiChatEnabled && isAIChatOpen && window.innerWidth >= 1024 ? `${chatWidth}px` : '0px',
-          }}
+          
         >
           <main className="flex-1">
             {activeView === 'portfolios' && (
@@ -500,36 +457,13 @@ const App: React.FC = () => {
               />
             )}
             {activeView === 'explore' && <ExploreView />}
+            {activeView === 'analyst' && <AIChatView />}
             {activeView === 'tags' && <ManageTagsView />}
             {activeView === 'tools' && <ToolsView />}
           </main>
         </div>
 
-        {/* AI Chat Sidebar */}
-        {aiChatEnabled && isAIChatOpen && (
-          <div
-            className={`fixed inset-0 z-40 transition-transform duration-300 transform ${
-              isAIChatOpen ? 'translate-x-0' : 'translate-x-full'
-            } lg:relative lg:translate-x-0 lg:inset-y-0`}
-            style={{
-              width: window.innerWidth < 1024 ? '100%' : `${chatWidth}px`,
-              top: 0,
-              height: '100vh',
-            }}
-          >
-            <div
-              ref={resizeRef}
-              onMouseDown={handleMouseDown}
-              className={`absolute left-0 top-0 w-1.5 h-full bg-gray-700 cursor-col-resize hover:bg-blue-500 transition-colors ${
-                isResizing ? 'bg-blue-600' : ''
-              }`}
-              style={{ zIndex: 50 }}
-            />
-            <div className="h-full bg-gray-800" style={{ width: '100%' }}>
-              <AIChat />
-            </div>
-          </div>
-        )}
+        
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ import {
   X,
   Edit,
   User,
-  MessageCircle,
+  
   Settings,
   LogOut,
   Info
@@ -62,10 +62,6 @@ interface AccountSelectorProps {
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
-  // New props for the moved buttons
-  aiChatEnabled: boolean;
-  isAIChatOpen: boolean;
-  onToggleAIChat: () => void;
   anchorEl: null | HTMLElement;
   onMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
   onMenuClose: () => void;
@@ -86,10 +82,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onPortfolioDeleted,
   onAccountDeleted,
   onDefaultPortfolioSet,
-  // New props for the moved buttons
-  aiChatEnabled,
-  isAIChatOpen,
-  onToggleAIChat,
   anchorEl,
   onMenuOpen,
   onMenuClose,
@@ -586,9 +578,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             isValueVisible={isValueVisible}
             toggleValueVisibility={toggleValueVisibility}
             setShowAddAccountModal={setShowAddAccountModal}
-            aiChatEnabled={aiChatEnabled}
-            isAIChatOpen={isAIChatOpen}
-            onToggleAIChat={onToggleAIChat}
             onMenuOpen={onMenuOpen}
             onProfileClick={onProfileClick}
             onSettingsClick={onSettingsClick}
@@ -696,19 +685,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
 
-          {/* AI Chat Toggle Button */}
-          {aiChatEnabled && (
-            <button
-              onClick={onToggleAIChat}
-              className={`p-2 rounded-full text-white backdrop-blur-md transition-colors ${
-                isAIChatOpen
-                  ? 'bg-blue-500/80 hover:bg-blue-500'
-                  : 'bg-gray-600/80 hover:bg-gray-600'
-              }`}
-            >
-              {isAIChatOpen ? <X size={20} /> : <MessageCircle size={20} />}
-            </button>
-          )}
+          
 
           {/* Person Icon Dropdown */}
           <div className="relative">
