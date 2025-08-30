@@ -478,6 +478,75 @@ async def get_holdings_table(
         today = date.today()
         seven_days_ago = today - timedelta(days=7)
 
+        def fetch_historical_prices(symbol: str, security, original_price: float) -> list:
+            """Helper function to fetch historical prices for any symbol"""
+            historical_prices = []
+            try:
+                if symbol == 'USD':
+                    # Handle currency holdings
+                    from_currency = symbol
+                    to_currency = str(portfolio.base_currency)
+                    if from_currency == to_currency:
+                        # No conversion needed, always 1
+                        for i in range(7, 0, -1):
+                            day = today - timedelta(days=i)
+                            historical_prices.append({
+                                "date": day.strftime("%Y-%m-%d"),
+                                "price": 1.0
+                            })
+                    else:
+                        # Construct yfinance ticker for currency pair
+                        ticker = f"{from_currency}{to_currency}=X"
+                        logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
+                        data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                        if not data.empty:
+                            prices = data["Close"].dropna().round(6).to_dict().get(ticker)
+                            for dt, price in prices.items():
+                                historical_prices.append({
+                                    "date": dt,
+                                    "price": float(price)
+                                })
+                        else:
+                            logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
+                elif symbol.isdigit():
+                    logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
+                    tase_id = getattr(security, 'tase_id', None) or symbol
+                    price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
+                    for entry in reversed(price_history):
+                        if entry.get('TradeDate') and entry.get('SellPrice'):
+                            historical_prices.append({
+                                "date": entry.get('TradeDate'),
+                                "price": float(entry.get('SellPrice')) / 100
+                            })
+                    if not historical_prices:
+                        logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
+                else:
+                    logger.info(f"Fetching 7d trend for non-numeric symbol: {symbol} using yfinance")
+                    data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                    if not data.empty:
+                        prices = data["Close"].dropna().round(2)
+                        prices = prices.to_dict().get(symbol)
+                        for dt, price in prices.items():
+                            historical_prices.append({
+                                "date": dt.strftime("%Y-%m-%d"),
+                                "price": float(price)
+                            })
+                    else:
+                        logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
+            except Exception as e:
+                logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
+            
+            # Add fallback mock data if no historical prices were fetched
+            if not historical_prices:
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    historical_prices.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": original_price
+                    })
+            
+            return historical_prices
+
         for account in portfolio.accounts:
             if request.account_names and account.name not in request.account_names:
                 continue
@@ -490,61 +559,7 @@ async def get_holdings_table(
                 if symbol not in holdings_aggregation:
                     pricing_info = calculator.calc_holding_value(security, 1)
                     original_price = pricing_info["unit_price"]
-                    historical_prices = []
-                    try:
-                        if symbol == 'USD':
-                            # Handle currency holdings
-                            from_currency = symbol
-                            to_currency = str(portfolio.base_currency)
-                            if from_currency == to_currency:
-                                # No conversion needed, always 1
-                                for i in range(7, 0, -1):
-                                    day = today - timedelta(days=i)
-                                    historical_prices.append({
-                                        "date": day.strftime("%Y-%m-%d"),
-                                        "price": 1.0
-                                    })
-                            else:
-                                # Construct yfinance ticker for currency pair
-                                ticker = f"{from_currency}{to_currency}=X"
-                                logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
-                                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
-                                if not data.empty:
-                                    prices = data["Close"].dropna().round(6).to_dict().get(ticker)
-                                    for dt, price in prices.items():
-                                        historical_prices.append({
-                                            "date": dt,
-                                            "price": float(price)
-                                        })
-                                else:
-                                    logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
-                        elif symbol.isdigit():
-                            logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
-                            tase_id = getattr(security, 'tase_id', None) or symbol
-                            price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
-                            for entry in reversed(price_history):
-                                if entry.get('TradeDate') and entry.get('SellPrice'):
-                                    historical_prices.append({
-                                        "date": entry.get('TradeDate'),
-                                        "price": float(entry.get('SellPrice')) / 100
-                                    })
-                            if not historical_prices:
-                                logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
-                        else:
-                            logger.info(f"Fetching 7d trend for non-numeric symbol: {symbol} using yfinance")
-                            data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
-                            if not data.empty:
-                                prices = data["Close"].dropna().round(2)
-                                prices = prices.to_dict().get(symbol)
-                                for dt, price in prices.items():
-                                    historical_prices.append({
-                                        "date": dt.strftime("%Y-%m-%d"),
-                                        "price": float(price)
-                                    })
-                            else:
-                                logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
+                    historical_prices = fetch_historical_prices(symbol, security, original_price)
 
                     holdings_aggregation[symbol] = {
                         "symbol": symbol,
@@ -591,15 +606,7 @@ async def get_holdings_table(
                         if symbol not in holdings_aggregation:
                             pricing_info = calculator.calc_holding_value(security, 1)
                             original_price = pricing_info["unit_price"]
-                            historical_prices = []
-                            
-                            # Add basic historical price data (simplified for RSU virtual holdings)
-                            for i in range(7, 0, -1):
-                                day = today - timedelta(days=i)
-                                historical_prices.append({
-                                    "date": day.strftime("%Y-%m-%d"),
-                                    "price": original_price  # Use current price for historical
-                                })
+                            historical_prices = fetch_historical_prices(symbol, security, original_price)
                             
                             holdings_aggregation[symbol] = {
                                 "symbol": symbol,
