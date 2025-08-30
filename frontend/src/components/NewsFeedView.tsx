@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchNewsFeed, NewsItem, sendNewsFeedback } from '../utils/news-api';
 import { ExternalLink, ThumbsUp, ThumbsDown } from 'lucide-react';
 import NewsFilters, { NewsFiltersValue } from './NewsFilters';
+import newsPlaceholder from '../assets/news-placeholder.svg';
 
 const CHUNK_SIZE = 33;
 
@@ -31,8 +32,8 @@ export default function NewsFeedView() {
       const filtered = resp.items.filter((it) => !seenIdsRef.current.has(it.id));
       setBuffer(filtered);
       setNextWindow(resp.next_window);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load news');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load news');
     } finally {
       setLoading(false);
     }
@@ -78,8 +79,8 @@ export default function NewsFeedView() {
   async function onFeedback(articleId: string, action: 'like' | 'dislike') {
     try {
       await sendNewsFeedback(articleId, action);
-    } catch (_) {
-      // ignore UI
+    } catch (e) {
+      void e; // ignore UI errors
     }
   }
 
@@ -98,7 +99,7 @@ export default function NewsFeedView() {
     const src = (it.source || '').toLowerCase();
     const topic = (it.topic || '').toLowerCase();
     let domain = '';
-    try { domain = new URL(it.url).hostname.toLowerCase(); } catch {}
+    try { domain = new URL(it.url).hostname.toLowerCase(); } catch (e) { domain = ''; }
     return title.includes(q) || desc.includes(q) || src.includes(q) || topic.includes(q) || domain.includes(q);
   }) : items);
 
@@ -141,9 +142,9 @@ export default function NewsFeedView() {
 
 function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: string, action: 'like' | 'dislike') => void }) {
   const isPlaceholder = !item.imageUrl;
-  const image = item.imageUrl ?? '/src/assets/news-placeholder.svg';
+  const image = item.imageUrl ?? newsPlaceholder;
   let domain = '';
-  try { domain = new URL(item.url).hostname.replace('www.', ''); } catch {}
+  try { domain = new URL(item.url).hostname.replace('www.', ''); } catch (e) { domain = ''; }
   const dateStr = formatDate(item.publishedAt);
   return (
     <div className="group relative overflow-hidden rounded-xl border border-gray-800 bg-gradient-to-b from-gray-900 to-black hover:border-gray-700 transition-all">
@@ -153,7 +154,7 @@ function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: st
           src={image}
           alt={item.title}
           className={`h-full w-full ${isPlaceholder ? 'object-contain p-6' : 'object-cover'}`}
-          onError={(e) => ((e.currentTarget.src = '/src/assets/news-placeholder.svg'))}
+          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = newsPlaceholder; }}
         />
       </div>
       {/* Content */}
