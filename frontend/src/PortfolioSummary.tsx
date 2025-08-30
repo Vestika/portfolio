@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
 import api from './utils/api';
@@ -44,6 +44,27 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
   const [usMarketStatus, setUsMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
   const [taseMarketStatus, setTaseMarketStatus] = useState<'open' | 'closed' | 'unknown'>('unknown');
 
+  // Aggregate total IBIT units across selected accounts
+  const totalIbitUnits = useMemo(() => {
+    try {
+      return selectedAccounts.reduce((sum, account) => {
+        if (!account.holdings) return sum;
+        const ibitHolding = account.holdings.find(h => h.symbol.toUpperCase() === 'IBIT');
+        return sum + (ibitHolding?.units || 0);
+      }, 0);
+    } catch {
+      return 0;
+    }
+  }, [selectedAccounts]);
+
+  // IBIT → BTC equivalent (static ratio: 1 BTC ≈ 1754.39 IBIT)
+  const IBIT_PER_BTC = 1754.39;
+  const ibitBtcEquivalent = useMemo(() => {
+    const units = totalIbitUnits;
+    if (!units || units <= 0) return null;
+    return units / IBIT_PER_BTC;
+  }, [totalIbitUnits]);
+
   useEffect(() => {
     api.get('/market-status')
       .then(res => {
@@ -55,6 +76,8 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         setTaseMarketStatus('unknown');
       });
   }, []);
+
+  // No network calls needed for IBIT→BTC; purely derived from static ratio
 
   return (
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
@@ -80,7 +103,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         </div>
 
         {/* Cash Holdings Chips */}
-        {Object.entries(totalCash).map(([currency, amount]) => (
+        {Object.entries(totalCash).map(([currency, amount]: [string, number]) => (
           <div
             key={currency}
             className="flex items-center bg-gray-700 rounded-full px-3 py-1"
@@ -102,6 +125,30 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
             )}
           </div>
         ))}
+
+        {/* IBIT BTC-equivalent Chip */}
+        {totalIbitUnits > 0 && (
+          <div
+            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
+            title={`1 BTC ≈ ${IBIT_PER_BTC} IBIT`}
+          >
+            <Coins size={14} className="text-amber-400 mr-1.5" />
+            <span className="text-xs font-medium mr-1">BTC (IBIT):</span>
+            {isValueVisible ? (
+              <span className="text-xs text-amber-400">
+                {ibitBtcEquivalent !== null
+                  ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(ibitBtcEquivalent)
+                  : 'N/A'}
+              </span>
+            ) : (
+              <span className="flex items-center space-x-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex-1" />
         {/* NYSE Market Status */}
         <div className="flex items-center bg-gray-700 rounded-full px-3 py-1"

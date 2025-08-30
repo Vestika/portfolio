@@ -22,4 +22,4 @@ export function ExploreView() {
       </div>
     </div>
   )
-} 
+}

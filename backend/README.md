@@ -121,7 +121,7 @@ FIREBASE_CREDENTIALS={}
 # Google AI Configuration
 # Get your API key from https://aistudio.google.com/apikey
 GOOGLE_AI_API_KEY=your_google_ai_api_key_here
-GOOGLE_AI_MODEL=gemini-2.5-flash-preview-04-17
+GOOGLE_AI_MODEL=gemini-2.5-flash
 ```
 
 ### Required API Keys
