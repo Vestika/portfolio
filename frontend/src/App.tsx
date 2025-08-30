@@ -7,6 +7,7 @@ import Login from './components/Login';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
 import { ExploreView } from './components/ExploreView';
+import { NewsView } from './components/NewsView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
@@ -457,6 +458,7 @@ const App: React.FC = () => {
               />
             )}
             {activeView === 'explore' && <ExploreView />}
+            {activeView === 'news' && <NewsView />}
             {activeView === 'analyst' && <AIChatView />}
             {activeView === 'tags' && <ManageTagsView />}
             {activeView === 'tools' && <ToolsView />}
