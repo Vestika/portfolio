@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchNewsFeed, markNewsSeen, NewsItem, sendNewsFeedback } from '../utils/news-api';
+import { fetchNewsFeed, NewsItem, sendNewsFeedback } from '../utils/news-api';
 import { ExternalLink, ThumbsUp, ThumbsDown } from 'lucide-react';
 import NewsFilters, { NewsFiltersValue } from './NewsFilters';
 
