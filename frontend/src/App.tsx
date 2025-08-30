@@ -3,6 +3,7 @@ import api from './utils/api';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
+import { PortfolioHeaderSkeleton, PortfolioMainSkeleton } from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
@@ -201,7 +202,7 @@ const App: React.FC = () => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
 
     // Extract RSU vesting data from portfolio metadata (now included in the response)
-    const vestingMap: Record<string, any> = {};
+    const vestingMap: Record<string, unknown> = {};
     (portfolioMetadata.accounts || []).forEach((account) => {
       const type = account.account_type || account.account_properties?.type;
       if (type === 'company-custodian-account') {
@@ -347,8 +348,7 @@ const App: React.FC = () => {
   // Show login screen if user is not authenticated
   if (!user) return <Login />;
 
-  // Show loading screen while app is loading
-  if (isLoading) return <LoadingScreen />;
+  // Do not block UI during portfolio loading; show skeletons instead
   
   if (error) {
     return (
@@ -384,9 +384,6 @@ const App: React.FC = () => {
   };
   
   const displayMetadata = showEmptyState ? mockMetadata : portfolioMetadata;
-  
-  // For non-portfolio views, we don't need to check portfolio data
-  if (activeView === 'portfolios' && !displayMetadata) return null;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
@@ -397,36 +394,42 @@ const App: React.FC = () => {
       />
       
             {/* Sticky Header Section - only show for portfolios view */}
-      {activeView === 'portfolios' && displayMetadata && (
+      {activeView === 'portfolios' && (
         <div
           className="sticky z-30 bg-gray-900"
           style={{ top: '37px', height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
         >
-          <AccountSelector
-            portfolioMetadata={displayMetadata}
-            onAccountsChange={handleAccountsChange}
-            onToggleVisibility={handleToggleVisibility}
-            availableFiles={availablePortfolios}
-            selectedFile={selectedPortfolioId}
-            onPortfolioChange={setSelectedPortfolioId}
-            onPortfolioCreated={handlePortfolioCreated}
-            onAccountAdded={handleAccountAdded}
-            onPortfolioDeleted={handlePortfolioDeleted}
-            onAccountDeleted={handleAccountDeleted}
-            onDefaultPortfolioSet={handleDefaultPortfolioSet}
-            anchorEl={anchorEl}
-            onMenuOpen={handleMenuOpen}
-            onMenuClose={handleMenuClose}
-            onProfileClick={handleProfileClick}
-            onSettingsClick={handleSettingsClick}
-            onSignOutClick={handleSignOutClick}
-          />
-          <PortfolioSummary
-            accounts={displayMetadata.accounts}
-            selectedAccountNames={selectedAccounts}
-            baseCurrency={displayMetadata.base_currency}
-            isValueVisible={isValueVisible}
-          />
+          {isLoading || !displayMetadata ? (
+            <PortfolioHeaderSkeleton />
+          ) : (
+            <>
+              <AccountSelector
+                portfolioMetadata={displayMetadata}
+                onAccountsChange={handleAccountsChange}
+                onToggleVisibility={handleToggleVisibility}
+                availableFiles={availablePortfolios}
+                selectedFile={selectedPortfolioId}
+                onPortfolioChange={setSelectedPortfolioId}
+                onPortfolioCreated={handlePortfolioCreated}
+                onAccountAdded={handleAccountAdded}
+                onPortfolioDeleted={handlePortfolioDeleted}
+                onAccountDeleted={handleAccountDeleted}
+                onDefaultPortfolioSet={handleDefaultPortfolioSet}
+                anchorEl={anchorEl}
+                onMenuOpen={handleMenuOpen}
+                onMenuClose={handleMenuClose}
+                onProfileClick={handleProfileClick}
+                onSettingsClick={handleSettingsClick}
+                onSignOutClick={handleSignOutClick}
+              />
+              <PortfolioSummary
+                accounts={displayMetadata.accounts}
+                selectedAccountNames={selectedAccounts}
+                baseCurrency={displayMetadata.base_currency}
+                isValueVisible={isValueVisible}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -439,15 +442,19 @@ const App: React.FC = () => {
         >
           <main className="flex-1">
             {activeView === 'portfolios' && (
-              <PortfolioView
-                portfolioMetadata={portfolioMetadata}
-                portfolioData={portfolioData}
-                holdingsData={holdingsData}
-                availablePortfolios={availablePortfolios}
-                isValueVisible={isValueVisible}
-                mainRSUVesting={mainRSUVesting}
-                mainOptionsVesting={mainOptionsVesting}
-              />
+              isLoading || !portfolioMetadata || !portfolioData ? (
+                <PortfolioMainSkeleton />
+              ) : (
+                <PortfolioView
+                  portfolioMetadata={portfolioMetadata}
+                  portfolioData={portfolioData}
+                  holdingsData={holdingsData}
+                  availablePortfolios={availablePortfolios}
+                  isValueVisible={isValueVisible}
+                  mainRSUVesting={mainRSUVesting}
+                  mainOptionsVesting={mainOptionsVesting}
+                />
+              )
             )}
             {activeView === 'explore' && <ExploreView />}
             {activeView === 'news' && <NewsView />}
