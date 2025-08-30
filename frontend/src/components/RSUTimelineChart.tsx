@@ -314,7 +314,7 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
   };
 
   return (
-    <div className="w-1/2" onMouseLeave={() => setHoveredGauge(null)}>
+    <div className="w-full" onMouseLeave={() => setHoveredGauge(null)}>
       <HighchartsReact
         ref={chartRef}
         highcharts={Highcharts}
