@@ -36,7 +36,7 @@ const HEADER_HEIGHT = 128; // px, adjust if needed
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
-  
+
   const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -48,7 +48,7 @@ const App: React.FC = () => {
   const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  
+
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
@@ -199,24 +199,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
-    // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
-    const fetchAllRSUVesting = async () => {
-      const vestingMap: Record<string, unknown> = {};
-      await Promise.all(
-        (portfolioMetadata.accounts || []).map(async (account) => {
-          const type = account.account_type || account.account_properties?.type;
-          if (type === 'company-custodian-account') {
-            try {
-              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/rsu-vesting`);
-              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
-            } catch {
-              vestingMap[account.account_name] = [];
-            }
-          }
-        })
-      );
-      setMainRSUVesting(vestingMap);
-    };
+
+    // Extract RSU vesting data from portfolio metadata (now included in the response)
+    const vestingMap: Record<string, any> = {};
+    (portfolioMetadata.accounts || []).forEach((account) => {
+      const type = account.account_type || account.account_properties?.type;
+      if (type === 'company-custodian-account') {
+        // Use RSU vesting data from portfolio metadata if available
+        vestingMap[account.account_name] = account.rsu_vesting_data || [];
+      }
+    });
+    setMainRSUVesting(vestingMap);
 
     // Fetch Options vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllOptionsVesting = async () => {
@@ -237,7 +230,6 @@ const App: React.FC = () => {
       setMainOptionsVesting(vestingMap);
     };
 
-    fetchAllRSUVesting();
     fetchAllOptionsVesting();
   }, [portfolioMetadata, selectedPortfolioId]);
 
@@ -345,9 +337,9 @@ const App: React.FC = () => {
     await handleSignOut();
   };
 
-  
 
-  
+
+
 
   // Show loading screen while auth is loading
   if (authLoading) return <LoadingScreen />;
@@ -443,7 +435,7 @@ const App: React.FC = () => {
         {/* Main View Content */}
         <div
           className="flex-1 transition-all duration-300 w-full"
-          
+
         >
           <main className="flex-1">
             {activeView === 'portfolios' && (
@@ -465,7 +457,7 @@ const App: React.FC = () => {
           </main>
         </div>
 
-        
+
       </div>
     </div>
   );

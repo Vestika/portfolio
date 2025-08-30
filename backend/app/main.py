@@ -33,6 +33,7 @@ from datetime import date
 from core.tag_service import TagService
 from services.news.service import NewsService
 from services.news.keyword_generator import KeywordTopicGenerator
+from core.rsu_calculator import create_rsu_calculator
 
 logger = logging.Logger(__name__)
 
@@ -222,30 +223,63 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
 
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
+        
         result = {
             "base_currency": portfolio.base_currency,
             "user_name": portfolio.user_name,
             "accounts": [],
         }
         for account in portfolio.accounts:
+            # Calculate regular holdings value
+            regular_holdings_value = sum(
+                calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["total"]
+                for holding in account.holdings
+            )
+            
+            # Calculate RSU vesting and add virtual holdings
+            rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                "name": account.name,
+                "rsu_plans": account.rsu_plans if hasattr(account, "rsu_plans") and account.rsu_plans else []
+            })
+            
+            # Add RSU vested value to account total
+            account_total = regular_holdings_value + rsu_result["total_vested_value"]
+            
+            # Combine regular holdings with virtual RSU holdings
+            all_holdings = [
+                {
+                    "symbol": holding.symbol,
+                    "units": holding.units
+                }
+                for holding in account.holdings
+            ]
+            
+            # Add virtual RSU holdings
+            for virtual_holding in rsu_result["virtual_holdings"]:
+                # Check if symbol already exists in regular holdings
+                existing_holding = next(
+                    (h for h in all_holdings if h["symbol"] == virtual_holding["symbol"]), 
+                    None
+                )
+                if existing_holding:
+                    # Add virtual units to existing holding
+                    existing_holding["units"] += virtual_holding["units"]
+                else:
+                    # Add new virtual holding
+                    all_holdings.append(virtual_holding)
+            
             account_data = {
                 "account_name": account.name,
-                "account_total": sum(
-                    calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["total"]
-                    for holding in account.holdings
-                ),
+                "account_total": account_total,
                 "account_properties": account.properties,
                 "account_cash": {},
                 "account_type": account.properties.get("type", "bank-account"),
                 "owners": account.properties.get("owners", ["me"]),
-                "holdings": [
-                    {
-                        "symbol": holding.symbol,
-                        "units": holding.units
-                    }
-                    for holding in account.holdings
-                ]
+                "holdings": all_holdings,
+                "rsu_vesting_data": rsu_result["vesting_data"]  # Include RSU vesting data for frontend
             }
+            
             if hasattr(account, "rsu_plans") and account.rsu_plans is not None:
                 account_data["rsu_plans"] = account.rsu_plans
             if hasattr(account, "espp_plans") and account.espp_plans is not None:
@@ -299,8 +333,9 @@ async def get_portfolio_aggregations(
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
 
-        # Calculate all holding values once
+        # Calculate all holding values once (including RSU virtual holdings)
         holding_values = {}
         filtered_accounts = []
 
@@ -309,6 +344,7 @@ async def get_portfolio_aggregations(
                 continue
             filtered_accounts.append(account)
 
+            # Add regular holdings
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
                 holding_key = f"{account.name}:{holding.symbol}"
@@ -318,6 +354,37 @@ async def get_portfolio_aggregations(
                     "security": security,
                     "value_info": calculator.calc_holding_value(security, holding.units)
                 }
+            
+            # Add RSU virtual holdings
+            if hasattr(account, 'rsu_plans') and account.rsu_plans:
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    symbol = virtual_holding["symbol"]
+                    units = virtual_holding["units"]
+                    
+                    # Check if symbol exists in portfolio securities
+                    if symbol in portfolio.securities:
+                        security = portfolio.securities[symbol]
+                        holding_key = f"{account.name}:{symbol}_RSU"
+                        
+                        # Calculate value for virtual RSU holding
+                        value_info = calculator.calc_holding_value(security, units)
+                        
+                        # Create a virtual holding object
+                        from models.holding import Holding
+                        virtual_holding_obj = Holding(symbol=symbol, units=units)
+                        
+                        holding_values[holding_key] = {
+                            "account": account,
+                            "holding": virtual_holding_obj,
+                            "security": security,
+                            "value_info": value_info,
+                            "is_rsu_virtual": True  # Flag to identify RSU virtual holdings
+                        }
 
         result = []
         for chart_config in CHARTS:
@@ -407,16 +474,87 @@ async def get_holdings_table(
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
 
         holdings_aggregation: dict[str, dict] = {}
         maya = Maya()
         today = date.today()
         seven_days_ago = today - timedelta(days=7)
 
+        def fetch_historical_prices(symbol: str, security, original_price: float) -> list:
+            """Helper function to fetch historical prices for any symbol"""
+            historical_prices = []
+            try:
+                if symbol == 'USD':
+                    # Handle currency holdings
+                    from_currency = symbol
+                    to_currency = str(portfolio.base_currency)
+                    if from_currency == to_currency:
+                        # No conversion needed, always 1
+                        for i in range(7, 0, -1):
+                            day = today - timedelta(days=i)
+                            historical_prices.append({
+                                "date": day.strftime("%Y-%m-%d"),
+                                "price": 1.0
+                            })
+                    else:
+                        # Construct yfinance ticker for currency pair
+                        ticker = f"{from_currency}{to_currency}=X"
+                        logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
+                        data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                        if not data.empty:
+                            prices = data["Close"].dropna().round(6).to_dict().get(ticker)
+                            for dt, price in prices.items():
+                                historical_prices.append({
+                                    "date": dt,
+                                    "price": float(price)
+                                })
+                        else:
+                            logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
+                elif symbol.isdigit():
+                    logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
+                    tase_id = getattr(security, 'tase_id', None) or symbol
+                    price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
+                    for entry in reversed(price_history):
+                        if entry.get('TradeDate') and entry.get('SellPrice'):
+                            historical_prices.append({
+                                "date": entry.get('TradeDate'),
+                                "price": float(entry.get('SellPrice')) / 100
+                            })
+                    if not historical_prices:
+                        logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
+                else:
+                    logger.info(f"Fetching 7d trend for non-numeric symbol: {symbol} using yfinance")
+                    data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                    if not data.empty:
+                        prices = data["Close"].dropna().round(2)
+                        prices = prices.to_dict().get(symbol)
+                        for dt, price in prices.items():
+                            historical_prices.append({
+                                "date": dt.strftime("%Y-%m-%d"),
+                                "price": float(price)
+                            })
+                    else:
+                        logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
+            except Exception as e:
+                logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
+            
+            # Add fallback mock data if no historical prices were fetched
+            if not historical_prices:
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    historical_prices.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": original_price
+                    })
+            
+            return historical_prices
+
         for account in portfolio.accounts:
             if request.account_names and account.name not in request.account_names:
                 continue
 
+            # Process regular holdings
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
                 symbol = holding.symbol
@@ -424,61 +562,7 @@ async def get_holdings_table(
                 if symbol not in holdings_aggregation:
                     pricing_info = calculator.calc_holding_value(security, 1)
                     original_price = pricing_info["unit_price"]
-                    historical_prices = []
-                    try:
-                        if symbol == 'USD':
-                            # Handle currency holdings
-                            from_currency = symbol
-                            to_currency = str(portfolio.base_currency)
-                            if from_currency == to_currency:
-                                # No conversion needed, always 1
-                                for i in range(7, 0, -1):
-                                    day = today - timedelta(days=i)
-                                    historical_prices.append({
-                                        "date": day.strftime("%Y-%m-%d"),
-                                        "price": 1.0
-                                    })
-                            else:
-                                # Construct yfinance ticker for currency pair
-                                ticker = f"{from_currency}{to_currency}=X"
-                                logger.info(f"Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
-                                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
-                                if not data.empty:
-                                    prices = data["Close"].dropna().round(6).to_dict().get(ticker)
-                                    for dt, price in prices.items():
-                                        historical_prices.append({
-                                            "date": dt,
-                                            "price": float(price)
-                                        })
-                                else:
-                                    logger.warning(f"No yfinance FX data for ticker: {ticker}, falling back to mock.")
-                        elif symbol.isdigit():
-                            logger.info(f"Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
-                            tase_id = getattr(security, 'tase_id', None) or symbol
-                            price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
-                            for entry in reversed(price_history):
-                                if entry.get('TradeDate') and entry.get('SellPrice'):
-                                    historical_prices.append({
-                                        "date": entry.get('TradeDate'),
-                                        "price": float(entry.get('SellPrice')) / 100
-                                    })
-                            if not historical_prices:
-                                logger.warning(f"No pymaya data for TASE symbol: {symbol}, falling back to mock.")
-                        else:
-                            logger.info(f"Fetching 7d trend for non-numeric symbol: {symbol} using yfinance")
-                            data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
-                            if not data.empty:
-                                prices = data["Close"].dropna().round(2)
-                                prices = prices.to_dict().get(symbol)
-                                for dt, price in prices.items():
-                                    historical_prices.append({
-                                        "date": dt.strftime("%Y-%m-%d"),
-                                        "price": float(price)
-                                    })
-                            else:
-                                logger.warning(f"No yfinance data for symbol: {symbol}, falling back to mock.")
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch real historical prices for {symbol}: {e}. Using mock data.")
+                    historical_prices = fetch_historical_prices(symbol, security, original_price)
 
                     holdings_aggregation[symbol] = {
                         "symbol": symbol,
@@ -505,6 +589,54 @@ async def get_holdings_table(
                     "owners": account.properties.get("owners", ["me"])
                 })
                 holdings_aggregation[symbol]["total_units"] += holding.units
+            
+            # Process RSU virtual holdings
+            if hasattr(account, 'rsu_plans') and account.rsu_plans:
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    symbol = virtual_holding["symbol"]
+                    units = virtual_holding["units"]
+                    
+                    # Check if symbol exists in portfolio securities
+                    if symbol in portfolio.securities:
+                        security = portfolio.securities[symbol]
+                        
+                        # Initialize symbol in holdings_aggregation if not exists
+                        if symbol not in holdings_aggregation:
+                            pricing_info = calculator.calc_holding_value(security, 1)
+                            original_price = pricing_info["unit_price"]
+                            historical_prices = fetch_historical_prices(symbol, security, original_price)
+                            
+                            holdings_aggregation[symbol] = {
+                                "symbol": symbol,
+                                "security_type": security.security_type.value,
+                                "name": security.name,
+                                "tags": security.tags,
+                                "total_units": 0,
+                                "original_price": original_price,
+                                "original_currency": security.currency,
+                                "value_per_unit": pricing_info["value"],
+                                "currency": portfolio.base_currency,
+                                "price_source": pricing_info["price_source"],
+                                "historical_prices": historical_prices,
+                                "account_breakdown": []
+                            }
+                        
+                        # Add RSU virtual holding to account breakdown
+                        account_holding_value = calculator.calc_holding_value(security, units)
+                        holdings_aggregation[symbol]["account_breakdown"].append({
+                            "account_name": account.name,
+                            "account_type": account.properties.get("type", "bank-account"),
+                            "units": units,
+                            "value": account_holding_value["total"],
+                            "owners": account.properties.get("owners", ["me"]),
+                            "is_rsu_virtual": True  # Flag to identify RSU virtual holdings
+                        })
+                        holdings_aggregation[symbol]["total_units"] += units
 
         holdings = []
         for holding_data in holdings_aggregation.values():

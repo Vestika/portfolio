@@ -61,6 +61,7 @@ export interface AccountInfo {
   rsu_plans?: RSUPlan[];
   espp_plans?: ESPPPlan[];
   options_plans?: OptionsPlan[];
+  rsu_vesting_data?: any[];
   account_properties?: {
     [currency: string]: number;
   };
