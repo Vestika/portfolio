@@ -132,7 +132,7 @@ export function PortfolioView({
               });
 
               return (
-                <div key={symbol} className="col-span-1 md:col-span-2">
+                <div key={symbol} className="col-span-1 md:col-span-1">
                   <RSUTimelineChart
                     plans={processedPlans}
                     symbol={symbol}
