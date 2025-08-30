@@ -5,7 +5,8 @@ import {
   Wrench,
   Bot,
   Menu,
-  X
+  X,
+  Newspaper
 } from 'lucide-react'
 import { useState } from 'react'
 import { AboutModal } from './AboutModal'
@@ -35,7 +36,7 @@ export function TopBar({ activeView, onViewChange }: TopBarProps) {
     {
       id: 'news' as NavigationView,
       label: 'News',
-      icon: <Search className="h-4 w-4" />,
+      icon: <Newspaper className="h-4 w-4" />,
     },
     {
       id: 'analyst' as NavigationView,
