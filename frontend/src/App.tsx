@@ -204,24 +204,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!portfolioMetadata || !selectedPortfolioId) return;
-    // Fetch RSU vesting for all company-custodian-accounts in the selected portfolio
-    const fetchAllRSUVesting = async () => {
-      const vestingMap: Record<string, any> = {};
-      await Promise.all(
-        (portfolioMetadata.accounts || []).map(async (account) => {
-          const type = account.account_type || account.account_properties?.type;
-          if (type === 'company-custodian-account') {
-            try {
-              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/rsu-vesting`);
-              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
-            } catch (e) {
-              vestingMap[account.account_name] = [];
-            }
-          }
-        })
-      );
-      setMainRSUVesting(vestingMap);
-    };
+    
+    // Extract RSU vesting data from portfolio metadata (now included in the response)
+    const vestingMap: Record<string, any> = {};
+    (portfolioMetadata.accounts || []).forEach((account) => {
+      const type = account.account_type || account.account_properties?.type;
+      if (type === 'company-custodian-account') {
+        // Use RSU vesting data from portfolio metadata if available
+        vestingMap[account.account_name] = account.rsu_vesting_data || [];
+      }
+    });
+    setMainRSUVesting(vestingMap);
 
     // Fetch Options vesting for all company-custodian-accounts in the selected portfolio
     const fetchAllOptionsVesting = async () => {
@@ -242,7 +235,6 @@ const App: React.FC = () => {
       setMainOptionsVesting(vestingMap);
     };
 
-    fetchAllRSUVesting();
     fetchAllOptionsVesting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioMetadata, selectedPortfolioId]);

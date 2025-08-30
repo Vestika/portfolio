@@ -31,6 +31,7 @@ import yfinance as yf
 from pymaya.maya import Maya
 from datetime import date
 from core.tag_service import TagService
+from core.rsu_calculator import create_rsu_calculator
 
 logger = logging.Logger(__name__)
 
@@ -219,30 +220,63 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
 
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
+        
         result = {
             "base_currency": portfolio.base_currency,
             "user_name": portfolio.user_name,
             "accounts": [],
         }
         for account in portfolio.accounts:
+            # Calculate regular holdings value
+            regular_holdings_value = sum(
+                calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["total"]
+                for holding in account.holdings
+            )
+            
+            # Calculate RSU vesting and add virtual holdings
+            rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                "name": account.name,
+                "rsu_plans": account.rsu_plans if hasattr(account, "rsu_plans") and account.rsu_plans else []
+            })
+            
+            # Add RSU vested value to account total
+            account_total = regular_holdings_value + rsu_result["total_vested_value"]
+            
+            # Combine regular holdings with virtual RSU holdings
+            all_holdings = [
+                {
+                    "symbol": holding.symbol,
+                    "units": holding.units
+                }
+                for holding in account.holdings
+            ]
+            
+            # Add virtual RSU holdings
+            for virtual_holding in rsu_result["virtual_holdings"]:
+                # Check if symbol already exists in regular holdings
+                existing_holding = next(
+                    (h for h in all_holdings if h["symbol"] == virtual_holding["symbol"]), 
+                    None
+                )
+                if existing_holding:
+                    # Add virtual units to existing holding
+                    existing_holding["units"] += virtual_holding["units"]
+                else:
+                    # Add new virtual holding
+                    all_holdings.append(virtual_holding)
+            
             account_data = {
                 "account_name": account.name,
-                "account_total": sum(
-                    calculator.calc_holding_value(portfolio.securities[holding.symbol], holding.units)["total"]
-                    for holding in account.holdings
-                ),
+                "account_total": account_total,
                 "account_properties": account.properties,
                 "account_cash": {},
                 "account_type": account.properties.get("type", "bank-account"),
                 "owners": account.properties.get("owners", ["me"]),
-                "holdings": [
-                    {
-                        "symbol": holding.symbol,
-                        "units": holding.units
-                    }
-                    for holding in account.holdings
-                ]
+                "holdings": all_holdings,
+                "rsu_vesting_data": rsu_result["vesting_data"]  # Include RSU vesting data for frontend
             }
+            
             if hasattr(account, "rsu_plans") and account.rsu_plans is not None:
                 account_data["rsu_plans"] = account.rsu_plans
             if hasattr(account, "espp_plans") and account.espp_plans is not None:
@@ -296,8 +330,9 @@ async def get_portfolio_aggregations(
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
 
-        # Calculate all holding values once
+        # Calculate all holding values once (including RSU virtual holdings)
         holding_values = {}
         filtered_accounts = []
 
@@ -306,6 +341,7 @@ async def get_portfolio_aggregations(
                 continue
             filtered_accounts.append(account)
 
+            # Add regular holdings
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
                 holding_key = f"{account.name}:{holding.symbol}"
@@ -315,6 +351,37 @@ async def get_portfolio_aggregations(
                     "security": security,
                     "value_info": calculator.calc_holding_value(security, holding.units)
                 }
+            
+            # Add RSU virtual holdings
+            if hasattr(account, 'rsu_plans') and account.rsu_plans:
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    symbol = virtual_holding["symbol"]
+                    units = virtual_holding["units"]
+                    
+                    # Check if symbol exists in portfolio securities
+                    if symbol in portfolio.securities:
+                        security = portfolio.securities[symbol]
+                        holding_key = f"{account.name}:{symbol}_RSU"
+                        
+                        # Calculate value for virtual RSU holding
+                        value_info = calculator.calc_holding_value(security, units)
+                        
+                        # Create a virtual holding object
+                        from models.holding import Holding
+                        virtual_holding_obj = Holding(symbol=symbol, units=units)
+                        
+                        holding_values[holding_key] = {
+                            "account": account,
+                            "holding": virtual_holding_obj,
+                            "security": security,
+                            "value_info": value_info,
+                            "is_rsu_virtual": True  # Flag to identify RSU virtual holdings
+                        }
 
         result = []
         for chart_config in CHARTS:
@@ -404,6 +471,7 @@ async def get_holdings_table(
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         portfolio = Portfolio.from_dict(doc)
         calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
 
         holdings_aggregation: dict[str, dict] = {}
         maya = Maya()
@@ -414,6 +482,7 @@ async def get_holdings_table(
             if request.account_names and account.name not in request.account_names:
                 continue
 
+            # Process regular holdings
             for holding in account.holdings:
                 security = portfolio.securities[holding.symbol]
                 symbol = holding.symbol
@@ -502,6 +571,62 @@ async def get_holdings_table(
                     "owners": account.properties.get("owners", ["me"])
                 })
                 holdings_aggregation[symbol]["total_units"] += holding.units
+            
+            # Process RSU virtual holdings
+            if hasattr(account, 'rsu_plans') and account.rsu_plans:
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    symbol = virtual_holding["symbol"]
+                    units = virtual_holding["units"]
+                    
+                    # Check if symbol exists in portfolio securities
+                    if symbol in portfolio.securities:
+                        security = portfolio.securities[symbol]
+                        
+                        # Initialize symbol in holdings_aggregation if not exists
+                        if symbol not in holdings_aggregation:
+                            pricing_info = calculator.calc_holding_value(security, 1)
+                            original_price = pricing_info["unit_price"]
+                            historical_prices = []
+                            
+                            # Add basic historical price data (simplified for RSU virtual holdings)
+                            for i in range(7, 0, -1):
+                                day = today - timedelta(days=i)
+                                historical_prices.append({
+                                    "date": day.strftime("%Y-%m-%d"),
+                                    "price": original_price  # Use current price for historical
+                                })
+                            
+                            holdings_aggregation[symbol] = {
+                                "symbol": symbol,
+                                "security_type": security.security_type.value,
+                                "name": security.name,
+                                "tags": security.tags,
+                                "total_units": 0,
+                                "original_price": original_price,
+                                "original_currency": security.currency,
+                                "value_per_unit": pricing_info["value"],
+                                "currency": portfolio.base_currency,
+                                "price_source": pricing_info["price_source"],
+                                "historical_prices": historical_prices,
+                                "account_breakdown": []
+                            }
+                        
+                        # Add RSU virtual holding to account breakdown
+                        account_holding_value = calculator.calc_holding_value(security, units)
+                        holdings_aggregation[symbol]["account_breakdown"].append({
+                            "account_name": account.name,
+                            "account_type": account.properties.get("type", "bank-account"),
+                            "units": units,
+                            "value": account_holding_value["total"],
+                            "owners": account.properties.get("owners", ["me"]),
+                            "is_rsu_virtual": True  # Flag to identify RSU virtual holdings
+                        })
+                        holdings_aggregation[symbol]["total_units"] += units
 
         holdings = []
         for holding_data in holdings_aggregation.values():
