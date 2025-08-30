@@ -5,12 +5,13 @@ import {
   Wrench,
   Bot,
   Menu,
-  X
+  X,
+  Newspaper
 } from 'lucide-react'
 import { useState } from 'react'
 import { AboutModal } from './AboutModal'
 
-export type NavigationView = 'portfolios' | 'explore' | 'analyst' | 'tags' | 'tools'
+export type NavigationView = 'portfolios' | 'explore' | 'news' | 'analyst' | 'tags' | 'tools'
 
 interface TopBarProps {
   activeView: NavigationView
@@ -31,6 +32,11 @@ export function TopBar({ activeView, onViewChange }: TopBarProps) {
       id: 'explore' as NavigationView,
       label: 'Explore',
       icon: <Search className="h-4 w-4" />,
+    },
+    {
+      id: 'news' as NavigationView,
+      label: 'News',
+      icon: <Newspaper className="h-4 w-4" />,
     },
     {
       id: 'analyst' as NavigationView,

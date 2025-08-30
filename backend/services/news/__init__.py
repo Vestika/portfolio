@@ -1,0 +1,3 @@
+# News service package
+
+

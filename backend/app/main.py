@@ -31,12 +31,15 @@ import yfinance as yf
 from pymaya.maya import Maya
 from datetime import date
 from core.tag_service import TagService
+from services.news.service import NewsService
+from services.news.keyword_generator import KeywordTopicGenerator
 from core.rsu_calculator import create_rsu_calculator
 
 logger = logging.Logger(__name__)
 
 # Get the global closing price service
 closing_price_service = get_global_service()
+news_service = NewsService()
 
 # Create FastAPI app
 app = FastAPI(
@@ -2179,4 +2182,160 @@ async def get_template_tags():
     return {
         "templates": {name: template.dict() for name, template in DEFAULT_TAG_TEMPLATES.items()}
     }
+
+# ==============================
+# News Feed Endpoints
+# ==============================
+
+class NewsFeedRequest(BaseModel):
+    start_date: str | None = None  # ISO
+    end_date: str | None = None    # ISO
+    topics: list[str] | None = None
+    keywords: list[str] | None = None
+    page_size: int | None = 99
+    sources: list[str] | None = None
+    q: str | None = None
+
+
+@app.post("/api/news/feed")
+async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
+    from datetime import datetime, timedelta
+    import os
+
+    # Date window
+    end_dt = datetime.fromisoformat(req.end_date) if (req.end_date) else datetime.utcnow()
+    start_dt = datetime.fromisoformat(req.start_date) if (req.start_date) else end_dt - timedelta(days=7)
+
+    # Derive keywords/topics if not provided using user's holdings
+    keywords = req.keywords or []
+    topics = req.topics or []
+    if not keywords or not topics:
+        # Aggregate holdings across all portfolios
+        portfolios_col = db_manager.get_collection("portfolios")
+        holdings_ctx: list[dict[str, Any]] = []
+        async for doc in portfolios_col.find({"user_id": user.id}):
+            p = Portfolio.from_dict(doc)
+            for acc in p.accounts:
+                for h in acc.holdings:
+                    sec = p.securities.get(h.symbol)
+                    holdings_ctx.append({
+                        "symbol": h.symbol,
+                        "name": getattr(sec, "name", h.symbol) if sec else h.symbol,
+                        "sector": getattr(sec, "tags", {}).get("sector") if sec else None,
+                    })
+        api_key = os.getenv("NOT_GEMINI_API_KEY", "")
+        if api_key and False:
+            # we dont want to pay for this right now
+            generator = KeywordTopicGenerator(api_key=api_key)
+            try:
+                data = await generator.generate(holdings_ctx)
+                if not keywords:
+                    keywords = data.get("keywords", [])
+                if not topics:
+                    topics = data.get("topics", [])
+            except Exception:
+                pass
+        keywords += [holding.get("name") for holding in holdings_ctx if holding.get("name") not in ["USD", "ILS"]]
+
+    items = await news_service.fetch_feed(
+        user_id=user.id,
+        start_date=start_dt,
+        end_date=end_dt,
+        keywords=set(keywords),
+        topics=set(topics),
+        max_results=2,
+    )
+
+    # Optional source filter (by domain or publisher contains)
+    if req.sources:
+        import re
+        from urllib.parse import urlparse
+        wanted = [s.strip().lower() for s in req.sources if s and s.strip()]
+        def matches_source(item: dict[str, Any]) -> bool:
+            try:
+                netloc = urlparse(item.get("url", "")).netloc.lower()
+            except Exception:
+                netloc = ""
+            publisher = (item.get("source") or "").lower()
+            for s in wanted:
+                if s in netloc or s in publisher or netloc.endswith(s):
+                    return True
+            return False
+        items = [it for it in items if matches_source(it)]
+
+    # Optional free-text filter across title/description/source/topic/domain
+    if req.q:
+        from urllib.parse import urlparse
+        needle = req.q.strip().lower()
+        def matches_q(item: dict[str, Any]) -> bool:
+            title = (item.get("title") or "").lower()
+            desc = (item.get("description") or "").lower()
+            src = (item.get("source") or "").lower()
+            topic = (item.get("topic") or "").lower()
+            try:
+                domain = urlparse(item.get("url", "")).netloc.lower()
+            except Exception:
+                domain = ""
+            return (
+                needle in title
+                or needle in desc
+                or needle in src
+                or needle in topic
+                or needle in domain
+            )
+        items = [it for it in items if matches_q(it)]
+
+    # Compute next window for older items
+    next_window = None
+    if items:
+        try:
+            oldest_str = items[-1]["publishedAt"]
+            oldest_dt = datetime.fromisoformat(str(oldest_str).replace("Z", "+00:00"))
+            next_end = oldest_dt - timedelta(seconds=1)
+            next_start = next_end - timedelta(days=7)
+            next_window = {"start_date": next_start.isoformat(), "end_date": next_end.isoformat()}
+        except Exception:
+            pass
+
+    return {
+        "items": items,
+        "next_window": next_window,
+        "used_keywords": keywords,
+        "used_topics": topics,
+    }
+
+
+class SeenRequest(BaseModel):
+    articleIds: list[str]
+
+
+# @app.post("/api/news/seen")
+# async def mark_news_seen(req: SeenRequest, user=Depends(get_current_user)):
+#     col = db_manager.get_collection("news_seen")
+#     now = datetime.utcnow().isoformat()
+#     ops = []
+#     for aid in set(req.articleIds or []):
+#         ops.append({"user_id": user.id, "article_id": aid, "seen_at": now})
+#     if ops:
+#         await col.insert_many(ops, ordered=False)
+#     return {"ok": True, "count": len(ops)}
+#
+
+class FeedbackRequest(BaseModel):
+    articleId: str
+    action: str  # like | dislike
+
+
+@app.post("/api/news/feedback")
+async def post_news_feedback(req: FeedbackRequest, user=Depends(get_current_user)):
+    if req.action not in ("like", "dislike"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+    col = db_manager.get_collection("news_feedback")
+    await col.insert_one({
+        "user_id": user.id,
+        "article_id": req.articleId,
+        "action": req.action,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+    return {"ok": True}
 
