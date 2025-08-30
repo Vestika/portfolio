@@ -83,7 +83,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
       <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
         {/* Total Value Chip */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 mb-1">
+        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
           <Wallet size={14} className="text-green-400 mr-1.5" />
           <span className="text-xs font-medium mr-1">Total:</span>
           {isValueVisible ? (
