@@ -2091,8 +2091,9 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
                         "name": getattr(sec, "name", h.symbol) if sec else h.symbol,
                         "sector": getattr(sec, "tags", {}).get("sector") if sec else None,
                     })
-        api_key = os.getenv("GEMINI_API_KEY", "")
-        if api_key:
+        api_key = os.getenv("NOT_GEMINI_API_KEY", "")
+        if api_key and False:
+            # we dont want to pay for this right now
             generator = KeywordTopicGenerator(api_key=api_key)
             try:
                 data = await generator.generate(holdings_ctx)
