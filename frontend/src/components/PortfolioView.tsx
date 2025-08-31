@@ -10,6 +10,7 @@ import {
   HoldingsTableData,
 } from '../types'
 
+
 interface PortfolioViewProps {
   portfolioMetadata: PortfolioMetadata | null
   portfolioData: PortfolioData | null
@@ -212,6 +213,7 @@ export function PortfolioView({
           <HoldingsTable
             data={holdingsData}
             isValueVisible={isValueVisible}
+            isLoading={false}
           />
         </div>
       )}

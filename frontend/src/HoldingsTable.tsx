@@ -9,6 +9,7 @@ import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
 import TagAPI from './utils/tag-api';
+import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
 
 import {
   Search,
@@ -47,6 +48,7 @@ const TAG_TYPE_INFO = {
 interface HoldingsTableProps {
   data: HoldingsTableData;
   isValueVisible: boolean;
+  isLoading?: boolean;
 }
 
 const getSecurityTypeIcon = (type: string) => {
@@ -347,7 +349,7 @@ const SortableHeader: React.FC<{
   </div>
 );
 
-const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) => {
+const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isLoading = false }) => {
   const [sortConfig, setSortConfig] = useState<{
     key: keyof SecurityHolding;
     direction: 'asc' | 'desc';
@@ -564,6 +566,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       </div>
     );
   };
+
+  // Show skeleton if loading
+  if (isLoading) {
+    return <HoldingsTableSkeleton />;
+  }
 
   return (
     <div className="w-full">
@@ -796,7 +803,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible }) =
       )}
 
       {viewMode === 'heatmap' && (
-        <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
+        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
       )}
 
       {/* Tag Editor Dialog */}

@@ -3,7 +3,14 @@ import api from './utils/api';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
-import { PortfolioHeaderSkeleton, PortfolioMainSkeleton } from './components/PortfolioSkeleton';
+import { 
+  PortfolioHeaderSkeleton, 
+  PortfolioMainSkeleton, 
+  ViewTransitionSkeleton,
+  ManageTagsViewSkeleton,
+  AIChatViewSkeleton,
+  NewsViewSkeleton
+} from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
@@ -456,11 +463,21 @@ const App: React.FC = () => {
                 />
               )
             )}
-            {activeView === 'explore' && <ExploreView />}
-            {activeView === 'news' && <NewsView />}
-            {activeView === 'analyst' && <AIChatView />}
-            {activeView === 'tags' && <ManageTagsView />}
-            {activeView === 'tools' && <ToolsView />}
+            {activeView === 'explore' && (
+              isLoading ? <ViewTransitionSkeleton /> : <ExploreView />
+            )}
+            {activeView === 'news' && (
+              isLoading ? <NewsViewSkeleton /> : <NewsView />
+            )}
+            {activeView === 'analyst' && (
+              isLoading ? <AIChatViewSkeleton /> : <AIChatView />
+            )}
+            {activeView === 'tags' && (
+              isLoading ? <ManageTagsViewSkeleton /> : <ManageTagsView />
+            )}
+            {activeView === 'tools' && (
+              isLoading ? <ViewTransitionSkeleton /> : <ToolsView />
+            )}
           </main>
         </div>
 
