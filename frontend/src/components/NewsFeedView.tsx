@@ -14,6 +14,8 @@ export default function NewsFeedView() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<NewsFiltersValue>({});
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const hasScrolledRef = useRef<boolean>(false);
+  const isFetchingRef = useRef<boolean>(false);
 
   useEffect(() => {
     // initial load
@@ -21,7 +23,8 @@ export default function NewsFeedView() {
   }, []);
 
   async function loadServerBatch() {
-    if (loading) return;
+    if (loading || isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -36,11 +39,15 @@ export default function NewsFeedView() {
       setError(e instanceof Error ? e.message : 'Failed to load news');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   }
 
   function revealMore() {
     if (buffer.length === 0) {
+      // Avoid triggering a network fetch before the user has scrolled
+      if (!hasScrolledRef.current) return;
+      if (isFetchingRef.current) return;
       void loadServerBatch();
       return;
     }
@@ -59,17 +66,28 @@ export default function NewsFeedView() {
   // Infinite scroll observer
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    // Mark that the user has interacted by scrolling at least once
+    function onScrollOnce() {
+      hasScrolledRef.current = true;
+      window.removeEventListener('scroll', onScrollOnce, true);
+    }
+    window.addEventListener('scroll', onScrollOnce, true);
+
     const el = sentinelRef.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
       for (const entry of entries) {
-        if (entry.isIntersecting) {
+        // Do not auto-load more until the user has scrolled
+        if (entry.isIntersecting && hasScrolledRef.current) {
           revealMore();
         }
       }
     });
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      window.removeEventListener('scroll', onScrollOnce, true);
+    };
   }, [buffer, items]);
 
   async function onSeen(ids: string[]) {
@@ -79,8 +97,8 @@ export default function NewsFeedView() {
   async function onFeedback(articleId: string, action: 'like' | 'dislike') {
     try {
       await sendNewsFeedback(articleId, action);
-    } catch (e) {
-      void e; // ignore UI errors
+    } catch {
+      // ignore UI errors
     }
   }
 
@@ -99,7 +117,7 @@ export default function NewsFeedView() {
     const src = (it.source || '').toLowerCase();
     const topic = (it.topic || '').toLowerCase();
     let domain = '';
-    try { domain = new URL(it.url).hostname.toLowerCase(); } catch (e) { domain = ''; }
+    try { domain = new URL(it.url).hostname.toLowerCase(); } catch { domain = ''; }
     return title.includes(q) || desc.includes(q) || src.includes(q) || topic.includes(q) || domain.includes(q);
   }) : items);
 
@@ -144,7 +162,7 @@ function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: st
   const isPlaceholder = !item.imageUrl;
   const image = item.imageUrl ?? newsPlaceholder;
   let domain = '';
-  try { domain = new URL(item.url).hostname.replace('www.', ''); } catch (e) { domain = ''; }
+  try { domain = new URL(item.url).hostname.replace('www.', ''); } catch { domain = ''; }
   const dateStr = formatDate(item.publishedAt);
   return (
     <div className="group relative overflow-hidden rounded-xl border border-gray-800 bg-gradient-to-b from-gray-900 to-black hover:border-gray-700 transition-all">
