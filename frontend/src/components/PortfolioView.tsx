@@ -9,13 +9,7 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from '../types'
-import {
-  PieChartSkeleton,
-  RSUTimelineChartSkeleton,
-  OptionsVestingChartSkeleton,
-  HoldingsTableSkeleton,
-  HoldingsHeatmapSkeleton
-} from './PortfolioSkeleton'
+
 
 interface PortfolioViewProps {
   portfolioMetadata: PortfolioMetadata | null
