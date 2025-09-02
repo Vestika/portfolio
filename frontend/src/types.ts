@@ -126,7 +126,6 @@ export interface SecurityHolding {
   currency: string;
   price_source?: string;
   historical_prices: HistoricalPrice[];
-  logo?: string;
   account_breakdown?: AccountBreakdown[];
 }
 
