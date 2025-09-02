@@ -42,6 +42,11 @@ class PriceManager:
         except Exception as e:
             logger.error(f"Error getting price for {symbol}: {e}")
             return None
+
+    async def get_logo(self, symbol: str) -> str | None:
+        from .stock_fetcher import FinnhubFetcher
+        fetcher = FinnhubFetcher(settings.finnhub_api_key)
+        return await fetcher.get_company_logo(symbol)
     
     async def get_tracked_prices(self) -> list[PriceResponse]:
         """Get latest prices for all tracked symbols"""

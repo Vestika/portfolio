@@ -30,9 +30,8 @@ import {
 
 import israelFlag from './assets/israel-flag.svg';
 import usFlag from './assets/us-flag.svg';
-import metaLogo from './assets/meta.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
-import googleLogo from './assets/google.svg';
+import smhLogo from './assets/smh.svg';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: { icon: "🏷️" },
@@ -72,33 +71,31 @@ const getSecurityTypeIcon = (type: string) => {
 };
 
 // Helper to get logo URL
-const getLogoUrl = (symbol: string, type: string) => {
-  if (symbol.toUpperCase() === 'META') {
-    // Special case: Meta Platforms logo
-    return metaLogo;
-  }
-  if (symbol.toUpperCase() === 'GOOGL' || symbol.toUpperCase() === 'GOOG') {
-    // Special case: Google logo
-    return googleLogo;
-  }
+const getLogoUrl = (holding: SecurityHolding) => {
+    const symbol = holding.symbol;
+    const type = holding.security_type;
+    if (symbol.toUpperCase() === 'SMH') {
+        return smhLogo;
+    }
+
+    if (holding.logo) {
+        return holding.logo;
+    }
+
   if (symbol.toUpperCase() === 'IBIT') {
-    // Special case: IBIT (BlackRock Bitcoin ETF) gets a Bitcoin logo
     return bitcoinLogo;
   }
+
   if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
-    // ILS or digit-only stock: Israeli flag
     return israelFlag;
   }
   if (symbol.toUpperCase() === 'USD') {
-    // USD: US flag from Wikimedia
     return usFlag;
   }
   if (type.toLowerCase() === 'crypto') {
-    // CryptoIcons uses lowercase symbols
     return `https://cryptoicons.org/api/icon/${symbol.toLowerCase()}/32`;
   }
   if (type.toLowerCase() === 'stock' || type.toLowerCase() === 'etf') {
-    // IEX Cloud logo endpoint (unofficial, fallback to placeholder on error)
     return `https://storage.googleapis.com/iex/api/logos/${symbol.toUpperCase()}.png`;
   }
   // Default icon for other types
@@ -706,7 +703,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       <div className="flex items-center gap-2">
                         {/* Logo image */}
                         {(() => {
-                          const logoUrl = getLogoUrl(holding.symbol, holding.security_type);
+                          const logoUrl = getLogoUrl(holding);
                           const isUsFlag = logoUrl === usFlag;
                           const isFlag = logoUrl === israelFlag || isUsFlag;
                           if (logoUrl) {
