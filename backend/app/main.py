@@ -563,6 +563,13 @@ async def get_holdings_table(
                     pricing_info = calculator.calc_holding_value(security, 1)
                     original_price = pricing_info["unit_price"]
                     historical_prices = fetch_historical_prices(symbol, security, original_price)
+                    
+                    # Fetch company logo from Finnhub API
+                    company_logo = None
+                    if not symbol.isdigit():  # Skip numeric symbols (TASE securities)
+                        from services.closing_price.stock_fetcher import FinnhubFetcher
+                        manager = PriceManager()
+                        company_logo = await manager.get_logo(symbol)
 
                     holdings_aggregation[symbol] = {
                         "symbol": symbol,
@@ -576,6 +583,7 @@ async def get_holdings_table(
                         "currency": portfolio.base_currency,
                         "price_source": pricing_info["price_source"],
                         "historical_prices": historical_prices,
+                        "logo": company_logo,  # Add company logo URL
                         "account_breakdown": []  # Add account breakdown array
                     }
 
@@ -611,6 +619,13 @@ async def get_holdings_table(
                             original_price = pricing_info["unit_price"]
                             historical_prices = fetch_historical_prices(symbol, security, original_price)
                             
+                            # Fetch company logo from Finnhub API
+                            company_logo = None
+                            if not symbol.isdigit():  # Skip numeric symbols (TASE securities)
+                                from services.closing_price.stock_fetcher import FinnhubFetcher
+                                manager = PriceManager()
+                                company_logo = await manager.get_logo(symbol)
+
                             holdings_aggregation[symbol] = {
                                 "symbol": symbol,
                                 "security_type": security.security_type.value,
@@ -623,6 +638,7 @@ async def get_holdings_table(
                                 "currency": portfolio.base_currency,
                                 "price_source": pricing_info["price_source"],
                                 "historical_prices": historical_prices,
+                                "logo": company_logo,  # Add company logo URL
                                 "account_breakdown": []
                             }
                         
