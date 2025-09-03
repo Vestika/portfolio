@@ -30,9 +30,8 @@ import {
 
 import israelFlag from './assets/israel-flag.svg';
 import usFlag from './assets/us-flag.svg';
-import metaLogo from './assets/meta.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
-import googleLogo from './assets/google.svg';
+import smhLogo from './assets/smh.svg';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: { icon: "🏷️" },
@@ -72,33 +71,31 @@ const getSecurityTypeIcon = (type: string) => {
 };
 
 // Helper to get logo URL
-const getLogoUrl = (symbol: string, type: string) => {
-  if (symbol.toUpperCase() === 'META') {
-    // Special case: Meta Platforms logo
-    return metaLogo;
-  }
-  if (symbol.toUpperCase() === 'GOOGL' || symbol.toUpperCase() === 'GOOG') {
-    // Special case: Google logo
-    return googleLogo;
-  }
+const getLogoUrl = (holding: SecurityHolding) => {
+    const symbol = holding.symbol;
+    const type = holding.security_type;
+    if (symbol.toUpperCase() === 'SMH') {
+        return smhLogo;
+    }
+
+    if (holding.logo) {
+        return holding.logo;
+    }
+
   if (symbol.toUpperCase() === 'IBIT') {
-    // Special case: IBIT (BlackRock Bitcoin ETF) gets a Bitcoin logo
     return bitcoinLogo;
   }
+
   if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
-    // ILS or digit-only stock: Israeli flag
     return israelFlag;
   }
   if (symbol.toUpperCase() === 'USD') {
-    // USD: US flag from Wikimedia
     return usFlag;
   }
   if (type.toLowerCase() === 'crypto') {
-    // CryptoIcons uses lowercase symbols
     return `https://cryptoicons.org/api/icon/${symbol.toLowerCase()}/32`;
   }
   if (type.toLowerCase() === 'stock' || type.toLowerCase() === 'etf') {
-    // IEX Cloud logo endpoint (unofficial, fallback to placeholder on error)
     return `https://storage.googleapis.com/iex/api/logos/${symbol.toUpperCase()}.png`;
   }
   // Default icon for other types
@@ -392,12 +389,12 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           TagAPI.getAllHoldingTags(),
           TagAPI.getUserTagLibrary()
         ]);
-        
+
         const tagsMap = allTags.reduce((acc, holdingTags) => {
           acc[holdingTags.symbol] = holdingTags;
           return acc;
         }, {} as Record<string, HoldingTags>);
-        
+
         setStructuredTags(tagsMap);
         setTagLibrary(library);
       } catch (error) {
@@ -490,7 +487,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const handleAddTag = async (symbol: string, tagName: string) => {
     if (!tagLibrary) return;
-    
+
     const tagDefinition = tagLibrary.tag_definitions[tagName];
     if (tagDefinition) {
       setEditingTag({ symbol, definition: tagDefinition });
@@ -499,7 +496,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const handleSaveTag = async (tagValue: any) => {
     if (!editingTag) return;
-    
+
     try {
       await TagAPI.setHoldingTag(editingTag.symbol, tagValue.tag_name, tagValue);
       await handleTagsUpdated();
@@ -527,7 +524,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
             showRemoveButtons={showManagementControls}
           />
         )}
-        
+
         {showManagementControls && userDefinedTags.length > 0 && (
           <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
             <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
@@ -540,10 +537,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   // Don't show tags that are already assigned
                   const isAlreadyAssigned = structuredTag && structuredTag.tags[tagDef.name];
                   if (isAlreadyAssigned) return null;
-                  
+
                   return (
-                    <SelectItem 
-                      key={tagDef.name} 
+                    <SelectItem
+                      key={tagDef.name}
                       value={tagDef.name}
                       className="text-gray-200 hover:bg-gray-700/50 focus:bg-gray-700/50 cursor-pointer rounded-md"
                     >
@@ -598,9 +595,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
             </div>
           )}
         </div>
-        
+
         {/* View Toggle */}
-        <div 
+        <div
           onClick={() => setViewMode(viewMode === 'table' ? 'heatmap' : 'table')}
           className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
         >
@@ -706,7 +703,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       <div className="flex items-center gap-2">
                         {/* Logo image */}
                         {(() => {
-                          const logoUrl = getLogoUrl(holding.symbol, holding.security_type);
+                          const logoUrl = getLogoUrl(holding);
                           const isUsFlag = logoUrl === usFlag;
                           const isFlag = logoUrl === israelFlag || isUsFlag;
                           if (logoUrl) {
