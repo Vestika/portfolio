@@ -42,6 +42,16 @@ class PriceManager:
         except Exception as e:
             logger.error(f"Error getting price for {symbol}: {e}")
             return None
+
+    async def get_logo(self, symbol: str) -> str | None:
+        """Get company logo URL using the logo cache service"""
+        try:
+            from core.logo_cache_service import LogoCacheService
+            cache_service = LogoCacheService()
+            return await cache_service.get_logo(symbol)
+        except Exception as e:
+            logger.error(f"Error getting logo for {symbol}: {e}")
+            return None
     
     async def get_tracked_prices(self) -> list[PriceResponse]:
         """Get latest prices for all tracked symbols"""

@@ -2,6 +2,7 @@ from .base_model import BaseFeatureModel, FeatureConfig, AuthType
 from pydantic import Field
 from typing import Optional, List
 from enum import Enum
+from datetime import datetime
 
 
 class SymbolType(str, Enum):
@@ -28,6 +29,10 @@ class Symbol(BaseFeatureModel):
     market: Optional[str] = Field(None, description="Market/exchange")
     sector: Optional[str] = Field(None, description="Industry sector")
     is_active: bool = Field(default=True, description="Whether the symbol is active")
+    
+    # Logo caching fields
+    logo_url: Optional[str] = Field(None, description="Cached logo URL for the symbol")
+    logo_updated_at: Optional[datetime] = Field(None, description="When the logo was last updated")
 
     @classmethod
     def get_feature_config(cls) -> FeatureConfig:
