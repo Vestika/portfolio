@@ -27,6 +27,7 @@ growthbook.init({
 // Feature flag definitions
 export const FEATURE_FLAGS = {
   aiChat: 'aiChat',
+  frontendPortfolioCalc: 'frontendPortfolioCalc',
 } as const;
 
 export type FeatureFlags = typeof FEATURE_FLAGS;

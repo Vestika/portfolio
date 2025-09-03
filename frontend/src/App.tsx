@@ -28,6 +28,10 @@ import {
   PortfolioData,
   HoldingsTableData,
 } from './types';
+import { useFrontendPortfolioCalcFlag } from './hooks/useFeatureFlag';
+import { computeHoldingsTable, computeBreakdownsFromHoldings, rescaleChartToTotal } from './utils/portfolio-calc';
+import type { PortfolioCalcInputs } from './utils/portfolio-calc';
+import { fetchQuotesAndFx } from './utils/price-fetcher';
 
 function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
   if (!err || typeof err !== 'object') return false;
@@ -60,6 +64,8 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
+
+  const useFrontendCalc = useFrontendPortfolioCalcFlag();
 
   // Get default portfolio from backend API
   const getDefaultPortfolio = async (): Promise<string | null> => {
@@ -126,7 +132,7 @@ const App: React.FC = () => {
       const metadata = await api.get(`/portfolio?portfolio_id=${selectedPortfolioId}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
-      return metadata.data;
+      return metadata.data as PortfolioMetadata;
     } catch (err: unknown) {
       if (isAxiosErrorWithStatus(err, 404)) {
         // Portfolio not found, try to select first available portfolio
@@ -143,27 +149,51 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchPortfolioBreakdown = async (accountNames: string[] | null = null) => {
+  const fetchPortfolioBreakdown = async (accountNames: string[] | null = null, metadataOverride?: PortfolioMetadata) => {
     if (!selectedPortfolioId) {
       console.warn('No portfolio selected, skipping breakdown fetch');
       return;
     }
     
     try {
-      const params = new URLSearchParams();
-      params.append('portfolio_id', selectedPortfolioId);
-      if (accountNames) {
-        accountNames.forEach(name => params.append('account_names', name));
+      const effectiveMetadata = metadataOverride || portfolioMetadata;
+      if (useFrontendCalc && effectiveMetadata) {
+        // Compute on the client using metadata accounts
+        const selected = (accountNames && accountNames.length > 0)
+          ? effectiveMetadata.accounts.filter(a => accountNames.includes(a.account_name))
+          : effectiveMetadata.accounts;
+
+        const inputs = {
+          baseCurrency: effectiveMetadata.base_currency,
+          accounts: selected,
+        };
+
+        // Enrich with quotes/FX for more accurate totals
+        const allSymbols = Array.from(new Set(selected.flatMap(a => (a.holdings || []).map(h => h.symbol))));
+        const { quotesBySymbol, fxByPair } = await fetchQuotesAndFx(effectiveMetadata.base_currency, allSymbols);
+        const enrichedInputs: PortfolioCalcInputs = { ...inputs, quotesBySymbol, fxByPair } as unknown as PortfolioCalcInputs;
+
+        const holdings = computeHoldingsTable(enrichedInputs);
+        const breakdownsRaw = computeBreakdownsFromHoldings(enrichedInputs.baseCurrency, holdings.holdings);
+
+        // Align chart totals with header total (sum of accounts) to avoid small drifts due to missing FX/quotes
+        const headerTotal = (effectiveMetadata.accounts || []).reduce((s, a) => s + (a.account_total || 0), 0);
+        const breakdowns = breakdownsRaw.map((b, idx) => idx === 0 ? rescaleChartToTotal(b, headerTotal) : b);
+        setHoldingsData(holdings);
+        setPortfolioData(breakdowns);
+      } else {
+        const params = new URLSearchParams();
+        params.append('portfolio_id', selectedPortfolioId);
+        if (accountNames) {
+          accountNames.forEach(name => params.append('account_names', name));
+        }
+        const [breakdownResponse, holdingsResponse] = await Promise.all([
+          api.get(`/portfolio/breakdown?${params}`),
+          api.get(`/portfolio/holdings?${params}`)
+        ]);
+        setPortfolioData(breakdownResponse.data);
+        setHoldingsData(holdingsResponse.data);
       }
-
-      // Make both API calls in parallel instead of sequential
-      const [breakdownResponse, holdingsResponse] = await Promise.all([
-        api.get(`/portfolio/breakdown?${params}`),
-        api.get(`/portfolio/holdings?${params}`)
-      ]);
-
-      setPortfolioData(breakdownResponse.data);
-      setHoldingsData(holdingsResponse.data);
       setIsLoading(false);
     } catch (err: unknown) {
       if (isAxiosErrorWithStatus(err, 404)) {
@@ -194,8 +224,8 @@ const App: React.FC = () => {
       
       try {
         setIsLoading(true);
-        await fetchPortfolioMetadata();
-        await fetchPortfolioBreakdown(null);
+        const md = await fetchPortfolioMetadata();
+        await fetchPortfolioBreakdown(null, md || undefined);
       } catch (err) {
         console.error(err);
       }

@@ -11,3 +11,8 @@ export const useAIChatFlag = () => {
   const feature = useFeature('aiChat');
   return feature.value;
 }; 
+
+export const useFrontendPortfolioCalcFlag = () => {
+  const feature = useFeature('frontendPortfolioCalc');
+  return true;
+};
