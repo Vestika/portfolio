@@ -98,47 +98,6 @@ class FinnhubFetcher(StockFetcher):
             logger.error(f"Error fetching US market status: {e}")
             return {"us_market_status": "unknown"}
 
-    async def get_company_profile(self, symbol: str) -> Optional[dict[str, Any]]:
-        """Get company profile information including logo URL"""
-        if not self.api_key:
-            logger.error("Finnhub API key not configured")
-            return None
-            
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://finnhub.io/api/v1/stock/profile2",
-                    params={"symbol": symbol, "token": self.api_key},
-                    timeout=self.timeout
-                )
-                response.raise_for_status()
-                
-                data = response.json()
-                if data and isinstance(data, dict) and len(data) > 0:
-                    logger.info(f"Successfully fetched company profile for {symbol}")
-                    return data
-                else:
-                    logger.warning(f"No company profile found for symbol: {symbol}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Error fetching company profile for {symbol}: {e}")
-            return None
-
-    async def get_company_logo(self, symbol: str) -> Optional[str]:
-        """Get company logo URL for a given symbol"""
-        profile = await self.get_company_profile(symbol)
-        if profile and 'logo' in profile:
-            return profile['logo']
-        return None
-
-    async def get_company_name(self, symbol: str) -> Optional[str]:
-        """Get company name for a given symbol"""
-        profile = await self.get_company_profile(symbol)
-        if profile and 'name' in profile:
-            return profile['name']
-        return None
-
 
 class TaseFetcher(StockFetcher):
     """Fetcher for TASE stocks using pymaya"""
