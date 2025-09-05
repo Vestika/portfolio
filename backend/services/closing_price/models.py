@@ -31,6 +31,7 @@ class StockPrice(BaseModel):
     market: Literal["US", "TASE"]
     fetched_at: datetime
     date: str  # Trading date in YYYY-MM-DD format
+    change_percent: float | None = None
     
     @field_validator('id', mode='before')
     @classmethod
@@ -73,6 +74,7 @@ class PriceResponse(BaseModel):
     """Response model for price data"""
     symbol: str
     price: float
+    change_percent: float | None = None
     currency: str
     market: str
     date: str

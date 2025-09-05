@@ -25,7 +25,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
     const holdingsWithPerformance = stockHoldings.map(holding => {
       // Use percent_change from quotes if available
       const quote = quotes && quotes[holding.symbol];
-      const percentChange = quote && typeof quote.percent_change === 'number' ? quote.percent_change : 0;
+      const percentChange = quote && typeof quote.change_percent === 'number' ? quote.change_percent : 0;
       return {
         ...holding,
         performance: percentChange
@@ -59,8 +59,8 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
 
       // Safely access quotes and format values
       const quote = quotes && quotes[holding.symbol];
-      const percentChange = quote && typeof quote.percent_change === 'number'
-        ? quote.percent_change.toFixed(2)
+      const percentChange = quote && typeof quote.change_percent === 'number'
+        ? quote.change_percent.toFixed(2)
         : 'N/A';
       const currentPrice = quote && typeof quote.current_price === 'number'
         ? quote.current_price.toFixed(2)

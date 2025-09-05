@@ -240,7 +240,7 @@ async def fetch_quotes(symbols: list[str]) -> dict[str, dict]:
                     results[symbol] = {
                         "current_price": data.get("c"),
                         "change": data.get("d"),
-                        "percent_change": data.get("dp"),
+                        "change_percent": data.get("dp"),
                         "high": data.get("h"),
                         "low": data.get("l"),
                         "open": data.get("o"),

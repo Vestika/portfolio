@@ -1076,9 +1076,34 @@ async def get_market_status(user=Depends(get_current_user)):
 
 
 @app.get("/quotes")
-async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols"), user=Depends(get_current_user)):
-    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    return await fetch_quotes(symbol_list)
+async def get_quotes(
+    symbols: str = Query(..., description="Comma-separated list of symbols"),
+    use_manager: bool = Query(True, description="If true, use PriceManager instead of legacy fetcher"),
+    fresh: bool = Query(False, description="If true, bypass cache and fetch fresh prices"),
+    user=Depends(get_current_user)
+):
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        return {}
+
+    if not use_manager and not fresh:
+        # legacy fast path via Finnhub direct batch fetch (preserves old behavior)
+        return await fetch_quotes(symbol_list)
+
+    # Use PriceManager for richer behavior and fresh option
+    manager = PriceManager()
+    prices = await manager.get_prices(symbol_list, fresh=fresh)
+
+    # Map to frontend-expected shape: {symbol: {current_price, percent_change, ...}}
+    # Note: PriceManager returns PriceResponse lacking change fields; we return minimal shape.
+    result: dict[str, dict] = {}
+    for p in prices:
+        result[p.symbol] = {
+            "current_price": p.price,
+            "change_percent": p.change_percent,
+            "last_updated": p.fetched_at.isoformat()
+        }
+    return result
 
 
 @app.get("/symbols/autocomplete")
