@@ -224,7 +224,7 @@ export interface TagLibrary {
 export interface Quote {
   symbol: string;
   current_price: number;
-  change_percent: number;
+  percent_change: number;
   last_updated: string;
 }
 
