@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, Quote, HoldingTags, TagDefinition, TagLibrary, TagType } from './types';
+import { SecurityHolding, HoldingsTableData, HoldingTags, TagDefinition, TagLibrary, TagType, TagValue } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
-import api from './utils/api';
+import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
@@ -371,53 +371,95 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
-  // Fetch live quotes for holdings
-  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
-  React.useEffect(() => {
-    const symbols = data.holdings.map(h => h.symbol).join(',');
-    if (!symbols) return;
-    api.get(`/quotes?symbols=${symbols}`)
-      .then(res => setQuotes(res.data))
-      .catch(() => setQuotes({}));
-  }, [data.holdings]);
+  // Get tags and quotes from context (no more API calls needed!)
+  const { getUserTagLibrary, getHoldingTagsBySymbol, refreshAllPortfoliosData } = usePortfolioData();
+  
+  console.log('🏷️ [HOLDINGS TABLE] Component initialized - checking tag utilities availability');
 
-  // Load structured tags and tag library for all holdings
+  // Load tags from context instead of API calls
   useEffect(() => {
-    const loadTagData = async () => {
-      try {
-        const [allTags, library] = await Promise.all([
-          TagAPI.getAllHoldingTags(),
-          TagAPI.getUserTagLibrary()
-        ]);
-
-        const tagsMap = allTags.reduce((acc, holdingTags) => {
-          acc[holdingTags.symbol] = holdingTags;
-          return acc;
-        }, {} as Record<string, HoldingTags>);
-
-        setStructuredTags(tagsMap);
+    console.log('🏷️ [HOLDINGS TABLE] === DEBUGGING TAGS LOADING ===');
+    console.log('🏷️ [HOLDINGS TABLE] Holdings data received:', {
+      totalHoldings: data.holdings.length,
+      sampleHolding: data.holdings[0],
+      holdingsWithTagsObjects: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
+      firstHoldingWithTags: data.holdings.find(h => h.tags && Object.keys(h.tags).length > 0),
+      allHoldingSymbols: data.holdings.map(h => h.symbol)
+    });
+    
+    try {
+      // Get tag library from context with comprehensive debugging
+      console.log('📚 [HOLDINGS TABLE] Calling getUserTagLibrary()...');
+      const library = getUserTagLibrary();
+      
+      console.log('📚 [HOLDINGS TABLE] Tag library result:', {
+        libraryExists: !!library,
+        libraryType: typeof library,
+        libraryKeys: library ? Object.keys(library) : 'No library',
+        hasTagDefinitions: !!(library?.tag_definitions),
+        tagDefinitionsCount: library?.tag_definitions ? Object.keys(library.tag_definitions).length : 0,
+        tagDefinitionsSample: library?.tag_definitions ? Object.keys(library.tag_definitions).slice(0, 3) : 'No definitions',
+        rawLibrary: library
+      });
+      
+      // Set tag library (needed for add tag functionality)
+      if (library && typeof library === 'object') {
         setTagLibrary(library);
-      } catch (error) {
-        console.error('Error loading tag data:', error);
+        console.log('✅ [HOLDINGS TABLE] Tag library set successfully');
+      } else {
+        console.log('⚠️ [HOLDINGS TABLE] Using fallback tag library');
+        setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       }
-    };
-
-    if (data.holdings.length > 0) {
-      loadTagData();
+      
+      // Get structured holding tags from context for all symbols
+      console.log('🏷️ [HOLDINGS TABLE] Loading structured tags from context...');
+      const tagsMap: Record<string, HoldingTags> = {};
+      
+      data.holdings.forEach((holding, index) => {
+        console.log(`🔍 [HOLDINGS TABLE] Checking tags for holding ${index + 1}/${data.holdings.length}: ${holding.symbol}`);
+        
+        const holdingTags = getHoldingTagsBySymbol(holding.symbol);
+        console.log(`   Context result for ${holding.symbol}:`, {
+          found: !!holdingTags,
+          hasTagsObject: !!(holdingTags?.tags),
+          tagNames: holdingTags?.tags ? Object.keys(holdingTags.tags) : 'No tags'
+        });
+        
+        if (holdingTags && typeof holdingTags === 'object') {
+          tagsMap[holding.symbol] = holdingTags;
+        }
+      });
+      
+      setStructuredTags(tagsMap);
+      
+      console.log('✅ [HOLDINGS TABLE] === TAGS LOADING SUMMARY ===');
+      console.log('📊 [HOLDINGS TABLE] Final tags state:', {
+        tagLibrarySet: !!tagLibrary,
+        tagDefinitionsAvailable: Object.keys(tagLibrary?.tag_definitions || {}).length,
+        structuredTagsLoaded: Object.keys(tagsMap).length,
+        structuredTagSymbols: Object.keys(tagsMap),
+        willShowAddButton: Object.keys(library?.tag_definitions || {}).length > 0,
+        holdingsWithDirectTags: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
+        holdingsWithDirectTagsSample: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).map(h => ({
+          symbol: h.symbol,
+          tags: Object.keys(h.tags || {})
+        }))
+      });
+      
+    } catch (error) {
+      console.error('❌ [HOLDINGS TABLE] Error loading tags from context:', error);
+      setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
+      setStructuredTags({});
     }
-  }, [data.holdings]);
+  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
 
-  // Handle tag updates
+  // Handle tag updates (refresh all data to get updated tags)
   const handleTagsUpdated = async () => {
     try {
-      const allTags = await TagAPI.getAllHoldingTags();
-      const tagsMap = allTags.reduce((acc, holdingTags) => {
-        acc[holdingTags.symbol] = holdingTags;
-        return acc;
-      }, {} as Record<string, HoldingTags>);
-      setStructuredTags(tagsMap);
+      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing all portfolios data to get latest tags');
+      await refreshAllPortfoliosData();
     } catch (error) {
-      console.error('Error reloading tags:', error);
+      console.error('Error refreshing data after tag update:', error);
     }
   };
 
@@ -508,28 +550,113 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   };
 
   const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
-    const structuredTag = structuredTags[holding.symbol];
-    const userDefinedTags = tagLibrary ? Object.values(tagLibrary.tag_definitions) : [];
+    const structuredTag = structuredTags?.[holding.symbol];
+    
+    // Get tags from holding data (should contain merged tags from context)
+    const tagsToDisplay = holding.tags;
+    
+    // Debug tag display process  
+    if (tagsToDisplay && Object.keys(tagsToDisplay).length > 0) {
+      const hasProperStructure = Object.values(tagsToDisplay).every(tag => 
+        typeof tag === 'object' && tag !== null && 'tag_type' in tag
+      );
+      
+      console.log(`🏷️ [HOLDINGS TABLE] Processing tags for ${holding.symbol}:`, {
+        tagCount: Object.keys(tagsToDisplay).length,
+        tagNames: Object.keys(tagsToDisplay),
+        hasProperTagValueStructure: hasProperStructure,
+        sampleTag: Object.values(tagsToDisplay)[0],
+        willShowTagDisplay: hasProperStructure
+      });
+      
+      if (!hasProperStructure) {
+        console.log(`⚠️ [HOLDINGS TABLE] Tags for ${holding.symbol} have incorrect structure:`, tagsToDisplay);
+      }
+    } else {
+      console.log(`🔍 [HOLDINGS TABLE] No tags to display for ${holding.symbol}:`, {
+        holdingHasTags: !!(holding.tags && Object.keys(holding.tags).length > 0),
+        holdingTagsType: typeof holding.tags,
+        holdingTagsValue: holding.tags
+      });
+    }
+    
+    // Safely get user defined tags with multiple null checks and debugging
+    let userDefinedTags: TagDefinition[] = [];
+    console.log(`🔧 [HOLDINGS TABLE] Processing tag library for ${holding.symbol}:`, {
+      hasTagLibrary: !!tagLibrary,
+      tagLibraryType: typeof tagLibrary,
+      hasTagDefinitions: !!(tagLibrary?.tag_definitions),
+      tagDefinitionsType: typeof tagLibrary?.tag_definitions,
+      tagDefinitionsCount: tagLibrary?.tag_definitions ? Object.keys(tagLibrary.tag_definitions).length : 0
+    });
+    
+    try {
+      if (tagLibrary && 
+          typeof tagLibrary === 'object' && 
+          tagLibrary.tag_definitions && 
+          typeof tagLibrary.tag_definitions === 'object') {
+        userDefinedTags = Object.values(tagLibrary.tag_definitions);
+        console.log(`✅ [HOLDINGS TABLE] Found ${userDefinedTags.length} user defined tags for add button`);
+      } else {
+        console.log(`⚠️ [HOLDINGS TABLE] Tag library structure invalid for add button - no user defined tags available`);
+      }
+    } catch (e) {
+      console.error('❌ [HOLDINGS TABLE] Error processing tag library:', e);
+      userDefinedTags = [];
+    }
 
     return (
       <div className="flex items-center gap-2 group">
-        {structuredTag && Object.keys(structuredTag.tags).length > 0 && (
-          <TagDisplay
-            tags={structuredTag.tags}
-            maxTags={0}
-            compact={isMobile}
-            onTagClick={(tagName) => handleTagClick(tagName)}
-            activeFilter={tagFilter}
-            onRemoveTag={showManagementControls ? (tagName) => handleRemoveTag(holding.symbol, tagName) : undefined}
-            showRemoveButtons={showManagementControls}
-          />
-        )}
+        {(() => {
+          // Filter to only include proper TagValue objects
+          if (!tagsToDisplay || Object.keys(tagsToDisplay).length === 0) return null;
+          
+          const properTagValues: Record<string, TagValue> = {};
+          Object.entries(tagsToDisplay).forEach(([tagName, tagValue]) => {
+            if (typeof tagValue === 'object' && tagValue !== null && 'tag_type' in tagValue) {
+              properTagValues[tagName] = tagValue as TagValue;
+            } else {
+              console.log(`⚠️ [HOLDINGS TABLE] Skipping invalid tag for ${holding.symbol}: ${tagName}`, tagValue);
+            }
+          });
+          
+          if (Object.keys(properTagValues).length === 0) return null;
+          
+          console.log(`✅ [HOLDINGS TABLE] Rendering ${Object.keys(properTagValues).length} valid tags for ${holding.symbol}`);
+          
+          return (
+            <TagDisplay
+              tags={properTagValues}
+              maxTags={0}
+              compact={isMobile}
+              onTagClick={(tagName) => handleTagClick(tagName)}
+              activeFilter={tagFilter}
+              onRemoveTag={showManagementControls ? (tagName) => handleRemoveTag(holding.symbol, tagName) : undefined}
+              showRemoveButtons={showManagementControls}
+            />
+          );
+        })()}
 
-        {showManagementControls && userDefinedTags.length > 0 && (
-          <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
-            <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
-              <Plus size={14} className="text-gray-400 hover:text-blue-400" />
-            </SelectTrigger>
+        {(() => {
+          const shouldShowAddButton = showManagementControls && userDefinedTags.length > 0;
+          console.log(`🔧 [HOLDINGS TABLE] Add tag button decision for ${holding.symbol}:`, {
+            showManagementControls,
+            userDefinedTagsLength: userDefinedTags.length,
+            shouldShowAddButton,
+            userDefinedTagsSample: userDefinedTags.slice(0, 2).map(tag => tag.name)
+          });
+          
+          if (!shouldShowAddButton) {
+            console.log(`❌ [HOLDINGS TABLE] NOT showing add button for ${holding.symbol} - missing requirements`);
+            return null;
+          }
+          
+          console.log(`✅ [HOLDINGS TABLE] Showing add button for ${holding.symbol}`);
+          return (
+            <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
+              <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
+                <Plus size={14} className="text-gray-400 hover:text-blue-400" />
+              </SelectTrigger>
             <SelectContent className="bg-gray-800 border-gray-600/30 backdrop-blur-sm shadow-lg">
               <div className="p-2">
                 <p className="text-xs text-gray-400 mb-2 px-2">Add tag to {holding.symbol}:</p>
@@ -558,8 +685,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 )}
               </div>
             </SelectContent>
-          </Select>
-        )}
+            </Select>
+          );
+        })()}
       </div>
     );
   };
@@ -800,7 +928,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       )}
 
       {viewMode === 'heatmap' && (
-        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
+        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} />
       )}
 
       {/* Tag Editor Dialog */}

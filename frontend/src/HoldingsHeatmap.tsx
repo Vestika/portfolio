@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { HoldingsTableData, Quote } from './types';
+import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
 
 import 'highcharts/modules/treemap';
@@ -10,22 +11,55 @@ import 'highcharts/modules/accessibility';
 interface HoldingsHeatmapProps {
   data: HoldingsTableData;
   isValueVisible: boolean;
-  quotes?: Record<string, Quote>;
 }
 
-const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible, quotes }) => {
+const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible }) => {
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const { getQuoteBySymbol } = usePortfolioData();
+
+  // Get quotes from context for compatibility
+  const quotes = useMemo((): Record<string, Quote> => {
+    const quotesFromContext: Record<string, Quote> = {};
+
+    data.holdings.forEach(holding => {
+      const quote = getQuoteBySymbol(holding.symbol);
+      if (quote) {
+        quotesFromContext[holding.symbol] = {
+          symbol: quote.symbol,
+          current_price: quote.current_price,
+          percent_change: quote.percent_change,
+          last_updated: quote.last_updated
+        };
+      }
+    });
+
+    return quotesFromContext;
+  }, [data.holdings, getQuoteBySymbol]);
 
   const chartOptions = useMemo(() => {
+    console.log('🌡️ [HEATMAP] Processing data:', {
+      totalHoldings: data.holdings.length,
+      quotesAvailable: Object.keys(quotes).length,
+      sampleQuotes: Object.keys(quotes).slice(0, 3),
+      holdingTypes: [...new Set(data.holdings.map(h => h.security_type.toLowerCase()))]
+    });
+
     // Filter to only include stocks and securities with historical data
     const stockHoldings = data.holdings.filter(holding =>
       holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf'
     );
 
+    console.log('🎯 [HEATMAP] Stock/ETF holdings filtered:', {
+      originalCount: data.holdings.length,
+      stockETFCount: stockHoldings.length,
+      filtered: stockHoldings.map(h => `${h.symbol} (${h.security_type})`)
+    });
+
     const holdingsWithPerformance = stockHoldings.map(holding => {
       // Use percent_change from quotes if available
       const quote = quotes && quotes[holding.symbol];
       const percentChange = quote && typeof quote.change_percent === 'number' ? quote.change_percent : 0;
+      console.log(`📈 [HEATMAP] Performance for ${holding.symbol}: ${percentChange}% (quote available: ${!!quote})`);
       return {
         ...holding,
         performance: percentChange
@@ -59,7 +93,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
 
       // Safely access quotes and format values
       const quote = quotes && quotes[holding.symbol];
-      const percentChange = quote && typeof quote.change_percent === 'number'
+      const percentChange = quote && typeof quote.percent_change === 'number'
         ? quote.change_percent.toFixed(2)
         : 'N/A';
       const currentPrice = quote && typeof quote.current_price === 'number'
@@ -82,14 +116,13 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
       };
     });
 
-    console.log('Color values:', holdingsData.map(h => h.colorKey));
-    console.log('ColorAxis config:', {
+    const colorAxis = {
       minColor: '#f73539',
       maxColor: '#2ecc59',
       min: -10,
       max: 10,
-      stops: [[0, '#f73539'], [0.5, '#414555'], [1, '#2ecc59']]
-    });
+      stops: [[0, '#f73539'], [0.5, '#414555'], [1, '#2ecc59']] as [number, string][]
+    };
 
     const allData = holdingsData;
 
@@ -193,18 +226,24 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
         buttonOptions: {
           symbolStroke: '#9ca3af'
         }
-      }
+      },
+      colorAxis: colorAxis
     };
 
     return options;
   }, [data, isValueVisible, quotes, isMobile]);
 
-  // Filter to only include stocks with historical data
+  // Filter to only include stocks (don't require historical data since we use quotes for performance)
   const stockHoldings = data.holdings.filter(holding =>
-    (holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf') &&
-    holding.historical_prices &&
-    holding.historical_prices.length >= 2
+    holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf'
   );
+
+  console.log('🔍 [HEATMAP] Final stock holdings check:', {
+    totalHoldings: data.holdings.length,
+    stockHoldings: stockHoldings.length,
+    quotesCount: quotes ? Object.keys(quotes).length : 0,
+    willShowHeatmap: stockHoldings.length > 0
+  });
 
   if (stockHoldings.length === 0) {
     return (
@@ -217,7 +256,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible,
           </div>
           <h3 className="text-lg font-medium text-gray-200 mb-2">No Stock Data Available</h3>
           <p className="text-sm text-gray-400">
-            The heatmap requires stocks with historical price data to display performance.
+            The heatmap displays stocks and ETFs with live performance data from market quotes.
           </p>
         </div>
       </div>
