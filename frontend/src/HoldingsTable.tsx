@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, Quote, HoldingTags, TagDefinition, TagLibrary, TagType } from './types';
+import { SecurityHolding, HoldingsTableData, HoldingTags, TagDefinition, TagLibrary, TagType } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
-import api from './utils/api';
+import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
@@ -371,53 +371,61 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
-  // Fetch live quotes for holdings
-  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
-  React.useEffect(() => {
-    const symbols = data.holdings.map(h => h.symbol).join(',');
-    if (!symbols) return;
-    api.get(`/quotes?symbols=${symbols}`)
-      .then(res => setQuotes(res.data))
-      .catch(() => setQuotes({}));
-  }, [data.holdings]);
+  // Get tags and quotes from context (no more API calls needed!)
+  const { getUserTagLibrary, getHoldingTagsBySymbol } = usePortfolioData();
 
-  // Load structured tags and tag library for all holdings
+  // Load tags from context instead of API calls
   useEffect(() => {
-    const loadTagData = async () => {
-      try {
-        const [allTags, library] = await Promise.all([
-          TagAPI.getAllHoldingTags(),
-          TagAPI.getUserTagLibrary()
-        ]);
-
-        const tagsMap = allTags.reduce((acc, holdingTags) => {
-          acc[holdingTags.symbol] = holdingTags;
-          return acc;
-        }, {} as Record<string, HoldingTags>);
-
-        setStructuredTags(tagsMap);
+    console.log('🏷️ [HOLDINGS TABLE] Loading tags from context');
+    
+    try {
+      // Get tag library from context with safety checks
+      const library = getUserTagLibrary();
+      console.log('🏷️ [HOLDINGS TABLE] Raw library from context:', library);
+      
+      // Ensure library has the expected structure
+      if (library && typeof library === 'object') {
         setTagLibrary(library);
-      } catch (error) {
-        console.error('Error loading tag data:', error);
+      } else {
+        console.log('⚠️ [HOLDINGS TABLE] Tag library not properly structured, using fallback');
+        setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       }
-    };
-
-    if (data.holdings.length > 0) {
-      loadTagData();
+      
+      // Get holding tags from context for all symbols
+      const tagsMap: Record<string, HoldingTags> = {};
+      data.holdings.forEach(holding => {
+        const holdingTags = getHoldingTagsBySymbol(holding.symbol);
+        if (holdingTags && typeof holdingTags === 'object') {
+          tagsMap[holding.symbol] = holdingTags;
+        }
+      });
+      
+      setStructuredTags(tagsMap);
+      
+      console.log('✅ [HOLDINGS TABLE] Tags loaded from context:', {
+        tagLibraryDefined: !!library,
+        tagDefinitions: Object.keys(library?.tag_definitions || {}).length,
+        holdingTagsLoaded: Object.keys(tagsMap).length
+      });
+      
+    } catch (error) {
+      console.error('❌ [HOLDINGS TABLE] Error loading tags from context:', error);
+      // Set safe fallbacks
+      setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
+      setStructuredTags({});
     }
-  }, [data.holdings]);
+  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
 
-  // Handle tag updates
+  // Get refresh function from context
+  const { refreshAllPortfoliosData } = usePortfolioData();
+
+  // Handle tag updates (refresh all data to get updated tags)
   const handleTagsUpdated = async () => {
     try {
-      const allTags = await TagAPI.getAllHoldingTags();
-      const tagsMap = allTags.reduce((acc, holdingTags) => {
-        acc[holdingTags.symbol] = holdingTags;
-        return acc;
-      }, {} as Record<string, HoldingTags>);
-      setStructuredTags(tagsMap);
+      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing all portfolios data to get latest tags');
+      await refreshAllPortfoliosData();
     } catch (error) {
-      console.error('Error reloading tags:', error);
+      console.error('Error refreshing data after tag update:', error);
     }
   };
 
@@ -508,12 +516,28 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   };
 
   const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
-    const structuredTag = structuredTags[holding.symbol];
-    const userDefinedTags = tagLibrary ? Object.values(tagLibrary.tag_definitions) : [];
+    const structuredTag = structuredTags?.[holding.symbol];
+    
+    // Safely get user defined tags with multiple null checks
+    let userDefinedTags: TagDefinition[] = [];
+    try {
+      if (tagLibrary && 
+          typeof tagLibrary === 'object' && 
+          tagLibrary.tag_definitions && 
+          typeof tagLibrary.tag_definitions === 'object') {
+        userDefinedTags = Object.values(tagLibrary.tag_definitions);
+      }
+    } catch (e) {
+      console.error('🏷️ [HOLDINGS TABLE] Error processing tag library:', e);
+      userDefinedTags = [];
+    }
 
     return (
       <div className="flex items-center gap-2 group">
-        {structuredTag && Object.keys(structuredTag.tags).length > 0 && (
+        {structuredTag && 
+         structuredTag.tags && 
+         typeof structuredTag.tags === 'object' && 
+         Object.keys(structuredTag.tags).length > 0 && (
           <TagDisplay
             tags={structuredTag.tags}
             maxTags={0}
@@ -800,7 +824,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       )}
 
       {viewMode === 'heatmap' && (
-        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} quotes={quotes} />
+        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} />
       )}
 
       {/* Tag Editor Dialog */}

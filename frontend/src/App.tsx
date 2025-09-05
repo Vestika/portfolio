@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import api from './utils/api';
+import React, { useState, useEffect, useCallback } from 'react';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
@@ -20,230 +19,155 @@ import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { useAuth } from './contexts/AuthContext';
+import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { signOutUser } from './firebase';
 import {
   PortfolioMetadata,
-  PortfolioFile,
-  AccountInfo,
   PortfolioData,
   HoldingsTableData,
 } from './types';
-
-function isAxiosErrorWithStatus(err: unknown, status: number): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const maybeResponse = (err as { response?: { status?: number } }).response;
-  return !!(
-    maybeResponse &&
-    typeof maybeResponse === 'object' &&
-    'status' in maybeResponse &&
-    maybeResponse.status === status
-  );
-}
 
 const HEADER_HEIGHT = 128; // px, adjust if needed
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
+  
+  // Use the new ALL portfolios data context
+  const { 
+    isLoading: portfolioLoading, 
+    error: portfolioError, 
+    selectedPortfolioId,
+    setSelectedPortfolioId,
+    selectedAccountNames,
+    setSelectedAccountNames,
+    currentPortfolioData,
+    computedData,
+    loadAllPortfoliosData,
+    refreshAllPortfoliosData,
+    getAvailablePortfolios,
+    getOptionsVestingByAccount
+  } = usePortfolioData();
 
-  const [portfolioMetadata, setPortfolioMetadata] = useState<PortfolioMetadata | null>(null);
-  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Local state for UI and navigation
   const [isValueVisible, setIsValueVisible] = useState(true);
-  const [availablePortfolios, setAvailablePortfolios] = useState<PortfolioFile[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>("");
-  const [holdingsData, setHoldingsData] = useState<HoldingsTableData | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
 
-  // Get default portfolio from backend API
-  const getDefaultPortfolio = async (): Promise<string | null> => {
-    try {
-      const response = await api.get(`/default-portfolio`);
-      return response.data.default_portfolio_id;
-    } catch (error) {
-      console.error('Failed to fetch default portfolio:', error);
-      return null;
-    }
-  };
+  // Get available portfolios from context (no separate API call needed)
+  const availablePortfolios = getAvailablePortfolios();
 
-  const fetchAvailablePortfolios = async () => {
-    try {
-      const response = await api.get(`/portfolios`);
-      const portfolios = response.data || [];
-      setAvailablePortfolios(portfolios);
-      return portfolios;
-    } catch (err) {
-      console.error('Failed to fetch available portfolios:', err);
-      setAvailablePortfolios([]);
-      setError('Failed to fetch available portfolios');
-      return [];
-    }
-  };
+  // Derive legacy data structures for compatibility with existing components
+  const portfolioMetadata: PortfolioMetadata | null = currentPortfolioData ? {
+    base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
+    user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
+    accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
+      account_name: acc.account_name,
+      account_total: acc.account_total,
+      account_type: acc.account_type,
+      owners: acc.owners,
+      holdings: (acc.holdings || []).map((h: any) => ({ symbol: h.symbol, units: h.units })),
+      rsu_plans: acc.rsu_plans || [],
+      espp_plans: acc.espp_plans || [],
+      options_plans: acc.options_plans || [],
+      rsu_vesting_data: acc.rsu_vesting_data || [],
+      account_properties: acc.account_properties || {},
+      account_cash: acc.account_cash || {},
+      isSelected: selectedAccountNames.includes(acc.account_name)
+    }))
+  } : null;
 
-  // Initialize the app with proper default portfolio logic
-  const initializeApp = async () => {
+  const portfolioData: PortfolioData | null = computedData ? computedData.filteredAggregations : null;
+  const holdingsData: HoldingsTableData | null = computedData ? computedData.holdingsTable : null;
+  
+  // Combined loading state
+  const isLoading = portfolioLoading;
+  
+  console.log('📊 [APP] Derived data state:', {
+    hasCurrentPortfolioData: !!currentPortfolioData,
+    hasComputedData: !!computedData,
+    hasPortfolioMetadata: !!portfolioMetadata,
+    hasPortfolioData: !!portfolioData,
+    hasHoldingsData: !!holdingsData,
+    isLoading,
+    portfolioError,
+    selectedPortfolioId,
+    selectedAccountNamesCount: selectedAccountNames.length,
+    availablePortfoliosLength: availablePortfolios.length
+  });
+
+  // Initialize the app with new ALL portfolios approach
+  const initializeApp = useCallback(async () => {
     try {
-      setIsLoading(true);
-      // First, fetch available portfolios
-      const portfolios = await fetchAvailablePortfolios();
-      if (portfolios.length === 0) {
-        // No portfolios found - this is fine, user will create one manually
-        console.log('No portfolios found - showing empty state');
-        setIsLoading(false);
-        return;
-      }
-      // Check for default portfolio
-      const defaultPortfolioId = await getDefaultPortfolio();
-      let portfolioToSelect = portfolios[0].portfolio_id; // fallback to first
-      if (defaultPortfolioId && portfolios.some((p: PortfolioFile) => p.portfolio_id === defaultPortfolioId)) {
-        portfolioToSelect = defaultPortfolioId;
-        console.log(`Loading default portfolio: ${defaultPortfolioId}`);
-      } else {
-        console.log(`No default portfolio found for user, using first portfolio`);
-      }
-      setSelectedPortfolioId(portfolioToSelect);
+      console.log('🚀 [APP] Initializing app with ALL portfolios data flow');
+      await loadAllPortfoliosData();
       setIsInitialized(true);
+      console.log('✅ [APP] App initialization completed');
     } catch (err) {
-      console.error('Failed to initialize app:', err);
-      setError('Failed to initialize application');
-      setIsLoading(false);
+      console.error('❌ [APP] Failed to initialize app:', err);
+      // Error handling is now managed by the context
     }
-  };
-
-  const fetchPortfolioMetadata = async () => {
-    if (!selectedPortfolioId) {
-      console.warn('No portfolio selected, skipping metadata fetch');
-      return;
-    }
-    
-    try {
-      const metadata = await api.get(`/portfolio?portfolio_id=${selectedPortfolioId}`);
-      setPortfolioMetadata(metadata.data);
-      setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
-      return metadata.data;
-    } catch (err: unknown) {
-      if (isAxiosErrorWithStatus(err, 404)) {
-        // Portfolio not found, try to select first available portfolio
-        console.error(`Portfolio ${selectedPortfolioId} not found`);
-        
-        if (availablePortfolios.length > 0) {
-          const firstPortfolio = availablePortfolios[0];
-          setSelectedPortfolioId(firstPortfolio.portfolio_id);
-          return; // Let the useEffect handle the retry
-        }
-      }
-      setError('Failed to fetch portfolio metadata');
-      throw err;
-    }
-  };
-
-  const fetchPortfolioBreakdown = async (accountNames: string[] | null = null) => {
-    if (!selectedPortfolioId) {
-      console.warn('No portfolio selected, skipping breakdown fetch');
-      return;
-    }
-    
-    try {
-      const params = new URLSearchParams();
-      params.append('portfolio_id', selectedPortfolioId);
-      if (accountNames) {
-        accountNames.forEach(name => params.append('account_names', name));
-      }
-
-      // Make both API calls in parallel instead of sequential
-      const [breakdownResponse, holdingsResponse] = await Promise.all([
-        api.get(`/portfolio/breakdown?${params}`),
-        api.get(`/portfolio/holdings?${params}`)
-      ]);
-
-      setPortfolioData(breakdownResponse.data);
-      setHoldingsData(holdingsResponse.data);
-      setIsLoading(false);
-    } catch (err: unknown) {
-      if (isAxiosErrorWithStatus(err, 404)) {
-        // Portfolio not found, try to select first available portfolio
-        console.error(`Portfolio ${selectedPortfolioId} not found in breakdown`);
-        
-        if (availablePortfolios.length > 0) {
-          const firstPortfolio = availablePortfolios[0];
-          setSelectedPortfolioId(firstPortfolio.portfolio_id);
-          return; // Let the useEffect handle the retry
-        }
-      }
-      setError('Failed to fetch portfolio breakdown');
-      setTimeout(() => { setIsLoading(false); }, 300);
-    }
-  };
+  }, [loadAllPortfoliosData]);
 
     useEffect(() => {
+        console.log('🔄 [APP] Auth state check:', { authLoading, hasUser: !!user, isInitialized });
         if (!authLoading && user && !isInitialized) {
+            console.log('👤 [APP] User authenticated, initializing app');
             initializeApp();
         }
-    }, [authLoading, user, isInitialized]);
+    }, [authLoading, user, isInitialized, initializeApp]);
 
-  // Load portfolio data when portfolio selection changes (after initialization)
-  useEffect(() => {
-    const loadPortfolioData = async () => {
-      if (!selectedPortfolioId || !isInitialized) return;
-      
-      try {
-        setIsLoading(true);
-        await fetchPortfolioMetadata();
-        await fetchPortfolioBreakdown(null);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    loadPortfolioData();
-  }, [selectedPortfolioId, isInitialized]);
+  // No more individual portfolio loading! All data is loaded upfront
 
 
   useEffect(() => {
-    if (!portfolioMetadata || !selectedPortfolioId) return;
+    // Only run when currentPortfolioData changes (not when accounts are selected)
+    if (!currentPortfolioData || !selectedPortfolioId) return;
 
-    // Extract RSU vesting data from portfolio metadata (now included in the response)
-    const vestingMap: Record<string, unknown> = {};
-    (portfolioMetadata.accounts || []).forEach((account) => {
-      const type = account.account_type || account.account_properties?.type;
-      if (type === 'company-custodian-account') {
-        // Use RSU vesting data from portfolio metadata if available
-        vestingMap[account.account_name] = account.rsu_vesting_data || [];
+    console.log('📈 [APP] Extracting RSU/Options data from current portfolio data');
+    
+    // Extract RSU vesting data from current portfolio data (already included in the response)
+    const rsuVestingMap: Record<string, unknown> = {};
+    (currentPortfolioData.accounts || []).forEach((account: any) => {
+      if (account.account_type === 'company-custodian-account') {
+        // Use RSU vesting data from current portfolio data (already computed by backend)
+        const rsuData = account.rsu_vesting_data || [];
+        console.log(`🔶 [APP] RSU vesting data for ${account.account_name}:`, rsuData.length, 'plans');
+        rsuVestingMap[account.account_name] = rsuData;
       }
     });
-    setMainRSUVesting(vestingMap);
+    setMainRSUVesting(rsuVestingMap);
 
-    // Fetch Options vesting for all company-custodian-accounts in the selected portfolio
-    const fetchAllOptionsVesting = async () => {
-      const vestingMap: Record<string, unknown> = {};
-      await Promise.all(
-        (portfolioMetadata.accounts || []).map(async (account) => {
-          const type = account.account_type || account.account_properties?.type;
-          if (type === 'company-custodian-account') {
-            try {
-              const res = await api.get(`/portfolio/${selectedPortfolioId}/accounts/${encodeURIComponent(account.account_name)}/options-vesting`);
-              vestingMap[account.account_name] = (res.data && res.data.plans) || [];
-            } catch {
-              vestingMap[account.account_name] = [];
-            }
-          }
-        })
-      );
-      setMainOptionsVesting(vestingMap);
-    };
-
-    fetchAllOptionsVesting();
-  }, [portfolioMetadata, selectedPortfolioId]);
+    // Get Options vesting from context (no API calls needed!)
+    const optionsVestingMap: Record<string, unknown> = {};
+    const companyCustodianAccounts = (currentPortfolioData.accounts || []).filter(
+      (account: any) => account.account_type === 'company-custodian-account'
+    );
+    
+    companyCustodianAccounts.forEach((account: any) => {
+      try {
+        const optionsData = getOptionsVestingByAccount(selectedPortfolioId || "", account.account_name);
+        optionsVestingMap[account.account_name] = optionsData?.plans || [];
+      } catch (error) {
+        console.log('⚠️ [APP] Using fallback empty options vesting for', account.account_name);
+        optionsVestingMap[account.account_name] = [];
+      }
+    });
+    
+    console.log('📊 [APP] Using options vesting from context for', companyCustodianAccounts.length, 'company accounts (no API calls)');
+    setMainOptionsVesting(optionsVestingMap);
+  }, [currentPortfolioData, selectedPortfolioId, getOptionsVestingByAccount]); // Updated: depend on currentPortfolioData
 
   const handleAccountsChange = (accountNames: string[]) => {
-    setSelectedAccounts(accountNames);
-    fetchPortfolioBreakdown(accountNames);
+    console.log('🎯 [APP] Account selection changed - using new client-side filtering:', {
+      newSelection: accountNames,
+      previousSelection: selectedAccountNames,
+      timestamp: new Date().toISOString()
+    });
+    setSelectedAccountNames(accountNames);
+    // No API call needed! Data is filtered locally in the context
   };
 
   const handleToggleVisibility = () => {
@@ -252,54 +176,57 @@ const App: React.FC = () => {
 
   const handlePortfolioCreated = async (newPortfolioId: string) => {
     try {
-      // Refresh available portfolios
-      await fetchAvailablePortfolios();
+      console.log('🏗️ [APP] Portfolio created - refreshing ALL portfolios data');
       
-      // If this was the first portfolio, initialize the app
+      // Refresh ALL portfolios data to include the new portfolio
+      await refreshAllPortfoliosData();
+      
+      // If this was the first portfolio, the context will auto-initialize
       if (!isInitialized) {
         setIsInitialized(true);
       }
       
-      // Switch to the new portfolio - the useEffect will handle loading the data
+      // Switch to the new portfolio (instant, no API call)
       setSelectedPortfolioId(newPortfolioId);
       
     } catch (err) {
-      console.error('Failed to handle portfolio creation:', err);
+      console.error('❌ [APP] Failed to handle portfolio creation:', err);
     }
   };
 
   const handleAccountAdded = async () => {
-    // Refresh the current portfolio metadata and data
+    // Refresh ALL portfolios data since account was added
+    console.log('🏦 [APP] Account added - refreshing ALL portfolios data');
     try {
-      setIsLoading(true);
-      await fetchPortfolioMetadata();
-      await fetchPortfolioBreakdown(null);
+      await refreshAllPortfoliosData();
     } catch (err) {
-      console.error(err);
+      console.error('❌ [APP] Error refreshing after account addition:', err);
     }
   };
 
   const handlePortfolioDeleted = async (deletedPortfolioId: string) => {
-    // Refresh available portfolios
-    const portfolios = await fetchAvailablePortfolios();
-    // If the deleted portfolio was the selected one, switch to the first available
-    if (deletedPortfolioId === selectedPortfolioId) {
-      if (portfolios.length > 0) {
-        setSelectedPortfolioId(portfolios[0].portfolio_id);
-      } else {
-        setSelectedPortfolioId("");
+    // Refresh ALL portfolios data since portfolio was deleted
+    console.log('🗑️ [APP] Portfolio deleted - refreshing ALL portfolios data');
+    try {
+      await refreshAllPortfoliosData();
+      
+      // If the deleted portfolio was the selected one, context will auto-select another
+      if (deletedPortfolioId === selectedPortfolioId) {
+        console.log('📌 [APP] Deleted portfolio was selected - context will auto-select new one');
+        // Context will handle auto-selection in its useEffect
       }
+    } catch (err) {
+      console.error('❌ [APP] Error refreshing after portfolio deletion:', err);
     }
   };
 
   const handleAccountDeleted = async () => {
-    // Refresh the current portfolio metadata and data
+    // Refresh ALL portfolios data since account was deleted
+    console.log('🗑️ [APP] Account deleted - refreshing ALL portfolios data');
     try {
-      setIsLoading(true);
-      await fetchPortfolioMetadata();
-      await fetchPortfolioBreakdown(null);
+      await refreshAllPortfoliosData();
     } catch (err) {
-      console.error(err);
+      console.error('❌ [APP] Error refreshing after account deletion:', err);
     }
   };
 
@@ -357,18 +284,17 @@ const App: React.FC = () => {
 
   // Do not block UI during portfolio loading; show skeletons instead
   
-  if (error) {
+  if (portfolioError) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
           <div className="text-4xl mb-4">⚠️</div>
-          <h2 className="text-xl font-bold text-white mb-4">Error</h2>
-          <p className="text-gray-300 mb-6">{error}</p>
+          <h2 className="text-xl font-bold text-white mb-4">Portfolio Loading Error</h2>
+          <p className="text-gray-300 mb-6">{portfolioError}</p>
           
           <button
             onClick={() => {
-              setError(null);
-              setIsLoading(true);
+              console.log('🔄 [APP] Retrying portfolio initialization');
               initializeApp();
             }}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
@@ -380,7 +306,7 @@ const App: React.FC = () => {
     );
   }
   
-  // For portfolios view, we need to handle empty state
+  // Handle empty state when no portfolios exist
   const showEmptyState = availablePortfolios.length === 0;
   
   // Create mock metadata for empty state to keep UI working
@@ -391,6 +317,25 @@ const App: React.FC = () => {
   };
   
   const displayMetadata = showEmptyState ? mockMetadata : portfolioMetadata;
+  
+  console.log('🎭 [APP] Render state:', {
+    showEmptyState,
+    isLoading,
+    hasPortfolioMetadata: !!portfolioMetadata,
+    hasCurrentPortfolioData: !!currentPortfolioData,
+    hasComputedData: !!computedData,
+    hasPortfolioData: !!portfolioData,
+    hasHoldingsData: !!holdingsData,
+    selectedPortfolioId,
+    selectedAccountNamesCount: selectedAccountNames.length,
+    availablePortfoliosCount: availablePortfolios.length,
+    isInitialized,
+    portfolioError,
+    authLoading,
+    hasUser: !!user,
+    willShowSkeleton: isLoading || !displayMetadata,
+    willShowPortfolioView: !!portfolioMetadata && !!portfolioData && !isLoading
+  });
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
@@ -415,8 +360,8 @@ const App: React.FC = () => {
                 onAccountsChange={handleAccountsChange}
                 onToggleVisibility={handleToggleVisibility}
                 availableFiles={availablePortfolios}
-                selectedFile={selectedPortfolioId}
-                onPortfolioChange={setSelectedPortfolioId}
+                selectedFile={selectedPortfolioId || ""}
+                onPortfolioChange={setSelectedPortfolioId}  // Now instant, no API call!
                 onPortfolioCreated={handlePortfolioCreated}
                 onAccountAdded={handleAccountAdded}
                 onPortfolioDeleted={handlePortfolioDeleted}
@@ -431,7 +376,7 @@ const App: React.FC = () => {
               />
               <PortfolioSummary
                 accounts={displayMetadata.accounts}
-                selectedAccountNames={selectedAccounts}
+                selectedAccountNames={selectedAccountNames}
                 baseCurrency={displayMetadata.base_currency}
                 isValueVisible={isValueVisible}
               />
@@ -449,7 +394,17 @@ const App: React.FC = () => {
         >
           <main className="flex-1">
             {activeView === 'portfolios' && (
-              isLoading || !portfolioMetadata || !portfolioData ? (
+              (() => {
+                const shouldShowSkeleton = isLoading || !portfolioMetadata || !portfolioData;
+                console.log('🎯 [APP] Main content loading decision:', {
+                  isLoading,
+                  hasPortfolioMetadata: !!portfolioMetadata,
+                  hasPortfolioData: !!portfolioData,
+                  shouldShowSkeleton,
+                  willShowPortfolioView: !shouldShowSkeleton
+                });
+                return shouldShowSkeleton;
+              })() ? (
                 <PortfolioMainSkeleton />
               ) : (
                 <PortfolioView
