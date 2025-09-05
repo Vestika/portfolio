@@ -93,7 +93,8 @@ export interface SecurityData {
 }
 
 export interface PriceData {
-  price: number;
+  price: number;  // Price in base currency (converted)
+  original_price?: number;  // Price in original currency (NEW)
   currency: string;
   last_updated: string;
 }
@@ -455,14 +456,57 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         });
       }
       
+      // Get the original price in original currency from backend data
+      const priceData = currentPortfolioData.current_prices?.[symbol];
+      let originalPrice = data.units > 0 ? data.value / data.units : 0; // fallback to base currency calculation
+      let originalCurrency = currentPortfolioData.portfolio_metadata?.base_currency || 'USD'; // fallback to base currency
+      
+      // If we have security and price data, use the direct original currency information
+      if (security && priceData) {
+        originalCurrency = security.currency || originalCurrency;
+        
+        // Use the backend-provided original_price if available (NEW: backend now sends this)
+        if (priceData.original_price !== undefined) {
+          originalPrice = priceData.original_price;
+          console.log(`✅ [PORTFOLIO CONTEXT] Using backend original price for ${symbol}:`, {
+            originalCurrency,
+            originalPrice: priceData.original_price,
+            baseCurrencyPrice: priceData.price
+          });
+        } else {
+          // Fallback to reverse conversion if original_price not available
+          if (security.currency !== currentPortfolioData.portfolio_metadata?.base_currency) {
+            const exchangeRate = allPortfoliosData?.global_exchange_rates?.[security.currency];
+            if (exchangeRate && exchangeRate !== 0) {
+              // Reverse the conversion: base_currency_price / exchange_rate = original_currency_price
+              originalPrice = priceData.price / exchangeRate;
+            } else {
+              // If no exchange rate, use the price as is (might be incorrect but better than crashing)
+              originalPrice = priceData.price;
+            }
+          } else {
+            // Same currency as base currency, use price as is
+            originalPrice = priceData.price;
+          }
+          
+          console.log(`💱 [PORTFOLIO CONTEXT] Fallback price conversion for ${symbol}:`, {
+            originalCurrency,
+            baseCurrency: currentPortfolioData.portfolio_metadata?.base_currency,
+            baseCurrencyPrice: priceData.price,
+            exchangeRate: allPortfoliosData?.global_exchange_rates?.[security.currency],
+            calculatedOriginalPrice: originalPrice
+          });
+        }
+      }
+      
       return {
         symbol,
         security_type: security?.security_type || 'unknown', 
         name: security?.name || symbol,
         tags: combinedTags,
         total_units: data.units,
-        original_price: data.units > 0 ? data.value / data.units : 0,
-        original_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
+        original_price: originalPrice,
+        original_currency: originalCurrency,
         value_per_unit: data.units > 0 ? data.value / data.units : 0,
         total_value: data.value,
         currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',

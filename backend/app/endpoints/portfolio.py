@@ -347,7 +347,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                     security = portfolio.securities[symbol]
                     price_info = calculator.calc_holding_value(security, 1)
                     current_prices[symbol] = {
-                        "price": price_info["value"],
+                        "price": price_info["value"],  # Price in base currency (converted)
+                        "original_price": price_info["unit_price"],  # Price in original currency
                         "currency": security.currency.value,
                         "last_updated": datetime.utcnow().isoformat()
                     }
