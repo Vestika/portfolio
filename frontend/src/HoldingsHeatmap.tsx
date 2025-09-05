@@ -20,7 +20,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
   // Get quotes from context for compatibility
   const quotes = useMemo((): Record<string, Quote> => {
     const quotesFromContext: Record<string, Quote> = {};
-    
+
     data.holdings.forEach(holding => {
       const quote = getQuoteBySymbol(holding.symbol);
       if (quote) {
@@ -32,7 +32,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
         };
       }
     });
-    
+
     return quotesFromContext;
   }, [data.holdings, getQuoteBySymbol]);
 

@@ -598,15 +598,16 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 print(f"📈 [ALL PORTFOLIOS] Fetching live quotes for {len(stock_symbols)} global stock/ETF symbols")
                 
                 try:
-                    quotes_response = await fetch_quotes(stock_symbols)
+                    manager = PriceManager()
+                    quotes_response = await manager.get_prices(stock_symbols)
                     current_time = datetime.utcnow().isoformat()
                     
-                    for symbol, quote_data in quotes_response.items():
-                        if quote_data is not None and quote_data.get("current_price") is not None:
-                            global_quotes[symbol] = {
-                                "symbol": symbol,
-                                "current_price": quote_data["current_price"],
-                                "percent_change": quote_data.get("percent_change", 0.0),
+                    for quote_data in quotes_response:
+                        if quote_data is not None and quote_data.price is not None:
+                            global_quotes[quote_data.symbol] = {
+                                "symbol": quote_data.symbol,
+                                "current_price": quote_data.price,
+                                "percent_change": quote_data.change_percent or 0.0,
                                 "last_updated": current_time
                             }
                     

@@ -5,33 +5,41 @@ from typing import Optional, Any
 
 from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
-from .database import db, cache
+from .database import db, cache, ensure_connections
 from .models import StockPrice, TrackedSymbol, PriceResponse
 
 
 class PriceManager:
     """Manages stock price fetching, caching, and tracking"""
     
-    async def get_price(self, symbol: str) -> Optional[PriceResponse]:
-        """Get the latest price for a symbol, with lazy fetching and caching"""
+    async def get_price(self, symbol: str, *, fresh: bool = False) -> Optional[PriceResponse]:
+        """Get the latest price for a symbol, with lazy fetching and caching.
+
+        Args:
+            symbol: The symbol to fetch.
+            fresh: If True, bypass cache/DB freshness checks and fetch from source.
+        """
         try:
-            # First check Redis cache
-            cached_price = await self._get_cached_price(symbol)
-            if cached_price:
-                logger.info(f"Retrieved cached price for {symbol}")
-                await self._update_tracking(symbol)
-                return cached_price
+            # Ensure DB/cache connections are valid for this loop
+            await ensure_connections()
+            if not fresh:
+                # First check Redis cache
+                cached_price = await self._get_cached_price(symbol)
+                if cached_price:
+                    logger.info(f"Retrieved cached price for {symbol}")
+                    await self._update_tracking(symbol)
+                    return cached_price
+                
+                # Check MongoDB for recent price
+                db_price = await self._get_db_price(symbol)
+                if db_price and self._is_price_fresh(db_price.fetched_at):
+                    logger.info(f"Retrieved fresh price from DB for {symbol}")
+                    await self._cache_price(db_price)
+                    await self._update_tracking(symbol)
+                    return self._to_price_response(db_price)
             
-            # Check MongoDB for recent price
-            db_price = await self._get_db_price(symbol)
-            if db_price and self._is_price_fresh(db_price.fetched_at):
-                logger.info(f"Retrieved fresh price from DB for {symbol}")
-                await self._cache_price(db_price)
-                await self._update_tracking(symbol)
-                return self._to_price_response(db_price)
-            
-            # Fetch fresh price
-            logger.info(f"Fetching fresh price for {symbol}")
+            # Fetch fresh price (either because fresh=True or no fresh cached/DB price)
+            logger.info(f"Fetching fresh price for {symbol} (fresh={fresh})")
             fresh_price = await self._fetch_and_store_price(symbol)
             if fresh_price:
                 await self._update_tracking(symbol)
@@ -42,6 +50,18 @@ class PriceManager:
         except Exception as e:
             logger.error(f"Error getting price for {symbol}: {e}")
             return None
+
+    async def get_prices(self, symbols: list[str], *, fresh: bool = False) -> list[PriceResponse]:
+        """Get prices for a list of symbols with optional fresh bypass.
+
+        Returns only successfully resolved prices.
+        """
+        results: list[PriceResponse] = []
+        for symbol in symbols:
+            price = await self.get_price(symbol, fresh=fresh)
+            if price:
+                results.append(price)
+        return results
 
     async def get_logo(self, symbol: str) -> str | None:
         """Get company logo URL using the logo cache service"""
@@ -297,5 +317,6 @@ class PriceManager:
             currency=stock_price.currency,
             market=stock_price.market,
             date=stock_price.date,
-            fetched_at=stock_price.fetched_at
+            fetched_at=stock_price.fetched_at,
+            change_percent=stock_price.change_percent
         ) 

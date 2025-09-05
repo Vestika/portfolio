@@ -1,4 +1,5 @@
 from loguru import logger
+import asyncio
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.collection import AsyncCollection
@@ -12,10 +13,12 @@ from config import settings
 class Database:
     client: Optional[AsyncMongoClient] = None
     database = None
+    loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 class Cache:
     redis_client: Optional[redis.Redis] = None
+    loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 db = Database()
@@ -51,6 +54,7 @@ async def connect_to_mongo() -> None:
     try:
         db.client = AsyncMongoClient(settings.mongodb_url)
         db.database = db.client[settings.mongodb_database]
+        db.loop = asyncio.get_running_loop()
         
         # Test the connection
         await db.client.admin.command('ping')
@@ -107,6 +111,7 @@ async def connect_to_redis() -> None:
 
         # Test the connection
         await cache.redis_client.ping()
+        cache.loop = asyncio.get_running_loop()
 
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
@@ -118,3 +123,41 @@ async def close_redis_connection() -> None:
     if cache.redis_client:
         await cache.redis_client.close()
         logger.info("Disconnected from Redis") 
+
+
+async def ensure_mongo_connection() -> None:
+    """Ensure MongoDB client is bound to the current event loop."""
+    try:
+        current_loop = asyncio.get_running_loop()
+        if db.client is None or db.loop is not current_loop:
+            if db.client:
+                try:
+                    await db.client.close()
+                except Exception:
+                    pass
+            await connect_to_mongo()
+    except RuntimeError:
+        # No running loop; ignore here (should not happen in async context)
+        pass
+
+
+async def ensure_redis_connection() -> None:
+    """Ensure Redis client is bound to the current event loop."""
+    try:
+        current_loop = asyncio.get_running_loop()
+        if cache.redis_client is None or cache.loop is not current_loop:
+            if cache.redis_client:
+                try:
+                    await cache.redis_client.close()
+                except Exception:
+                    pass
+            await connect_to_redis()
+    except RuntimeError:
+        # No running loop; ignore here
+        pass
+
+
+async def ensure_connections() -> None:
+    """Ensure both Mongo and Redis are connected in the current event loop."""
+    await ensure_mongo_connection()
+    await ensure_redis_connection()

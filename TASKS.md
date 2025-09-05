@@ -72,3 +72,35 @@ Embed the AI chat experience directly into the Explore page so conversations hap
 - `frontend/src/components/ExploreView.tsx` — Target container to embed `AIChat`
 - `frontend/src/components/AIChat.tsx` — Chat component to embed
 - `frontend/src/utils/ai-api.ts` — Chat/session API calls used by `AIChat`
+
+
+# PriceManager batch + fresh and /quotes params
+
+Enhance price fetching to support batch queries via `PriceManager` and a flag to bypass cache. Update `/quotes` to optionally use `PriceManager` and request fresh prices.
+
+## Completed Tasks
+
+- [x] Add batch symbol fetching to `backend/services/closing_price/price_manager.py` (`get_prices`)
+- [x] Add `fresh` flag to `PriceManager.get_price` to bypass cache/DB
+
+## In Progress Tasks
+
+- [ ] Update `/quotes` to support `use_manager` and `fresh` params
+
+## Future Tasks
+
+- [ ] Extend `PriceManager` to compute percent change fields for UI
+- [ ] Unit tests for `get_prices` and fresh flag behavior
+
+## Implementation Plan
+
+1. Extend `PriceManager.get_price(symbol, fresh=False)` to respect fresh flag.
+2. Add `PriceManager.get_prices(symbols: list[str], fresh=False)` to iterate and collect results.
+3. Modify `/quotes` to accept `use_manager` and `fresh` query params and map `PriceResponse` to frontend Quote shape minimally.
+4. Consider enriching change metrics by comparing to previous close in a follow-up.
+
+### Relevant Files
+
+- `backend/services/closing_price/price_manager.py` — Batch and fresh support ✅
+- `backend/app/main.py` — `/quotes` updated to support new params
+- `frontend/src/HoldingsTable.tsx` — Consumes `/quotes`; no changes required right now

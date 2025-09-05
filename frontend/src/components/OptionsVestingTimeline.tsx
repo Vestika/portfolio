@@ -53,7 +53,7 @@ const OptionsVestingTimeline: React.FC<OptionsVestingTimelineProps> = ({ plan, b
       <div className="flex items-center justify-between text-xs mt-1">
         <span className="text-muted-foreground">Exercise: ${plan.exercise_price}</span>
         <span className="text-muted-foreground">Strike: ${plan.strike_price}</span>
-        <span className="text-muted-foreground">Type: {plan.option_type.toUpperCase()}</span>
+        <span className="text-muted-foreground">Type: {plan.option_type?.toUpperCase()}</span>
         <span className="text-muted-foreground">Expires: {plan.expiration_date}</span>
       </div>
       {plan.next_vest_date && (
