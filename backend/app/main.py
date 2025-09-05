@@ -281,6 +281,625 @@ async def get_portfolio_metadata(portfolio_id: str = "demo", user=Depends(get_cu
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/portfolio/complete-data")
+async def get_complete_portfolio_data(portfolio_id: str = "demo", user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Comprehensive endpoint that returns ALL portfolio data needed for client-side computation.
+    This replaces the need for multiple API calls by providing:
+    - Portfolio metadata and configuration
+    - All account and holding data with calculated values
+    - Current prices for all securities
+    - Exchange rates
+    - Pre-computed RSU and options vesting data
+    - All chart aggregation data
+    """
+    try:
+        print(f"🏢 [COMPLETE DATA] Fetching complete portfolio data for portfolio_id: {portfolio_id}")
+        
+        collection = db_manager.get_collection("portfolios")
+        doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+
+        portfolio = Portfolio.from_dict(doc)
+        calculator = get_or_create_calculator(portfolio_id, portfolio)
+        rsu_calculator = create_rsu_calculator(portfolio, calculator)
+        
+        print(f"📊 [COMPLETE DATA] Portfolio '{portfolio.portfolio_name}' loaded with {len(portfolio.accounts)} accounts, {len(portfolio.securities)} securities")
+
+        # 1. Build complete accounts data with all holdings and computed values
+        complete_accounts = []
+        all_symbols = set()  # Track all symbols for price fetching
+        
+        for account in portfolio.accounts:
+            print(f"🏦 [COMPLETE DATA] Processing account: {account.name}")
+            
+            # Calculate regular holdings with full details
+            holdings_with_values = []
+            account_total = 0.0
+            
+            # Add regular holdings
+            for holding in account.holdings:
+                if holding.symbol not in portfolio.securities:
+                    print(f"⚠️  [COMPLETE DATA] Warning: Symbol {holding.symbol} not found in securities")
+                    continue
+                    
+                security = portfolio.securities[holding.symbol]
+                holding_calc = calculator.calc_holding_value(security, holding.units)
+                account_total += holding_calc["total"]
+                all_symbols.add(holding.symbol)
+                
+                holdings_with_values.append({
+                    "symbol": holding.symbol,
+                    "units": holding.units,
+                    "value_per_unit": holding_calc["value"],  # "value" is value per unit in base currency
+                    "total_value": holding_calc["total"],
+                    "original_currency": security.currency.value,
+                    "security_type": security.security_type.value,
+                    "security_name": security.name
+                })
+
+            # Add RSU virtual holdings if account has RSU plans
+            rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                "name": account.name,
+                "rsu_plans": account.rsu_plans or []
+            })
+            
+            if rsu_result["virtual_holdings"]:
+                print(f"📈 [COMPLETE DATA] Adding {len(rsu_result['virtual_holdings'])} RSU virtual holdings to account {account.name}")
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    holdings_with_values.append({
+                        "symbol": virtual_holding["symbol"],
+                        "units": virtual_holding["units"],
+                        "value_per_unit": virtual_holding.get("value_per_unit", 0),
+                        "total_value": virtual_holding.get("total_value", 0),
+                        "original_currency": virtual_holding.get("currency", "USD"),
+                        "security_type": "rsu_virtual",
+                        "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
+                        "is_virtual": True
+                    })
+                    account_total += virtual_holding.get("total_value", 0)
+                    all_symbols.add(virtual_holding["symbol"])
+
+            complete_accounts.append({
+                "account_name": account.name,
+                "account_type": account.properties.get("type", "bank-account"),
+                "owners": account.properties.get("owners", ["me"]),
+                "account_total": account_total,
+                "holdings": holdings_with_values,
+                "rsu_plans": account.rsu_plans or [],
+                "espp_plans": account.espp_plans or [],
+                "options_plans": account.options_plans or [],
+                "rsu_vesting_data": rsu_result.get("vesting_data", []),
+                "account_cash": {},  # Will be populated below
+                "account_properties": account.properties
+            })
+            
+            # Add cash holdings to account_cash
+            for holding in account.holdings:
+                if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
+                    complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
+
+        print(f"💰 [COMPLETE DATA] Processed {len(complete_accounts)} accounts, tracking {len(all_symbols)} unique symbols")
+
+        # 2. Get current prices for all symbols
+        current_prices = {}
+        exchange_rates = {}
+        
+        for symbol in all_symbols:
+            if symbol in portfolio.securities:
+                security = portfolio.securities[symbol]
+                price_info = calculator.calc_holding_value(security, 1)  # Get price per unit
+                current_prices[symbol] = {
+                    "price": price_info["value"],  # "value" is value per unit in base currency
+                    "currency": security.currency.value,
+                    "last_updated": datetime.utcnow().isoformat()
+                }
+        
+        # 3. Get exchange rates
+        for currency_key, rate in portfolio.exchange_rates.items():
+            exchange_rates[currency_key.value] = rate
+
+        print(f"💱 [COMPLETE DATA] Collected prices for {len(current_prices)} symbols and {len(exchange_rates)} exchange rates")
+
+        # 4. Get live quotes for all symbols (for heatmap and performance data)
+        live_quotes = {}
+        
+        try:
+            symbols_for_quotes = [symbol for symbol in all_symbols if symbol in portfolio.securities]
+            
+            if symbols_for_quotes:
+                # Filter to only stock/ETF symbols for quotes (no cash, bonds, etc.)
+                stock_symbols = [
+                    symbol for symbol in symbols_for_quotes 
+                    if portfolio.securities[symbol].security_type.value.lower() in ['stock', 'etf']
+                ]
+                
+                if stock_symbols:
+                    print(f"📈 [COMPLETE DATA] Fetching live quotes for {len(stock_symbols)} stock/ETF symbols: {stock_symbols}")
+                    
+                    # Use the existing fetch_quotes function (already imported from services.closing_price.stock_fetcher)
+                    try:
+                        quotes_response = await fetch_quotes(stock_symbols)
+                        current_time = datetime.utcnow().isoformat()
+                        
+                        # Transform to expected format and filter out failed quotes
+                        for symbol, quote_data in quotes_response.items():
+                            if quote_data is not None and quote_data.get("current_price") is not None:
+                                live_quotes[symbol] = {
+                                    "symbol": symbol,
+                                    "current_price": quote_data["current_price"],
+                                    "percent_change": quote_data.get("percent_change", 0.0),
+                                    "last_updated": current_time
+                                }
+                        
+                        print(f"✅ [COMPLETE DATA] Fetched {len(live_quotes)} live quotes successfully using existing service (out of {len(stock_symbols)} requested)")
+                        
+                    except Exception as e:
+                        print(f"⚠️ [COMPLETE DATA] Live quotes fetch failed, using fallback: {str(e)}")
+                        # Create fallback quotes with 0% change
+                        current_time = datetime.utcnow().isoformat()
+                        for symbol in stock_symbols:
+                            live_quotes[symbol] = {
+                                "symbol": symbol,
+                                "current_price": current_prices.get(symbol, {}).get("price", 0),
+                                "percent_change": 0.0,
+                                "last_updated": current_time
+                            }
+                        print(f"📊 [COMPLETE DATA] Created {len(live_quotes)} fallback quotes")
+                    
+        except Exception as e:
+            print(f"❌ [COMPLETE DATA] Error creating quotes: {str(e)}")
+            # Ensure we always have an empty quotes dict
+            live_quotes = {}
+                
+        print(f"📊 [COMPLETE DATA] Live quotes prepared for {len(live_quotes)} symbols")
+
+        # 5. Get pre-computed chart aggregation data (for all accounts)
+        print("📊 [COMPLETE DATA] Computing portfolio aggregations...")
+        aggregation_data = []
+        
+        # This is similar logic to /portfolio/breakdown but for ALL accounts
+        holding_values = {}
+        
+        for account in portfolio.accounts:
+            filtered_accounts = portfolio.accounts  # Include all accounts
+            for holding in account.holdings:
+                if holding.symbol in portfolio.securities:
+                    security = portfolio.securities[holding.symbol]
+                    value = calculator.calc_holding_value(security, holding.units)["total"]
+                    if holding.symbol not in holding_values:
+                        holding_values[holding.symbol] = {"value": 0, "units": 0, "accounts": []}
+                    holding_values[holding.symbol]["value"] += value
+                    holding_values[holding.symbol]["units"] += holding.units
+                    if account.name not in [acc["name"] for acc in holding_values[holding.symbol]["accounts"]]:
+                        holding_values[holding.symbol]["accounts"].append({"name": account.name, "type": account.properties.get("type", "unknown")})
+
+        # Add RSU virtual holdings to aggregation
+        for account in portfolio.accounts:
+            rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                "name": account.name,
+                "rsu_plans": account.rsu_plans or []
+            })
+            for virtual_holding in rsu_result["virtual_holdings"]:
+                symbol = virtual_holding["symbol"]
+                value = virtual_holding.get("total_value", 0)
+                units = virtual_holding.get("units", 0)
+                
+                if symbol not in holding_values:
+                    holding_values[symbol] = {"value": 0, "units": 0, "accounts": []}
+                holding_values[symbol]["value"] += value
+                holding_values[symbol]["units"] += units
+                if account.name not in [acc["name"] for acc in holding_values[symbol]["accounts"]]:
+                    holding_values[symbol]["accounts"].append({"name": account.name, "type": account.properties.get("type", "unknown")})
+
+        # Generate aggregations
+        total_portfolio_value = sum(item["value"] for item in holding_values.values())
+        
+        # By Symbol aggregation
+        symbol_data = []
+        for symbol, data in holding_values.items():
+            percentage = (data["value"] / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
+            symbol_data.append({
+                "label": symbol,
+                "value": round(data["value"], 2),
+                "percentage": round(percentage, 2),
+                "units": data["units"],
+                "accounts": data["accounts"]
+            })
+        
+        symbol_data.sort(key=lambda x: x["value"], reverse=True)
+        aggregation_data.append({
+            "chart_title": "Holdings by Symbol",
+            "chart_total": round(total_portfolio_value, 2),
+            "chart_data": symbol_data[:20]  # Top 20
+        })
+
+        print(f"✅ [COMPLETE DATA] Complete portfolio data prepared. Total value: {total_portfolio_value:,.2f} {portfolio.base_currency.value}")
+
+        # 6. Build the complete response
+        complete_data = {
+            "portfolio_metadata": {
+                "portfolio_id": portfolio_id,
+                "portfolio_name": portfolio.portfolio_name,
+                "base_currency": portfolio.base_currency.value,
+                "user_name": portfolio.user_name,
+                "user_id": portfolio.user_id,
+                "total_value": round(total_portfolio_value, 2)
+            },
+            "accounts": complete_accounts,
+            "securities": {
+                symbol: {
+                    "symbol": symbol,
+                    "name": security.name,
+                    "security_type": security.security_type.value,
+                    "currency": security.currency.value,
+                    "tags": security.tags,
+                    "unit_price": security.unit_price
+                }
+                for symbol, security in portfolio.securities.items()
+            },
+            "current_prices": current_prices,
+            "exchange_rates": exchange_rates,
+            "live_quotes": live_quotes,  # NEW: Include live quotes
+            "aggregation_data": aggregation_data,
+            "computation_timestamp": datetime.utcnow().isoformat()
+        }
+
+        print(f"🎯 [COMPLETE DATA] Returning complete data: {len(complete_accounts)} accounts, {len(current_prices)} prices, {len(live_quotes)} quotes, {len(aggregation_data)} aggregations")
+        return complete_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [COMPLETE DATA] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/portfolios/complete-data")
+async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Comprehensive endpoint that returns ALL portfolio data for the user at once.
+    This enables instant portfolio switching without additional API calls.
+    Returns:
+    - All portfolios' complete data
+    - Global securities data
+    - Global quotes data
+    - User preferences
+    """
+    try:
+        print(f"🌍 [ALL PORTFOLIOS] Fetching complete data for ALL user portfolios")
+        
+        collection = db_manager.get_collection("portfolios")
+        portfolio_docs = await collection.find({"user_id": user.id}).to_list(None)
+        
+        if not portfolio_docs:
+            print(f"📋 [ALL PORTFOLIOS] No portfolios found for user")
+            return {
+                "portfolios": {},
+                "global_securities": {},
+                "global_quotes": {},
+                "global_exchange_rates": {},
+                "user_preferences": {
+                    "preferred_currency": "USD",
+                    "default_portfolio_id": None
+                },
+                "computation_timestamp": datetime.utcnow().isoformat()
+            }
+
+        print(f"📁 [ALL PORTFOLIOS] Found {len(portfolio_docs)} portfolios to process")
+        
+        all_portfolios_data = {}
+        global_securities = {}
+        all_symbols = set()
+        global_exchange_rates = {}
+        
+        # Process each portfolio
+        for doc in portfolio_docs:
+            portfolio_id = str(doc["_id"])
+            portfolio = Portfolio.from_dict(doc)
+            calculator = get_or_create_calculator(portfolio_id, portfolio)
+            rsu_calculator = create_rsu_calculator(portfolio, calculator)
+            
+            print(f"🏢 [ALL PORTFOLIOS] Processing portfolio: {portfolio.portfolio_name} ({portfolio_id})")
+            
+            # Get complete data for this portfolio (reuse existing logic)
+            portfolio_complete_data = {}
+            
+            # Build accounts data
+            complete_accounts = []
+            portfolio_symbols = set()
+            
+            for account in portfolio.accounts:
+                holdings_with_values = []
+                account_total = 0.0
+                
+                # Add regular holdings
+                for holding in account.holdings:
+                    if holding.symbol not in portfolio.securities:
+                        continue
+                        
+                    security = portfolio.securities[holding.symbol]
+                    holding_calc = calculator.calc_holding_value(security, holding.units)
+                    account_total += holding_calc["total"]
+                    all_symbols.add(holding.symbol)
+                    portfolio_symbols.add(holding.symbol)
+                    
+                    # Add to global securities
+                    global_securities[holding.symbol] = {
+                        "symbol": holding.symbol,
+                        "name": security.name,
+                        "security_type": security.security_type.value,
+                        "currency": security.currency.value,
+                        "tags": security.tags,
+                        "unit_price": security.unit_price
+                    }
+                    
+                    holdings_with_values.append({
+                        "symbol": holding.symbol,
+                        "units": holding.units,
+                        "value_per_unit": holding_calc["value"],
+                        "total_value": holding_calc["total"],
+                        "original_currency": security.currency.value,
+                        "security_type": security.security_type.value,
+                        "security_name": security.name
+                    })
+
+                # Add RSU virtual holdings
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans or []
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    holdings_with_values.append({
+                        "symbol": virtual_holding["symbol"],
+                        "units": virtual_holding["units"],
+                        "value_per_unit": virtual_holding.get("value_per_unit", 0),
+                        "total_value": virtual_holding.get("total_value", 0),
+                        "original_currency": virtual_holding.get("currency", "USD"),
+                        "security_type": "rsu_virtual",
+                        "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
+                        "is_virtual": True
+                    })
+                    account_total += virtual_holding.get("total_value", 0)
+                    all_symbols.add(virtual_holding["symbol"])
+                    portfolio_symbols.add(virtual_holding["symbol"])
+
+                complete_accounts.append({
+                    "account_name": account.name,
+                    "account_type": account.properties.get("type", "bank-account"),
+                    "owners": account.properties.get("owners", ["me"]),
+                    "account_total": account_total,
+                    "holdings": holdings_with_values,
+                    "rsu_plans": account.rsu_plans or [],
+                    "espp_plans": account.espp_plans or [],
+                    "options_plans": account.options_plans or [],
+                    "rsu_vesting_data": rsu_result.get("vesting_data", []),
+                    "account_cash": {},
+                    "account_properties": account.properties
+                })
+                
+                # Add cash holdings
+                for holding in account.holdings:
+                    if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
+                        complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
+
+            # Get current prices for this portfolio's symbols
+            current_prices = {}
+            for symbol in portfolio_symbols:
+                if symbol in portfolio.securities:
+                    security = portfolio.securities[symbol]
+                    price_info = calculator.calc_holding_value(security, 1)
+                    current_prices[symbol] = {
+                        "price": price_info["value"],
+                        "currency": security.currency.value,
+                        "last_updated": datetime.utcnow().isoformat()
+                    }
+            
+            # Add exchange rates to global rates
+            for currency_key, rate in portfolio.exchange_rates.items():
+                global_exchange_rates[currency_key.value] = rate
+
+            # Store portfolio data
+            total_portfolio_value = sum(acc["account_total"] for acc in complete_accounts)
+            
+            all_portfolios_data[portfolio_id] = {
+                "portfolio_metadata": {
+                    "portfolio_id": portfolio_id,
+                    "portfolio_name": portfolio.portfolio_name,
+                    "base_currency": portfolio.base_currency.value,
+                    "user_name": portfolio.user_name,
+                    "user_id": portfolio.user_id,
+                    "total_value": round(total_portfolio_value, 2)
+                },
+                "accounts": complete_accounts,
+                "current_prices": current_prices,
+                "computation_timestamp": datetime.utcnow().isoformat()
+            }
+
+        print(f"🌐 [ALL PORTFOLIOS] Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
+        
+        # Get tags data for ALL portfolios
+        print("🏷️ [ALL PORTFOLIOS] Fetching user tag library and holding tags")
+        user_tag_library = {}
+        all_holding_tags = {}
+        
+        try:
+            # Get user tag library
+            from core.tag_service import TagService
+            tag_service = TagService(db_manager.get_database())  # Pass the database instance
+            tag_library_result = await tag_service.get_user_tag_library(user.id)
+            
+            # Convert TagLibrary object to dict for JSON serialization
+            if tag_library_result:
+                user_tag_library = {
+                    "id": getattr(tag_library_result, 'id', None),
+                    "user_id": tag_library_result.user_id,
+                    "tag_definitions": tag_library_result.tag_definitions,
+                    "template_tags": tag_library_result.template_tags,
+                    "created_at": getattr(tag_library_result, 'created_at', None),
+                    "updated_at": getattr(tag_library_result, 'updated_at', None)
+                }
+            else:
+                user_tag_library = {"tag_definitions": {}, "template_tags": {}}
+                
+            print(f"✅ [ALL PORTFOLIOS] Loaded user tag library with {len(user_tag_library.get('tag_definitions', {}))} definitions")
+            
+            # Get all holding tags for all portfolios (direct query)
+            holding_tags_collection = db_manager.get_collection("holding_tags")
+            holding_tags_cursor = holding_tags_collection.find({"user_id": user.id})
+            
+            async for holding_tag_doc in holding_tags_cursor:
+                symbol = holding_tag_doc["symbol"]
+                # Convert to dict format expected by frontend
+                all_holding_tags[symbol] = {
+                    "symbol": symbol,
+                    "user_id": holding_tag_doc["user_id"],
+                    "portfolio_id": holding_tag_doc.get("portfolio_id"),
+                    "tags": holding_tag_doc.get("tags", {}),
+                    "created_at": holding_tag_doc.get("created_at"),
+                    "updated_at": holding_tag_doc.get("updated_at")
+                }
+            
+            print(f"✅ [ALL PORTFOLIOS] Loaded holding tags for {len(all_holding_tags)} symbols")
+            
+        except Exception as e:
+            print(f"⚠️ [ALL PORTFOLIOS] Error loading tags data: {e}")
+            user_tag_library = {"tag_definitions": {}, "template_tags": {}}
+            all_holding_tags = {}
+        
+        # Get options vesting data for ALL company custodian accounts across portfolios
+        print("📊 [ALL PORTFOLIOS] Fetching options vesting for all company custodian accounts")
+        all_options_vesting = {}
+        
+        try:
+            for portfolio_id, portfolio_data in all_portfolios_data.items():
+                portfolio_options = {}
+                company_accounts = [
+                    acc for acc in portfolio_data["accounts"] 
+                    if acc["account_type"] == "company-custodian-account"
+                ]
+                
+                if company_accounts:
+                    print(f"📊 [ALL PORTFOLIOS] Fetching options vesting for {len(company_accounts)} company accounts in portfolio {portfolio_id}")
+                    
+                    for account in company_accounts:
+                        try:
+                            from core.options_calculator import OptionsCalculator
+                            # Get options vesting for this account
+                            options_plans = account.get("options_plans", [])
+                            if options_plans:
+                                vesting_data = []
+                                for plan in options_plans:
+                                    try:
+                                        plan_vesting = OptionsCalculator.calculate_vesting_schedule(
+                                            grant_date=plan["grant_date"],
+                                            total_units=plan["units"],
+                                            vesting_period_years=plan["vesting_period_years"],
+                                            vesting_frequency=plan["vesting_frequency"],
+                                            has_cliff=plan.get("has_cliff", False),
+                                            cliff_months=plan.get("cliff_duration_months", 0) if plan.get("has_cliff") else 0,
+                                            left_company=plan.get("left_company", False),
+                                            left_company_date=plan.get("left_company_date")
+                                        )
+                                        vesting_data.append({
+                                            "id": plan["id"],
+                                            "symbol": plan["symbol"],
+                                            **plan_vesting
+                                        })
+                                    except Exception as plan_error:
+                                        print(f"⚠️ [ALL PORTFOLIOS] Error calculating vesting for plan {plan.get('id', 'unknown')}: {plan_error}")
+                                
+                                portfolio_options[account["account_name"]] = {"plans": vesting_data}
+                                
+                        except Exception as acc_error:
+                            print(f"⚠️ [ALL PORTFOLIOS] Error processing options for account {account['account_name']}: {acc_error}")
+                            portfolio_options[account["account_name"]] = {"plans": []}
+                
+                all_options_vesting[portfolio_id] = portfolio_options
+                
+        except Exception as e:
+            print(f"❌ [ALL PORTFOLIOS] Error loading options vesting: {e}")
+            all_options_vesting = {}
+        
+        # Get live quotes for ALL symbols across all portfolios
+        global_quotes = {}
+        
+        try:
+            stock_symbols = [
+                symbol for symbol in all_symbols 
+                if symbol in global_securities and global_securities[symbol]["security_type"].lower() in ['stock', 'etf']
+            ]
+            
+            if stock_symbols:
+                print(f"📈 [ALL PORTFOLIOS] Fetching live quotes for {len(stock_symbols)} global stock/ETF symbols")
+                
+                try:
+                    quotes_response = await fetch_quotes(stock_symbols)
+                    current_time = datetime.utcnow().isoformat()
+                    
+                    for symbol, quote_data in quotes_response.items():
+                        if quote_data is not None and quote_data.get("current_price") is not None:
+                            global_quotes[symbol] = {
+                                "symbol": symbol,
+                                "current_price": quote_data["current_price"],
+                                "percent_change": quote_data.get("percent_change", 0.0),
+                                "last_updated": current_time
+                            }
+                    
+                    print(f"✅ [ALL PORTFOLIOS] Fetched {len(global_quotes)} global live quotes (out of {len(stock_symbols)} requested)")
+                    
+                except Exception as e:
+                    print(f"⚠️ [ALL PORTFOLIOS] Global quotes fetch failed, creating fallbacks: {str(e)}")
+                    current_time = datetime.utcnow().isoformat()
+                    for symbol in stock_symbols:
+                        global_quotes[symbol] = {
+                            "symbol": symbol,
+                            "current_price": 0.0,
+                            "percent_change": 0.0,
+                            "last_updated": current_time
+                        }
+                        
+        except Exception as e:
+            print(f"❌ [ALL PORTFOLIOS] Error creating global quotes: {str(e)}")
+            global_quotes = {}
+
+        # Get user preferences/default portfolio
+        try:
+            # Get default portfolio from user preferences or first portfolio
+            user_prefs_collection = db_manager.get_collection("user_preferences") 
+            user_prefs_doc = await user_prefs_collection.find_one({"user_id": user.id})
+            default_portfolio_id = user_prefs_doc.get("default_portfolio_id") if user_prefs_doc else None
+        except:
+            default_portfolio_id = None
+
+        result = {
+            "portfolios": all_portfolios_data,
+            "global_securities": global_securities,
+            "global_quotes": global_quotes,
+            "global_exchange_rates": global_exchange_rates,
+            "user_tag_library": user_tag_library,
+            "all_holding_tags": all_holding_tags,
+            "all_options_vesting": all_options_vesting,
+            "user_preferences": {
+                "preferred_currency": "USD",  # Could be customizable later
+                "default_portfolio_id": default_portfolio_id
+            },
+            "computation_timestamp": datetime.utcnow().isoformat()
+        }
+
+        print(f"🎯 [ALL PORTFOLIOS] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
+        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [ALL PORTFOLIOS] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class BreakdownRequest:
     def __init__(
         self,

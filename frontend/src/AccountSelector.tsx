@@ -161,15 +161,19 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [suppressEditIbkrHover, setSuppressEditIbkrHover] = useState<boolean>(false);
 
   useEffect(() => {
+    console.log('🔄 [ACCOUNT SELECTOR] Syncing accounts with portfolio metadata:', portfolioMetadata.accounts.map(a => ({ name: a.account_name, isSelected: a.isSelected })));
     setAccounts(
       portfolioMetadata.accounts.map(account => ({
         ...account,
-        isSelected: true
+        // Use the isSelected value from the parent (derived from context)
+        isSelected: account.isSelected ?? true
       }))
     );
   }, [portfolioMetadata.accounts]);
 
   const toggleAccountSelection = (accountName: string) => {
+    console.log('🎯 [ACCOUNT SELECTOR] Account clicked:', accountName);
+    
     const updatedAccounts = accounts.map(account =>
       account.account_name === accountName
         ? { ...account, isSelected: !account.isSelected }
@@ -179,8 +183,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     // Count selected accounts after potential deselection
     const selectedAccounts = updatedAccounts.filter(account => account.isSelected);
 
+    console.log('🔍 [ACCOUNT SELECTOR] After toggle:', {
+      clicked: accountName,
+      selectedCount: selectedAccounts.length,
+      selectedNames: selectedAccounts.map(a => a.account_name)
+    });
+
     // If attempting to deselect the last selected account, prevent deselection
     if (selectedAccounts.length === 0) {
+      console.log('⚠️ [ACCOUNT SELECTOR] Preventing deselection of last account');
       return; // Do nothing if trying to deselect the last account
     }
 
@@ -191,6 +202,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       .filter(account => account.isSelected)
       .map(account => account.account_name);
 
+    console.log('📤 [ACCOUNT SELECTOR] Calling onAccountsChange with:', selectedAccountNames);
     onAccountsChange(selectedAccountNames);
   };
 
