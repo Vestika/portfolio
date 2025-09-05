@@ -127,26 +127,31 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Only run when currentPortfolioData changes (not when accounts are selected)
+    // Only run when currentPortfolioData or selectedAccountNames changes
     if (!currentPortfolioData || !selectedPortfolioId) return;
 
-    console.log('📈 [APP] Extracting RSU/Options data from current portfolio data');
+    console.log('📈 [APP] Extracting RSU/Options data from current portfolio data (filtered by selected accounts)');
     
-    // Extract RSU vesting data from current portfolio data (already included in the response)
+    // Filter accounts to only include selected accounts
+    const filteredAccounts = (currentPortfolioData.accounts || []).filter((account: any) => 
+      selectedAccountNames.includes(account.account_name)
+    );
+    
+    // Extract RSU vesting data from selected accounts only
     const rsuVestingMap: Record<string, unknown> = {};
-    (currentPortfolioData.accounts || []).forEach((account: any) => {
+    filteredAccounts.forEach((account: any) => {
       if (account.account_type === 'company-custodian-account') {
         // Use RSU vesting data from current portfolio data (already computed by backend)
         const rsuData = account.rsu_vesting_data || [];
-        console.log(`🔶 [APP] RSU vesting data for ${account.account_name}:`, rsuData.length, 'plans');
+        console.log(`🔶 [APP] RSU vesting data for selected account ${account.account_name}:`, rsuData.length, 'plans');
         rsuVestingMap[account.account_name] = rsuData;
       }
     });
     setMainRSUVesting(rsuVestingMap);
 
-    // Get Options vesting from context (no API calls needed!)
+    // Get Options vesting from context (no API calls needed!) - filtered by selected accounts
     const optionsVestingMap: Record<string, unknown> = {};
-    const companyCustodianAccounts = (currentPortfolioData.accounts || []).filter(
+    const companyCustodianAccounts = filteredAccounts.filter(
       (account: any) => account.account_type === 'company-custodian-account'
     );
     
@@ -154,15 +159,16 @@ const App: React.FC = () => {
       try {
         const optionsData = getOptionsVestingByAccount(selectedPortfolioId || "", account.account_name);
         optionsVestingMap[account.account_name] = optionsData?.plans || [];
+        console.log(`⚡ [APP] Options vesting data for selected account ${account.account_name}:`, optionsData?.plans?.length || 0, 'plans');
       } catch (error) {
         console.log('⚠️ [APP] Using fallback empty options vesting for', account.account_name);
         optionsVestingMap[account.account_name] = [];
       }
     });
     
-    console.log('📊 [APP] Using options vesting from context for', companyCustodianAccounts.length, 'company accounts (no API calls)');
+    console.log('📊 [APP] Using options vesting from context for', companyCustodianAccounts.length, 'selected company accounts (no API calls)');
     setMainOptionsVesting(optionsVestingMap);
-  }, [currentPortfolioData, selectedPortfolioId, getOptionsVestingByAccount]); // Updated: depend on currentPortfolioData
+  }, [currentPortfolioData, selectedPortfolioId, selectedAccountNames, getOptionsVestingByAccount]); // Updated: depend on selectedAccountNames
 
   const handleAccountsChange = (accountNames: string[]) => {
     console.log('🎯 [APP] Account selection changed - using new client-side filtering:', {
