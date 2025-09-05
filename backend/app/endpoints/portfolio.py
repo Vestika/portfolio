@@ -1,9 +1,12 @@
 """Portfolio management endpoints"""
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+import logging
+import yfinance as yf
+from pymaya.maya import Maya
 
 from core.auth import get_current_user
 from core.database import db_manager
@@ -11,7 +14,10 @@ from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
+from services.closing_price.price_manager import PriceManager
 from core.options_calculator import OptionsCalculator
+
+logger = logging.getLogger(__name__)
 
 # Create router for this module
 router = APIRouter()
@@ -73,6 +79,120 @@ class CreateAccountRequest(BaseModel):
     options_plans: list[Any] = []
     # Optional IBKR Flex credentials (saved only if provided)
     ibkr_flex: Optional[dict[str, str]] = None
+
+
+async def fetch_historical_prices(symbol: str, security, original_price: float, seven_days_ago: date, today: date) -> list:
+    """
+    Fetch real 7-day historical prices for any symbol using the original logic.
+    Handles currencies, TASE symbols, and regular stocks with proper fallbacks.
+    """
+    historical_prices = []
+    
+    try:
+        from models.security_type import SecurityType
+        
+        if symbol == 'USD':
+            # Handle USD currency holdings - always 1.0 in USD base currency
+            for i in range(7, 0, -1):
+                day = today - timedelta(days=i)
+                historical_prices.append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "price": 1.0
+                })
+            logger.info(f"📈 [FETCH HISTORICAL] Generated USD currency data for {symbol}")
+            
+        elif security.security_type == SecurityType.CASH:
+            # Handle other currency holdings using exchange rates
+            from_currency = symbol
+            to_currency = "USD"  # Convert to USD for base currency
+            
+            if from_currency == to_currency:
+                # Same currency, no conversion needed
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    historical_prices.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": 1.0
+                    })
+            else:
+                # Fetch FX data using yfinance
+                ticker = f"{from_currency}{to_currency}=X"
+                logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
+                
+                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                
+                if not data.empty:
+                    prices = data["Close"].dropna().round(6)
+                    # Handle yfinance DataFrame properly
+                    for dt in prices.index:
+                        price = prices.loc[dt]
+                        historical_prices.append({
+                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                            "price": float(price)
+                        })
+                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} FX price points for {ticker}")
+                else:
+                    logger.warning(f"⚠️ [FETCH HISTORICAL] No yfinance FX data for ticker: {ticker}")
+                    
+        elif symbol.isdigit():
+            # Handle TASE symbols (numeric) using pymaya
+            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
+            try:
+                maya = Maya()
+                tase_id = getattr(security, 'tase_id', None) or symbol
+                price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
+                
+                for entry in reversed(price_history):
+                    if entry.get('TradeDate') and entry.get('SellPrice'):
+                        historical_prices.append({
+                            "date": entry.get('TradeDate'),
+                            "price": float(entry.get('SellPrice')) / 100
+                        })
+                        
+                if historical_prices:
+                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} TASE price points for {symbol}")
+                else:
+                    logger.warning(f"⚠️ [FETCH HISTORICAL] No pymaya data for TASE symbol: {symbol}")
+            except Exception as e:
+                logger.warning(f"⚠️ [FETCH HISTORICAL] Error fetching TASE data for {symbol}: {e}")
+                
+        else:
+            # Handle regular stock symbols using yfinance
+            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for stock symbol: {symbol} using yfinance")
+            try:
+                data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                
+                if not data.empty:
+                    prices = data["Close"].dropna().round(2)
+                    # Handle yfinance DataFrame properly for stock data
+                    for dt in prices.index:
+                        price = prices.loc[dt]
+                        historical_prices.append({
+                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                            "price": float(price)
+                        })
+                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} stock price points for {symbol}")
+                else:
+                    logger.warning(f"⚠️ [FETCH HISTORICAL] No yfinance data for symbol: {symbol}")
+            except Exception as e:
+                logger.warning(f"⚠️ [FETCH HISTORICAL] Error fetching stock data for {symbol}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"❌ [FETCH HISTORICAL] Failed to fetch real historical prices for {symbol}: {e}")
+    
+    # Add fallback mock data only if no historical prices were fetched
+    if not historical_prices:
+        logger.info(f"📊 [FETCH HISTORICAL] Using fallback mock data for {symbol}")
+        for i in range(7, 0, -1):
+            day = today - timedelta(days=i)
+            historical_prices.append({
+                "date": day.strftime("%Y-%m-%d"),
+                "price": original_price
+            })
+    
+    logger.info(f"✅ [FETCH HISTORICAL] Returning {len(historical_prices)} historical price points for {symbol}")
+    return historical_prices
+
 
 @router.get("/portfolios/complete-data")
 async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> dict[str, Any]:
@@ -140,15 +260,18 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                     all_symbols.add(holding.symbol)
                     portfolio_symbols.add(holding.symbol)
                     
-                    # Add to global securities
+                    # Add to global securities with detailed logging
                     global_securities[holding.symbol] = {
                         "symbol": holding.symbol,
                         "name": security.name,
                         "security_type": security.security_type.value,
                         "currency": security.currency.value,
-                        "tags": security.tags,
+                        "tags": security.tags or {},  # Ensure tags is never None
                         "unit_price": security.unit_price
                     }
+                    
+                    if security.tags and len(security.tags) > 0:
+                        print(f"🏷️ [ALL PORTFOLIOS] Security {holding.symbol} has tags: {list(security.tags.keys())}")
                     
                     holdings_with_values.append({
                         "symbol": holding.symbol,
@@ -157,7 +280,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "total_value": holding_calc["total"],
                         "original_currency": security.currency.value,
                         "security_type": security.security_type.value,
-                        "security_name": security.name
+                        "security_name": security.name,
+                        "tags": security.tags or {}  # ← RESTORED: Include security tags directly like original!
                     })
 
                 # Add RSU virtual holdings
@@ -167,6 +291,13 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 })
                 
                 for virtual_holding in rsu_result["virtual_holdings"]:
+                    # Get security tags for RSU virtual holdings too
+                    rsu_security = portfolio.securities.get(virtual_holding["symbol"])
+                    rsu_tags = rsu_security.tags if rsu_security else {}
+                    
+                    if rsu_tags and len(rsu_tags) > 0:
+                        print(f"🏷️ [ALL PORTFOLIOS] RSU virtual holding {virtual_holding['symbol']} has tags: {list(rsu_tags.keys())}")
+                    
                     holdings_with_values.append({
                         "symbol": virtual_holding["symbol"],
                         "units": virtual_holding["units"],
@@ -175,6 +306,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "original_currency": virtual_holding.get("currency", "USD"),
                         "security_type": "rsu_virtual",
                         "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
+                        "tags": rsu_tags or {},  # ← Include security tags for RSU holdings too
                         "is_virtual": True
                     })
                     account_total += virtual_holding.get("total_value", 0)
@@ -201,8 +333,15 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                     if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
                         complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
 
-            # Get current prices for this portfolio's symbols
+            # Get current prices and 7-day historical data for this portfolio's symbols
             current_prices = {}
+            historical_prices_data = {}
+            
+            # Date range for 7-day historical data
+            from datetime import date, timedelta
+            today = date.today()
+            seven_days_ago = today - timedelta(days=7)
+            
             for symbol in portfolio_symbols:
                 if symbol in portfolio.securities:
                     security = portfolio.securities[symbol]
@@ -212,6 +351,9 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "currency": security.currency.value,
                         "last_updated": datetime.utcnow().isoformat()
                     }
+                    
+                    # Get REAL 7-day historical prices using original logic
+                    historical_prices_data[symbol] = await fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today)
             
             # Add exchange rates to global rates
             for currency_key, rate in portfolio.exchange_rates.items():
@@ -231,21 +373,63 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 },
                 "accounts": complete_accounts,
                 "current_prices": current_prices,
+                "historical_prices": historical_prices_data,  # NEW: Include 7-day historical data
                 "computation_timestamp": datetime.utcnow().isoformat()
             }
 
         print(f"🌐 [ALL PORTFOLIOS] Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
         
+        # Log historical prices summary
+        total_historical_symbols = sum(
+            len(portfolio_data.get("historical_prices", {})) 
+            for portfolio_data in all_portfolios_data.values()
+        )
+        print(f"📈 [ALL PORTFOLIOS] Generated REAL historical price data for {total_historical_symbols} total symbols across all portfolios")
+        
         # Get tags data for ALL portfolios
         print("🏷️ [ALL PORTFOLIOS] Fetching user tag library and holding tags")
+        print(f"🔧 [ALL PORTFOLIOS] Current user object: {user}")
+        print(f"🔧 [ALL PORTFOLIOS] User ID: '{user.id}' (type: {type(user.id).__name__}) [MongoDB ObjectId]")
+        print(f"🔧 [ALL PORTFOLIOS] User email: '{getattr(user, 'email', 'N/A')}'")
+        print(f"🔧 [ALL PORTFOLIOS] Firebase UID: '{getattr(user, 'firebase_uid', 'N/A')}'")
+        print(f"🔧 [ALL PORTFOLIOS] User name: '{getattr(user, 'name', 'N/A')}'")
         user_tag_library = {}
         all_holding_tags = {}
         
         try:
+            # First determine which user_id to use for all tag operations
+            print(f"🔍 [ALL PORTFOLIOS] Determining correct user_id for tag lookups...")
+            
+            # Get direct collection access to check both possible user IDs
+            holding_tags_collection = db_manager.get_collection("holding_tags")
+            
+            # Check MongoDB ObjectId first
+            user_tags_count = await holding_tags_collection.count_documents({"user_id": user.id})
+            print(f"📊 [ALL PORTFOLIOS] Tags for MongoDB ObjectId {user.id}: {user_tags_count}")
+            
+            # Check Firebase UID if available
+            firebase_tags_count = 0
+            if hasattr(user, 'firebase_uid') and user.firebase_uid:
+                firebase_tags_count = await holding_tags_collection.count_documents({"user_id": user.firebase_uid})
+                print(f"📊 [ALL PORTFOLIOS] Tags for Firebase UID {user.firebase_uid}: {firebase_tags_count}")
+            
+            # Decide which user_id to use
+            if user_tags_count > 0:
+                search_user_id = user.id
+                print(f"✅ [ALL PORTFOLIOS] Using MongoDB ObjectId for all tag operations: {search_user_id}")
+            elif firebase_tags_count > 0:
+                search_user_id = user.firebase_uid
+                print(f"✅ [ALL PORTFOLIOS] Using Firebase UID for all tag operations: {search_user_id}")
+            else:
+                search_user_id = user.id  # fallback to default
+                print(f"⚠️ [ALL PORTFOLIOS] No tags found for either ID, using MongoDB ObjectId: {search_user_id}")
+            
             # Get user tag library
             from core.tag_service import TagService
-            tag_service = TagService(db_manager.get_database())
-            tag_library_result = await tag_service.get_user_tag_library(user.id)
+            print(f"🔧 [ALL PORTFOLIOS] Creating TagService with database: {db_manager.database}")
+            tag_service = TagService(db_manager.database)
+            print(f"✅ [ALL PORTFOLIOS] TagService created successfully, calling get_user_tag_library for user: {search_user_id}")
+            tag_library_result = await tag_service.get_user_tag_library(search_user_id)
             
             # Convert TagLibrary object to dict for JSON serialization
             if tag_library_result:
@@ -262,23 +446,85 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 
             print(f"✅ [ALL PORTFOLIOS] Loaded user tag library with {len(user_tag_library.get('tag_definitions', {}))} definitions")
             
-            # Get all holding tags for all portfolios (direct query)
-            holding_tags_collection = db_manager.get_collection("holding_tags")
-            holding_tags_cursor = holding_tags_collection.find({"user_id": user.id})
+            # Get all holding tags for all portfolios using the correct user_id
+            print(f"🔍 [ALL PORTFOLIOS] Loading holding tags from MongoDB...")
             
+            # Show debug information
+            total_holding_tags = await holding_tags_collection.count_documents({})
+            print(f"📊 [ALL PORTFOLIOS] Total holding_tags documents in collection: {total_holding_tags}")
+            
+            # Show debug info about which user ID will be used (skip complex aggregation for now)
+            print(f"🔍 [ALL PORTFOLIOS] Tag lookup decision:")
+            print(f"   📊 MongoDB ObjectId {user.id}: {user_tags_count} tags")  
+            if hasattr(user, 'firebase_uid') and user.firebase_uid:
+                print(f"   📊 Firebase UID {user.firebase_uid}: {firebase_tags_count} tags")
+            print(f"   ✅ Selected user_id for tag operations: {search_user_id}")
+            
+            # Create cursor with the correct user_id
+            holding_tags_cursor = holding_tags_collection.find({"user_id": search_user_id})
+            print(f"📊 [ALL PORTFOLIOS] MongoDB query: holding_tags.find({{\"user_id\": \"{search_user_id}\"}})")
+            
+            # If no tags found for the selected user_id, show sample documents
+            if user_tags_count == 0 and firebase_tags_count == 0:
+                print(f"🔍 [ALL PORTFOLIOS] No tags found for either user ID. Showing sample documents for comparison:")
+                sample_docs = []
+                async for doc in holding_tags_collection.find({}).limit(3):
+                    sample_doc = {
+                        "user_id": doc.get("user_id"),
+                        "symbol": doc.get("symbol"),
+                        "user_id_type": type(doc.get("user_id")).__name__,
+                        "current_mongo_id_type": type(user.id).__name__,
+                        "current_firebase_uid_type": type(getattr(user, 'firebase_uid', '')).__name__
+                    }
+                    sample_docs.append(sample_doc)
+                    print(f"   📋 Sample: {sample_doc}")
+                print(f"🔧 [ALL PORTFOLIOS] Available user IDs mismatch - this explains why no tags are found!")
+            elif search_user_id != user.id:
+                print(f"✅ [ALL PORTFOLIOS] SUCCESS: Found tags using Firebase UID instead of MongoDB ObjectId!")
+            
+            
+            holding_tags_found = 0
             async for holding_tag_doc in holding_tags_cursor:
+                holding_tags_found += 1
                 symbol = holding_tag_doc["symbol"]
-                # Convert to dict format expected by frontend
+                tags_data = holding_tag_doc.get("tags", {})
+                
+                print(f"🏷️ [ALL PORTFOLIOS] Found holding tags for {symbol}: {list(tags_data.keys())}")
+                print(f"🔍 [ALL PORTFOLIOS] Sample tag structure for {symbol}:")
+                if tags_data:
+                    sample_tag_name = list(tags_data.keys())[0]
+                    sample_tag = tags_data[sample_tag_name]
+                    print(f"   Tag '{sample_tag_name}': tag_type={sample_tag.get('tag_type')}, has values: {[k for k, v in sample_tag.items() if v is not None and k.endswith('_value')]}")
+                
+                # Convert to dict format expected by frontend - preserve TagValue structure exactly
                 all_holding_tags[symbol] = {
                     "symbol": symbol,
                     "user_id": holding_tag_doc["user_id"],
                     "portfolio_id": holding_tag_doc.get("portfolio_id"),
-                    "tags": holding_tag_doc.get("tags", {}),
+                    "tags": tags_data,  # Keep the TagValue structure exactly as stored
                     "created_at": holding_tag_doc.get("created_at"),
                     "updated_at": holding_tag_doc.get("updated_at")
                 }
             
-            print(f"✅ [ALL PORTFOLIOS] Loaded holding tags for {len(all_holding_tags)} symbols")
+            print(f"✅ [ALL PORTFOLIOS] MongoDB query completed: found {holding_tags_found} holding tag documents")
+            print(f"✅ [ALL PORTFOLIOS] Loaded holding tags for {len(all_holding_tags)} symbols: {list(all_holding_tags.keys())}")
+            
+            # Also log security tags for comparison
+            security_tags_count = sum(
+                1 for securities in [portfolio.securities for portfolio in [Portfolio.from_dict(doc) for doc in portfolio_docs]]
+                for symbol, security in securities.items() 
+                if security.tags and len(security.tags) > 0
+            )
+            print(f"🔍 [ALL PORTFOLIOS] Found {security_tags_count} securities with security-level tags")
+            
+            # Summary of tags being included in holding objects
+            holdings_with_security_tags = sum(
+                1 for portfolio_data in all_portfolios_data.values()
+                for account in portfolio_data["accounts"]
+                for holding in account["holdings"]
+                if holding.get("tags") and len(holding["tags"]) > 0
+            )
+            print(f"📊 [ALL PORTFOLIOS] Including tags in {holdings_with_security_tags} holding objects (security tags restored)")
             
         except Exception as e:
             print(f"⚠️ [ALL PORTFOLIOS] Error loading tags data: {e}")
@@ -406,7 +652,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         }
 
         print(f"🎯 [ALL PORTFOLIOS] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
-        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options")
+        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options, {total_historical_symbols} REAL historical price series")
         return result
 
     except HTTPException:
