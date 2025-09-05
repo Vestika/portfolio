@@ -45,6 +45,57 @@ export function PieChartSkeleton() {
   )
 }
 
+// Bar Chart Skeleton - mimics the actual bar chart with scrollbar
+export function BarChartSkeleton() {
+  return (
+    <div className="bg-gray-800/30 rounded-lg p-4 animate-pulse">
+      {/* Title */}
+      <div className="h-6 w-48 bg-gray-700 rounded mb-4" />
+      
+      {/* Chart Container */}
+      <div className="relative h-72 w-full">
+        {/* Y-axis labels */}
+        <div className="absolute left-0 top-2 bottom-8 w-8 flex flex-col justify-between">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-2 bg-gray-700 rounded w-6" />
+          ))}
+        </div>
+        
+        {/* Chart area with prominent bars - fills more space */}
+        <div className="absolute left-10 right-4 top-2 bottom-8 flex items-end justify-between">
+          {[...Array(10)].map((_, i) => {
+            // More realistic bar heights - taller since we have more space
+            const heights = [180, 240, 120, 280, 80, 220, 100, 150, 260, 160];
+            const maxHeight = 280;
+            return (
+              <div key={i} className="flex flex-col items-center" style={{ width: '24px' }}>
+                {/* Substantial bar */}
+                <div 
+                  className="bg-gray-700 rounded-t-sm w-full"
+                  style={{ 
+                    height: `${heights[i]}px`,
+                    maxHeight: `${maxHeight}px`
+                  }}
+                />
+                {/* X-axis label */}
+                <div className="h-2 bg-gray-700 rounded w-4 mt-1" />
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* X-axis line */}
+        <div className="absolute left-10 right-4 bottom-6 h-0.5 bg-gray-700" />
+        
+        {/* Scrollbar at bottom - closer to chart */}
+        <div className="absolute bottom-1 left-10 right-4 h-4 bg-gray-700 rounded">
+          <div className="h-full w-2/3 bg-gray-600 rounded" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // RSU Timeline Chart Skeleton - mimics the actual timeline chart structure
 export function RSUTimelineChartSkeleton() {
   return (
@@ -167,7 +218,7 @@ export function PortfolioMainSkeleton() {
     <div className="container mx-auto py-2 sm:py-4 px-1 sm:px-2 lg:px-4 animate-pulse">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 w-full">
         {/* Pie Charts - typically 4 charts (Asset Allocation, Account Distribution, etc.) */}
-        {[...Array(4)].map((_, idx) => (
+        {[...Array(2)].map((_, idx) => (
           <PieChartSkeleton key={`pie-${idx}`} />
         ))}
         

@@ -127,20 +127,6 @@ CHARTS: list[dict[str, Any]] = [
         "security_filter": None,
         "ignore_missing_key": False,
     },
-    {
-        "title": "Geographical Distribution of Stocks",
-        "aggregation_key": filter_security.by_tag("geographical"),
-        "account_filter": None,
-        "security_filter": None,
-        "ignore_missing_key": True,
-    },
-    {
-        "title": "Breakdown By Asset Type",
-        "aggregation_key": filter_security.by_type,
-        "account_filter": None,
-        "security_filter": None,
-        "ignore_missing_key": False,
-    },
 ]
 
 def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
