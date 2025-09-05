@@ -5,7 +5,7 @@ from pathlib import Path
 import uvicorn
 from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
-from utils import filter_security, filter_account
+from utils import filter_security
 from app.main import app
 
 

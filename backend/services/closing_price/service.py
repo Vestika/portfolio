@@ -249,11 +249,7 @@ class ClosingPriceService:
     def get_supported_currencies_sync(self) -> Optional[list[str]]:
         """Synchronous wrapper for get_supported_currencies"""
         return self._run_async_operation(self.get_supported_currencies())
-    
-    def track_symbols_sync(self, symbols: list[str]) -> Optional[Dict[str, str]]:
-        """Synchronous wrapper for track_symbols"""
-        return self._run_async_operation(self.track_symbols(symbols))
-    
+
     def refresh_prices_sync(self) -> Optional[Dict[str, Any]]:
         """Synchronous wrapper for refresh_prices"""
         return self._run_async_operation(self.refresh_prices())

@@ -10,9 +10,10 @@ const arraysEqual = (a: string[], b: string[]) => {
 export interface AllPortfoliosData {
   portfolios: Record<string, SinglePortfolioData>;
   global_securities: Record<string, SecurityData>;
-  global_quotes: Record<string, QuoteData>;
-  global_exchange_rates: Record<string, number>;
-  global_earnings_data: Record<string, Array<{
+  global_current_prices: Record<string, PriceData>;
+  global_historical_prices: Record<string, Array<{ date: string; price: number }>>;
+  global_logos: Record<string, string | null>; // NEW: Global logos by symbol
+    global_earnings_data: Record<string, Array<{
     date: string;
     epsActual?: number;
     epsEstimate?: number;
@@ -39,12 +40,8 @@ export interface SinglePortfolioData {
     portfolio_name: string;
     base_currency: string;
     user_name: string;
-    user_id: string;
-    total_value: number;
   };
   accounts: AccountData[];
-  current_prices: Record<string, PriceData>;
-  historical_prices: Record<string, Array<{ date: string; price: number }>>;  // NEW: 7-day historical data
   computation_timestamp: string;
 }
 
@@ -55,8 +52,6 @@ export interface CompletePortfolioData {
     portfolio_name: string;
     base_currency: string;
     user_name: string;
-    user_id: string;
-    total_value: number;
   };
   accounts: AccountData[];
   securities: Record<string, SecurityData>;
@@ -72,7 +67,6 @@ export interface AccountData {
   account_name: string;
   account_type: string;
   owners: string[];
-  account_total: number;
   holdings: HoldingData[];
   rsu_plans: any[];
   espp_plans: any[];
@@ -85,14 +79,10 @@ export interface AccountData {
 export interface HoldingData {
   symbol: string;
   units: number;
-  value_per_unit: number;
-  total_value: number;
   original_currency: string;
   security_type: string;
   security_name: string;
-  tags?: Record<string, any>;  // ← RESTORED: Include tags in holding data
   logo?: string;  // ← Added logo property to match backend data
-  is_virtual?: boolean;
 }
 
 export interface SecurityData {
@@ -100,8 +90,6 @@ export interface SecurityData {
   name: string;
   security_type: string;
   currency: string;
-  tags: Record<string, any>;
-  unit_price?: number;
 }
 
 export interface PriceData {
@@ -163,17 +151,17 @@ interface PortfolioDataContextType {
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
   getSecurityBySymbol: (symbol: string) => SecurityData | undefined;
-  getPriceBySymbol: (symbol: string, portfolioId?: string) => PriceData | undefined;
-  getQuoteBySymbol: (symbol: string) => QuoteData | undefined;
+  getPriceBySymbol: (symbol: string) => PriceData | undefined;
+  getPercentChange: (symbol: string) => number;
   
   // Tags utilities
   getUserTagLibrary: () => any | null;
   getHoldingTagsBySymbol: (symbol: string) => any | undefined;
   
-  // Options utilities
-  getOptionsVestingByAccount: (portfolioId: string, accountName: string) => any | undefined;
+  // NEW: Logo utilities
+  getLogoBySymbol: (symbol: string) => string | null;
   
-  // Earnings utilities
+  // NEW: Earnings utilities
   getEarningsBySymbol: (symbol: string) => Array<{
     date: string;
     epsActual?: number;
@@ -186,6 +174,9 @@ interface PortfolioDataContextType {
     year: number;
   }> | undefined;
   
+  // Options utilities
+  getOptionsVestingByAccount: (portfolioId: string, accountName: string) => any | undefined;
+
   // Portfolio utilities
   getAvailablePortfolios: () => Array<{ portfolio_id: string; portfolio_name: string; display_name: string }>;
 }
@@ -239,6 +230,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
   // Load ALL portfolios data function
   const loadAllPortfoliosData = useCallback(async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoading) {
+      console.log('🔒 [PORTFOLIO CONTEXT] Request already in progress, skipping duplicate call');
+      return;
+    }
+
     console.log('🌍 [PORTFOLIO CONTEXT] Loading ALL portfolios data');
     setIsLoading(true);
     setError(null);
@@ -247,18 +244,15 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       const response = await api.get(`/portfolios/complete-data`);
       const data: AllPortfoliosData = response.data;
       
-      // Calculate total historical price series across all portfolios
-      const totalHistoricalSeries = Object.values(data.portfolios).reduce(
-        (count: number, portfolio: any) => count + Object.keys(portfolio.historical_prices || {}).length,
-        0
-      );
+      // Calculate total historical price series (now global)
+      const totalHistoricalSeries = Object.keys(data.global_historical_prices || {}).length;
 
       console.log('✅ [PORTFOLIO CONTEXT] ALL portfolios data loaded successfully:', {
         portfoliosCount: Object.keys(data.portfolios).length,
         portfolioIds: Object.keys(data.portfolios),
         globalSecurities: Object.keys(data.global_securities).length,
-        globalQuotes: Object.keys(data.global_quotes).length,
-        globalExchangeRates: Object.keys(data.global_exchange_rates).length,
+        globalCurrentPrices: Object.keys(data.global_current_prices || {}).length,
+        globalHistoricalPrices: Object.keys(data.global_historical_prices || {}).length,
         globalEarningsData: Object.keys(data.global_earnings_data || {}).length,
         earningsSymbols: Object.keys(data.global_earnings_data || {}),
         userTagLibrary: Object.keys(data.user_tag_library?.tag_definitions || {}).length,
@@ -311,7 +305,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       setError(err.response?.data?.detail || err.message || 'Failed to load portfolios data');
       setIsLoading(false);
     }
-  }, []);
+  }, [isLoading]);
 
   // Refresh all portfolios data
   const refreshAllPortfoliosData = useCallback(async () => {
@@ -332,16 +326,14 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         portfolio_id: selectedPortfolioId,
         portfolio_name: 'Unknown Portfolio',
         base_currency: 'USD',
-        user_name: 'User',
-        user_id: '',
-        total_value: 0
+        user_name: 'User'
       },
       accounts: currentPortfolio.accounts || [],
       securities: allPortfoliosData.global_securities || {},
-      current_prices: currentPortfolio.current_prices || {},
-      exchange_rates: allPortfoliosData.global_exchange_rates || {},
-      live_quotes: allPortfoliosData.global_quotes || {},
-      historical_prices: currentPortfolio.historical_prices || {},
+      current_prices: allPortfoliosData.global_current_prices || {},
+      exchange_rates: {}, // Removed - no longer needed since original_price provided directly
+      live_quotes: {}, // Removed - calculated from current/historical prices
+      historical_prices: allPortfoliosData.global_historical_prices || {},
       aggregation_data: [],
       computation_timestamp: currentPortfolio.computation_timestamp || new Date().toISOString()
     };
@@ -362,7 +354,18 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       accountNamesToUse.includes(account.account_name)
     );
 
-    const totalValue = selectedAccounts.reduce((sum, account) => sum + (account.account_total || 0), 0);
+    const totalValue = selectedAccounts.reduce((sum, account) => {
+      const accountTotal = (account.holdings || []).reduce((accSum, holding) => {
+        const security = allPortfoliosData?.global_securities?.[holding.symbol];
+        const priceData = allPortfoliosData?.global_current_prices?.[holding.symbol];
+        if (!security || !priceData) return accSum;
+
+        // Calculate value: units * price_in_base_currency
+        const holdingValue = holding.units * priceData.price;
+        return accSum + holdingValue;
+      }, 0);
+      return sum + accountTotal;
+    }, 0);
 
     // Aggregate holdings properly to avoid duplicates
     const holdingValues: Record<string, { value: number; units: number; accounts: any[] }> = {};
@@ -372,7 +375,13 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         if (!holdingValues[holding.symbol]) {
           holdingValues[holding.symbol] = { value: 0, units: 0, accounts: [] };
         }
-        holdingValues[holding.symbol].value += holding.total_value || 0;
+
+        // Calculate value dynamically
+        const security = allPortfoliosData?.global_securities?.[holding.symbol];
+        const priceData = allPortfoliosData?.global_current_prices?.[holding.symbol];
+        const holdingValue = (security && priceData) ? holding.units * priceData.price : 0;
+
+        holdingValues[holding.symbol].value += holdingValue;
         holdingValues[holding.symbol].units += holding.units || 0;
         
         // Add account if not already present
@@ -392,11 +401,20 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     });
 
     // Generate chart data for Account Size Overview
-    const accountData = selectedAccounts.map(account => ({
-      label: account.account_name,
-      value: Math.round((account.account_total || 0) * 100) / 100,
-      percentage: totalValue > 0 ? Math.round(((account.account_total || 0) / totalValue * 100) * 100) / 100 : 0
-    })).sort((a, b) => b.value - a.value);
+    const accountData = selectedAccounts.map(account => {
+      const accountTotal = (account.holdings || []).reduce((sum, holding) => {
+        const security = allPortfoliosData?.global_securities?.[holding.symbol];
+        const priceData = allPortfoliosData?.global_current_prices?.[holding.symbol];
+        const holdingValue = (security && priceData) ? holding.units * priceData.price : 0;
+        return sum + holdingValue;
+      }, 0);
+
+      return {
+        label: account.account_name,
+        value: Math.round(accountTotal * 100) / 100,
+        percentage: totalValue > 0 ? Math.round((accountTotal / totalValue * 100) * 100) / 100 : 0
+      };
+    }).sort((a, b) => b.value - a.value);
 
     // Generate chart data for Holdings by Symbol
     const symbolData = Object.entries(holdingValues).map(([symbol, data]) => {
@@ -423,33 +441,14 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
     // Create properly aggregated holdings table (no duplicates)
     const allHoldings = Object.entries(holdingValues).map(([symbol, data]) => {
-      const security = currentPortfolioData.securities?.[symbol];
+      const security = allPortfoliosData?.global_securities?.[symbol];
       const holdingTags = allPortfoliosData?.all_holding_tags?.[symbol];
-      
-      // Get security tags from the actual holding objects (restored from original logic)
-      const firstAccountWithThisSymbol = selectedAccounts.find(account =>
-        account.holdings?.some(h => h.symbol === symbol)
-      );
-      const holdingFromAccount = firstAccountWithThisSymbol?.holdings?.find(h => h.symbol === symbol);
-      const securityTagsFromHolding = holdingFromAccount?.tags || {};
-      
-      // Combine tags properly: security tags + holding-specific tags
+      const priceData = allPortfoliosData?.global_current_prices?.[symbol];
+
+      // Get tags from MongoDB holding tags only (security tags removed from global_securities)
       let combinedTags: Record<string, any> = {};
       
-      // Start with security tags from holding object (these were restored from original logic)
-      if (securityTagsFromHolding && typeof securityTagsFromHolding === 'object') {
-        combinedTags = { ...securityTagsFromHolding };
-        if (Object.keys(securityTagsFromHolding).length > 0) {
-          console.log(`🏷️ [PORTFOLIO CONTEXT] Security tags from holding for ${symbol}:`, Object.keys(securityTagsFromHolding));
-        }
-      }
-      
-      // Also check global securities for additional tags
-      if (security?.tags && typeof security.tags === 'object') {
-        combinedTags = { ...combinedTags, ...security.tags };
-      }
-      
-      // Override with holding-specific tags (complex TagValue structures from MongoDB)
+      // Use holding-specific tags (complex TagValue structures from MongoDB)
       if (holdingTags?.tags && typeof holdingTags.tags === 'object') {
         console.log(`🏷️ [PORTFOLIO CONTEXT] MongoDB holding tags for ${symbol}:`, {
           tagNames: Object.keys(holdingTags.tags),
@@ -459,8 +458,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           } : 'No tags'
         });
         
-        // Merge MongoDB holding tags (they have the proper TagValue structure)
-        combinedTags = { ...combinedTags, ...holdingTags.tags };
+        // Use MongoDB holding tags (they have the proper TagValue structure)
+        combinedTags = { ...holdingTags.tags };
       }
       
       // Log final result
@@ -469,63 +468,26 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           tagCount: Object.keys(combinedTags).length,
           tagNames: Object.keys(combinedTags),
           tagSources: {
-            fromHoldingObject: Object.keys(securityTagsFromHolding).length,
-            fromGlobalSecurity: security?.tags ? Object.keys(security.tags).length : 0,
             fromMongoDB: holdingTags?.tags ? Object.keys(holdingTags.tags).length : 0
           },
           sampleTagStructure: Object.values(combinedTags)[0]
         });
-      } else {
-        console.log(`🔍 [PORTFOLIO CONTEXT] No tags found for ${symbol}:`, {
-          holdingObjectTags: securityTagsFromHolding,
-          globalSecurityTags: security?.tags,
-          mongoDBTags: holdingTags?.tags
-        });
       }
-      
-      // Get the original price in original currency from backend data
-      const priceData = currentPortfolioData.current_prices?.[symbol];
-      let originalPrice = data.units > 0 ? data.value / data.units : 0; // fallback to base currency calculation
-      let originalCurrency = currentPortfolioData.portfolio_metadata?.base_currency || 'USD'; // fallback to base currency
-      
-      // If we have security and price data, use the direct original currency information
+
+      // Calculate prices and values dynamically
+      let originalPrice = 0;
+      let originalCurrency = currentPortfolioData?.portfolio_metadata?.base_currency || 'USD';
+      let valuePerUnit = 0;
+
       if (security && priceData) {
         originalCurrency = security.currency || originalCurrency;
-        
-        // Use the backend-provided original_price if available (NEW: backend now sends this)
-        if (priceData.original_price !== undefined) {
-          originalPrice = priceData.original_price;
-          console.log(`✅ [PORTFOLIO CONTEXT] Using backend original price for ${symbol}:`, {
-            originalCurrency,
-            originalPrice: priceData.original_price,
-            baseCurrencyPrice: priceData.price
-          });
-        } else {
-          // Fallback to reverse conversion if original_price not available
-          if (security.currency !== currentPortfolioData.portfolio_metadata?.base_currency) {
-            const exchangeRate = allPortfoliosData?.global_exchange_rates?.[security.currency];
-            if (exchangeRate && exchangeRate !== 0) {
-              // Reverse the conversion: base_currency_price / exchange_rate = original_currency_price
-              originalPrice = priceData.price / exchangeRate;
-            } else {
-              // If no exchange rate, use the price as is (might be incorrect but better than crashing)
-              originalPrice = priceData.price;
-            }
-          } else {
-            // Same currency as base currency, use price as is
-            originalPrice = priceData.price;
-          }
-          
-          console.log(`💱 [PORTFOLIO CONTEXT] Fallback price conversion for ${symbol}:`, {
-            originalCurrency,
-            baseCurrency: currentPortfolioData.portfolio_metadata?.base_currency,
-            baseCurrencyPrice: priceData.price,
-            exchangeRate: allPortfoliosData?.global_exchange_rates?.[security.currency],
-            calculatedOriginalPrice: originalPrice
-          });
-        }
+
+        // Use the backend-provided original_price (always available now)
+        originalPrice = priceData.original_price || priceData.price;
+
+        valuePerUnit = priceData.price; // Value per unit in base currency
       }
-      
+
       return {
         symbol,
         security_type: security?.security_type || 'unknown', 
@@ -534,22 +496,25 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         total_units: data.units,
         original_price: originalPrice,
         original_currency: originalCurrency,
-        value_per_unit: data.units > 0 ? data.value / data.units : 0,
+        value_per_unit: valuePerUnit,
         total_value: data.value,
-        currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
+        currency: currentPortfolioData?.portfolio_metadata?.base_currency || 'USD',
         price_source: 'calculated',
-        logo: holdingFromAccount?.logo,
-        historical_prices: currentPortfolioData.historical_prices?.[symbol] || [],
+        historical_prices: allPortfoliosData?.global_historical_prices?.[symbol] || [],
+        logo: allPortfoliosData?.global_logos?.[symbol] || null,
         account_breakdown: data.accounts.map(acc => {
           // Find the actual account and holding data
           const account = selectedAccounts.find(account => account.account_name === acc.name);
           const accountHolding = account?.holdings?.find(h => h.symbol === symbol);
           
+          // Calculate value for this account's portion
+          const accountHoldingValue = (accountHolding && priceData) ? accountHolding.units * priceData.price : 0;
+
           return {
             account_name: acc.name,
             account_type: acc.type,
             units: accountHolding?.units || 0,
-            value: accountHolding?.total_value || 0,
+            value: accountHoldingValue,
             owners: account?.owners || []
           };
         })
@@ -605,25 +570,36 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [allPortfoliosData]);
 
-  const getPriceBySymbol = useCallback((symbol: string, portfolioId?: string): PriceData | undefined => {
+  const getPriceBySymbol = useCallback((symbol: string): PriceData | undefined => {
     try {
       if (!allPortfoliosData) return undefined;
-      const targetPortfolioId = portfolioId || selectedPortfolioId;
-      if (!targetPortfolioId) return undefined;
-      const portfolio = allPortfoliosData.portfolios[targetPortfolioId];
-      return portfolio?.current_prices[symbol];
+      return allPortfoliosData.global_current_prices?.[symbol];
     } catch (error) {
       console.error('❌ [PORTFOLIO CONTEXT] Error in getPriceBySymbol:', error);
       return undefined;
     }
-  }, [allPortfoliosData, selectedPortfolioId]);
+  }, [allPortfoliosData]);
 
-  const getQuoteBySymbol = useCallback((symbol: string): QuoteData | undefined => {
+  const getPercentChange = useCallback((symbol: string): number => {
     try {
-      return allPortfoliosData?.global_quotes?.[symbol];
+      const historicalPrices = allPortfoliosData?.global_historical_prices?.[symbol];
+
+      if (!historicalPrices || historicalPrices.length < 2) {
+        return 0;
+      }
+
+      // Compare last two historical entries (more reliable than mixing current + historical)
+      const yesterdayPrice = historicalPrices[historicalPrices.length - 2]?.price;
+      const todayPrice = historicalPrices[historicalPrices.length - 1]?.price;
+
+      if (!yesterdayPrice || yesterdayPrice === 0 || !todayPrice || todayPrice === 0) {
+        return 0;
+      }
+
+      return ((todayPrice - yesterdayPrice) / yesterdayPrice) * 100;
     } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getQuoteBySymbol:', error);
-      return undefined;
+      console.error('❌ [PORTFOLIO CONTEXT] Error calculating percent change:', error);
+      return 0;
     }
   }, [allPortfoliosData]);
 
@@ -676,26 +652,32 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [allPortfoliosData]);
 
+  // NEW: Logo utilities with error handling
+  const getLogoBySymbol = useCallback((symbol: string): string | null => {
+    try {
+      return allPortfoliosData?.global_logos?.[symbol] || null;
+    } catch (error) {
+      console.error('❌ [PORTFOLIO CONTEXT] Error in getLogoBySymbol:', error);
+      return null;
+    }
+  }, [allPortfoliosData]);
+
+  // NEW: Earnings utilities with error handling
+  const getEarningsBySymbol = useCallback((symbol: string) => {
+    try {
+      return allPortfoliosData?.global_earnings_data?.[symbol] || [];
+    } catch (error) {
+      console.error('❌ [PORTFOLIO CONTEXT] Error in getEarningsBySymbol:', error);
+      return [];
+    }
+  }, [allPortfoliosData]);
+
   // Options utilities with error handling
   const getOptionsVestingByAccount = useCallback((portfolioId: string, accountName: string) => {
     try {
       return allPortfoliosData?.all_options_vesting?.[portfolioId]?.[accountName];
     } catch (error) {
       console.error('❌ [PORTFOLIO CONTEXT] Error in getOptionsVestingByAccount:', error);
-      return undefined;
-    }
-  }, [allPortfoliosData]);
-
-  // Earnings utilities with error handling
-  const getEarningsBySymbol = useCallback((symbol: string) => {
-    try {
-      const earnings = allPortfoliosData?.global_earnings_data?.[symbol];
-      if (earnings && earnings.length > 0) {
-        console.log(`📅 [PORTFOLIO CONTEXT] Found earnings data for ${symbol}: ${earnings.length} records`);
-      }
-      return earnings;
-    } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getEarningsBySymbol:', error);
       return undefined;
     }
   }, [allPortfoliosData]);
@@ -749,11 +731,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,
-    getQuoteBySymbol,
+    getPercentChange,
     getUserTagLibrary,
     getHoldingTagsBySymbol,
-    getOptionsVestingByAccount,
+    getLogoBySymbol,
     getEarningsBySymbol,
+    getOptionsVestingByAccount,
     getAvailablePortfolios
   };
   

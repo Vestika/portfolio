@@ -19,7 +19,7 @@ class IBFlexWebServiceClient:
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, _, __, ___):
         await self.client.aclose()
 
     async def send_request(self, access_token: str, query_id: str) -> str:

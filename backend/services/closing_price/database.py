@@ -14,6 +14,7 @@ class Database:
     client: Optional[AsyncMongoClient] = None
     database = None
     loop: Optional[asyncio.AbstractEventLoop] = None
+    indexes_created: bool = False  # Track if indexes have been created
 
 
 class Cache:
@@ -39,14 +40,44 @@ async def create_index_safe(
             unique=unique,
             **kwargs
         )
-        print(f"[INDEX] Created index: {name} on {collection.name}")
+        logger.info(f"[INDEX] Created index: {name} on {collection.name}")
     except OperationFailure as e:
         if e.code == 86:
-            print(f"[INDEX] Conflict: index '{name}' already exists with different options")
+            logger.debug(f"[INDEX] Index '{name}' already exists")
         else:
-            print(f"[INDEX] Error creating index '{name}': {e}")
+            logger.error(f"[INDEX] Error creating index '{name}': {e}")
     except Exception as e:
-        print(f"[INDEX] Unexpected error creating index '{name}': {e}")
+        logger.error(f"[INDEX] Unexpected error creating index '{name}': {e}")
+
+
+async def create_database_indexes() -> None:
+    """Create database indexes - should only be called once during startup"""
+    if db.indexes_created or db.database is None:
+        return
+    
+    logger.info("[INDEX] Creating database indexes...")
+    
+    await create_index_safe(
+        collection=db.database.stock_prices,
+        keys=[("symbol", 1), ("date", -1)],
+        name="symbol_date_index"
+    )
+
+    await create_index_safe(
+        collection=db.database.tracked_symbols,
+        keys=[("symbol", 1)],
+        name="unique_symbol_index",
+        unique=True
+    )
+
+    await create_index_safe(
+        collection=db.database.tracked_symbols,
+        keys=[("last_queried_at", 1)],
+        name="last_queried_at_index"
+    )
+    
+    db.indexes_created = True
+    logger.info("[INDEX] Database indexes creation completed")
 
 
 async def connect_to_mongo() -> None:
@@ -59,30 +90,7 @@ async def connect_to_mongo() -> None:
         # Test the connection
         await db.client.admin.command('ping')
         logger.info(f"Connected to MongoDB at {settings.mongodb_url}")
-
-        await create_index_safe(
-            collection=db.database.stock_prices,
-            keys=[("symbol", 1), ("date", -1)],
-            name="symbol_date_index"
-        )
-
-        await create_index_safe(
-            collection=db.database.tracked_symbols,
-            keys=[("symbol", 1)],
-            name="unique_symbol_index",
-            unique=True
-        )
-
-        await create_index_safe(
-            collection=db.database.tracked_symbols,
-            keys=[("last_queried_at", 1)],
-            name="last_queried_at_index"
-        )
-        # Create indexes
-        # await db.database.stock_prices.create_index([("symbol", 1), ("date", -1)])
-        # await db.database.tracked_symbols.create_index([("symbol", 1)], unique=True, name="symbol_1")
-        # await db.database.tracked_symbols.create_index([("last_queried_at", 1)])
-        #
+        
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
         raise
@@ -136,6 +144,7 @@ async def ensure_mongo_connection() -> None:
                 except Exception:
                     pass
             await connect_to_mongo()
+            # Note: Indexes are created separately during app startup, not here
     except RuntimeError:
         # No running loop; ignore here (should not happen in async context)
         pass

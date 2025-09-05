@@ -68,6 +68,8 @@ interface AccountSelectorProps {
   onProfileClick: () => void;
   onSettingsClick: () => void;
   onSignOutClick: () => Promise<void>;
+  globalPrices: Record<string, any>;
+  globalSecurities: Record<string, any>;
 }
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
@@ -87,7 +89,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onMenuClose,
   onProfileClick,
   onSettingsClick,
-  onSignOutClick
+  onSignOutClick,
+  globalPrices,
+  globalSecurities
 }) => {
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
@@ -221,8 +225,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   };
 
   const updateHolding = (index: number, field: 'symbol' | 'units', value: string) => {
+    // Normalize symbol to uppercase for consistency
+    const normalizedValue = field === 'symbol' ? value.toUpperCase() : value;
     const updatedHoldings = newAccount.holdings.map((holding, i) => 
-      i === index ? { ...holding, [field]: value } : holding
+      i === index ? { ...holding, [field]: normalizedValue } : holding
     );
     
     // Auto-add new row if this is the last row and either field has content
@@ -397,8 +403,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   };
 
   const updateEditHolding = (index: number, field: 'symbol' | 'units', value: string) => {
+    // Normalize symbol to uppercase for consistency
+    const normalizedValue = field === 'symbol' ? value.toUpperCase() : value;
     const updatedHoldings = editAccount.holdings.map((holding, i) => 
-      i === index ? { ...holding, [field]: value } : holding
+      i === index ? { ...holding, [field]: normalizedValue } : holding
     );
     
     // Auto-add new row if this is the last row and either field has content
@@ -562,6 +570,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     });
   };
 
+  // Helper function to calculate account total dynamically
+  const calculateAccountTotal = (account: AccountInfo): number => {
+    return (account.holdings || []).reduce((sum, holding) => {
+      const priceData = globalPrices[holding.symbol];
+      if (!priceData) return sum;
+      return sum + (holding.units * priceData.price);
+    }, 0);
+  };
+
   const selectedAccountsCount = accounts.filter(account => account.isSelected).length;
 
   return (
@@ -631,7 +648,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           <p className="text-xs text-gray-300">
                             {new Intl.NumberFormat('en-US', {
                               maximumFractionDigits: 0
-                            }).format(account.account_total)} {' '}
+                            }).format(calculateAccountTotal(account))} {' '}
                             {portfolioMetadata.base_currency}
                           </p>
                       ) : (

@@ -1,9 +1,8 @@
 """
 Options exercise functionality for managing option exercises and conversions.
 """
-from datetime import datetime, date
-from typing import Dict, List, Any, Optional
-from decimal import Decimal
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 
 class OptionsExercise:

@@ -1,0 +1,2571 @@
+{
+  "portfolios": {
+    "6875556e9a233ad3b94d2ab8": {
+      "portfolio_metadata": {
+        "portfolio_id": "6875556e9a233ad3b94d2ab8",
+        "portfolio_name": "eee",
+        "base_currency": "ILS",
+        "user_name": "eee"
+      },
+      "accounts": [
+        {
+          "account_name": "cscs",
+          "account_type": "bank-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "bank-account"
+          }
+        }
+      ],
+      "computation_timestamp": "2025-09-12T21:51:59.029333"
+    },
+    "6875e52f9a233ad3b94d2abc": {
+      "portfolio_metadata": {
+        "portfolio_id": "6875e52f9a233ad3b94d2abc",
+        "portfolio_name": "Demo Portfolio",
+        "base_currency": "ILS",
+        "user_name": "Demo Portfolio"
+      },
+      "accounts": [
+        {
+          "account_name": "Mizrahi Tfahot",
+          "account_type": "education-fund",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "1185164",
+              "units": 10,
+              "original_currency": "ILS",
+              "security_type": "etf",
+              "security_name": "Invesco MSCI"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "education-fund"
+          }
+        },
+        {
+          "account_name": "OneZero",
+          "account_type": "bank-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "ILS",
+              "units": 20000,
+              "original_currency": "ILS",
+              "security_type": "cash",
+              "security_name": "ILS"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {
+            "ILS": 20000
+          },
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "bank-account"
+          }
+        },
+        {
+          "account_name": "Schwab",
+          "account_type": "investment-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "MSFT",
+              "units": 10,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "Microsoft"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "investment-account"
+          }
+        },
+        {
+          "account_name": "Interactive Brokers",
+          "account_type": "investment-account",
+          "owners": [
+            "me",
+            "wife"
+          ],
+          "holdings": [
+            {
+              "symbol": "SMH",
+              "units": 10,
+              "original_currency": "USD",
+              "security_type": "etf",
+              "security_name": "SMH Semiconductors"
+            },
+            {
+              "symbol": "VTI",
+              "units": 100,
+              "original_currency": "USD",
+              "security_type": "etf",
+              "security_name": "VTI"
+            },
+            {
+              "symbol": "GOOG",
+              "units": 10,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "Google"
+            },
+            {
+              "symbol": "TSLA",
+              "units": 10,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "Tesla"
+            },
+            {
+              "symbol": "ILS",
+              "units": 120,
+              "original_currency": "ILS",
+              "security_type": "cash",
+              "security_name": "ILS"
+            },
+            {
+              "symbol": "USD",
+              "units": 199,
+              "original_currency": "USD",
+              "security_type": "cash",
+              "security_name": "USD"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {
+            "ILS": 120,
+            "USD": 199
+          },
+          "account_properties": {
+            "owners": [
+              "me",
+              "wife"
+            ],
+            "type": "investment-account"
+          }
+        },
+        {
+          "account_name": "nvda",
+          "account_type": "company-custodian-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "NVDA",
+              "units": 750,
+              "original_currency": "ILS",
+              "security_type": "rsu_virtual",
+              "security_name": "NVDA"
+            }
+          ],
+          "rsu_plans": [
+            {
+              "id": "1752835782472",
+              "symbol": "NVDA",
+              "units": 2000,
+              "grant_date": "2024-01-01",
+              "has_cliff": true,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "cliff_duration_months": 12
+            }
+          ],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [
+            {
+              "id": "1752835782472",
+              "symbol": "NVDA",
+              "total_units": 2000,
+              "vested_units": 750.0,
+              "next_vest_date": "2025-10-01",
+              "next_vest_units": 125.0,
+              "schedule": [
+                {
+                  "date": "2025-01-01",
+                  "units": 500.0
+                },
+                {
+                  "date": "2025-04-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2025-07-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2025-10-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2026-01-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2026-04-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2026-07-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2026-10-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2027-01-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2027-04-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2027-07-01",
+                  "units": 125.0
+                },
+                {
+                  "date": "2027-10-01",
+                  "units": 125.0
+                }
+              ],
+              "grant_date": "2024-01-01",
+              "cliff_months": 12,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "price_currency": "USD"
+            }
+          ],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "company-custodian-account"
+          }
+        },
+        {
+          "account_name": "Shwab",
+          "account_type": "company-custodian-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "NVDA",
+              "units": 0,
+              "original_currency": "ILS",
+              "security_type": "rsu_virtual",
+              "security_name": "NVDA"
+            }
+          ],
+          "rsu_plans": [
+            {
+              "id": "1752995233271",
+              "symbol": "NVDA",
+              "units": 100,
+              "grant_date": "2024-12-04",
+              "has_cliff": true,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "cliff_duration_months": 12
+            }
+          ],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [
+            {
+              "id": "1752995233271",
+              "symbol": "NVDA",
+              "total_units": 100,
+              "vested_units": 0,
+              "next_vest_date": "2025-12-04",
+              "next_vest_units": 25.0,
+              "schedule": [
+                {
+                  "date": "2025-12-04",
+                  "units": 25.0
+                },
+                {
+                  "date": "2026-03-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2026-06-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2026-09-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2026-12-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2027-03-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2027-06-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2027-09-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2027-12-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2028-03-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2028-06-04",
+                  "units": 6.25
+                },
+                {
+                  "date": "2028-09-04",
+                  "units": 6.25
+                }
+              ],
+              "grant_date": "2024-12-04",
+              "cliff_months": 12,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "price_currency": "USD"
+            }
+          ],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "company-custodian-account"
+          }
+        }
+      ],
+      "computation_timestamp": "2025-09-12T21:51:59.030360"
+    },
+    "68a86a199d3bc9d916a67d8a": {
+      "portfolio_metadata": {
+        "portfolio_id": "68a86a199d3bc9d916a67d8a",
+        "portfolio_name": "Michael",
+        "base_currency": "ILS",
+        "user_name": "Michael"
+      },
+      "accounts": [
+        {
+          "account_name": "Discount",
+          "account_type": "bank-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "VTI",
+              "units": 1374,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "VTI"
+            },
+            {
+              "symbol": "1159235",
+              "units": 1700,
+              "original_currency": "ILS",
+              "security_type": "bond",
+              "security_name": "1159235"
+            },
+            {
+              "symbol": "5137740",
+              "units": 42367,
+              "original_currency": "ILS",
+              "security_type": "bond",
+              "security_name": "5137740"
+            },
+            {
+              "symbol": "1183441",
+              "units": 103,
+              "original_currency": "ILS",
+              "security_type": "bond",
+              "security_name": "1183441"
+            },
+            {
+              "symbol": "QQQ",
+              "units": 138,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "QQQ"
+            },
+            {
+              "symbol": "VXUS",
+              "units": 1074,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "VXUS"
+            },
+            {
+              "symbol": "5137641",
+              "units": 95444,
+              "original_currency": "ILS",
+              "security_type": "bond",
+              "security_name": "5137641"
+            },
+            {
+              "symbol": "IBIT",
+              "units": 297,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "IBIT"
+            },
+            {
+              "symbol": "SMH",
+              "units": 33,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "SMH"
+            },
+            {
+              "symbol": "FSTA",
+              "units": 102,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "FSTA"
+            },
+            {
+              "symbol": "AVUV",
+              "units": 50,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "AVUV"
+            },
+            {
+              "symbol": "ILS",
+              "units": 70000,
+              "original_currency": "ILS",
+              "security_type": "cash",
+              "security_name": "ILS"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {
+            "ILS": 70000
+          },
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "bank-account"
+          }
+        },
+        {
+          "account_name": "Interactive Brokers",
+          "account_type": "investment-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "AVUV",
+              "units": 152,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "AVUV"
+            },
+            {
+              "symbol": "CRCL",
+              "units": 9,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "CRCL"
+            },
+            {
+              "symbol": "GOOG",
+              "units": 105,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "GOOG"
+            },
+            {
+              "symbol": "META",
+              "units": 2,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "META"
+            },
+            {
+              "symbol": "MSFT",
+              "units": 3,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "MSFT"
+            },
+            {
+              "symbol": "NKE",
+              "units": 26,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "NKE"
+            },
+            {
+              "symbol": "PANW",
+              "units": 13,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "PANW"
+            },
+            {
+              "symbol": "SMH",
+              "units": 116,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "SMH"
+            },
+            {
+              "symbol": "TSLA",
+              "units": 20,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "TSLA"
+            },
+            {
+              "symbol": "VTI",
+              "units": 226,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "VTI"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "investment-account"
+          }
+        },
+        {
+          "account_name": "Mizrahi",
+          "account_type": "education-fund",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "1185164",
+              "units": 593,
+              "original_currency": "ILS",
+              "security_type": "bond",
+              "security_name": "1185164"
+            },
+            {
+              "symbol": "IBIT",
+              "units": 41,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "IBIT"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "education-fund"
+          }
+        },
+        {
+          "account_name": "Schwab",
+          "account_type": "company-custodian-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "NVDA",
+              "units": 1426,
+              "original_currency": "ILS",
+              "security_type": "rsu_virtual",
+              "security_name": "NVDA"
+            }
+          ],
+          "rsu_plans": [
+            {
+              "id": "1755890758029",
+              "symbol": "NVDA",
+              "units": 210,
+              "grant_date": "2024-08-04",
+              "has_cliff": false,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly"
+            },
+            {
+              "id": "1755891243376",
+              "symbol": "NVDA",
+              "units": 60,
+              "grant_date": "2024-08-04",
+              "has_cliff": false,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly"
+            },
+            {
+              "id": "1755891267710",
+              "symbol": "NVDA",
+              "units": 3620,
+              "grant_date": "2024-02-08",
+              "has_cliff": true,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "cliff_duration_months": 12
+            }
+          ],
+          "espp_plans": [
+            {
+              "id": "1755891653296",
+              "symbol": "NVDA",
+              "units": 1573,
+              "income_percentage": 15,
+              "buying_periods": [
+                {
+                  "start_date": "2025-08-22",
+                  "end_date": "2026-02-18"
+                }
+              ],
+              "stock_discount_percentage": 15,
+              "base_stock_price": 100
+            }
+          ],
+          "options_plans": [],
+          "rsu_vesting_data": [
+            {
+              "id": "1755890758029",
+              "symbol": "NVDA",
+              "total_units": 210,
+              "vested_units": 52.5,
+              "next_vest_date": "2025-11-04",
+              "next_vest_units": 13.12,
+              "schedule": [
+                {
+                  "date": "2024-11-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2025-02-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2025-05-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2025-08-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2025-11-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2026-02-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2026-05-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2026-08-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2026-11-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2027-02-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2027-05-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2027-08-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2027-11-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2028-02-04",
+                  "units": 13.125
+                },
+                {
+                  "date": "2028-05-04",
+                  "units": 13.125
+                }
+              ],
+              "grant_date": "2024-08-04",
+              "cliff_months": 0,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "price_currency": "USD"
+            },
+            {
+              "id": "1755891243376",
+              "symbol": "NVDA",
+              "total_units": 60,
+              "vested_units": 15.0,
+              "next_vest_date": "2025-11-04",
+              "next_vest_units": 3.75,
+              "schedule": [
+                {
+                  "date": "2024-11-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2025-02-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2025-05-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2025-08-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2025-11-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2026-02-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2026-05-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2026-08-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2026-11-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2027-02-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2027-05-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2027-08-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2027-11-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2028-02-04",
+                  "units": 3.75
+                },
+                {
+                  "date": "2028-05-04",
+                  "units": 3.75
+                }
+              ],
+              "grant_date": "2024-08-04",
+              "cliff_months": 0,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "price_currency": "USD"
+            },
+            {
+              "id": "1755891267710",
+              "symbol": "NVDA",
+              "total_units": 3620,
+              "vested_units": 1357.5,
+              "next_vest_date": "2025-11-08",
+              "next_vest_units": 226.25,
+              "schedule": [
+                {
+                  "date": "2025-02-08",
+                  "units": 905.0
+                },
+                {
+                  "date": "2025-05-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2025-08-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2025-11-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2026-02-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2026-05-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2026-08-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2026-11-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2027-02-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2027-05-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2027-08-08",
+                  "units": 226.25
+                },
+                {
+                  "date": "2027-11-08",
+                  "units": 226.25
+                }
+              ],
+              "grant_date": "2024-02-08",
+              "cliff_months": 12,
+              "vesting_period_years": 4,
+              "vesting_frequency": "quarterly",
+              "price_currency": "USD"
+            }
+          ],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "company-custodian-account"
+          }
+        },
+        {
+          "account_name": "Schwab Vested",
+          "account_type": "investment-account",
+          "owners": [
+            "me"
+          ],
+          "holdings": [
+            {
+              "symbol": "NVDA",
+              "units": 1791,
+              "original_currency": "USD",
+              "security_type": "stock",
+              "security_name": "NVDA"
+            }
+          ],
+          "rsu_plans": [],
+          "espp_plans": [],
+          "options_plans": [],
+          "rsu_vesting_data": [],
+          "account_cash": {},
+          "account_properties": {
+            "owners": [
+              "me"
+            ],
+            "type": "investment-account"
+          }
+        }
+      ],
+      "computation_timestamp": "2025-09-12T21:51:59.030857"
+    }
+  },
+  "global_securities": {
+    "1185164": {
+      "symbol": "1185164",
+      "name": "1185164",
+      "security_type": "bond",
+      "currency": "ILS"
+    },
+    "ILS": {
+      "symbol": "ILS",
+      "name": "ILS",
+      "security_type": "cash",
+      "currency": "ILS"
+    },
+    "MSFT": {
+      "symbol": "MSFT",
+      "name": "MSFT",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "SMH": {
+      "symbol": "SMH",
+      "name": "SMH",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "VTI": {
+      "symbol": "VTI",
+      "name": "VTI",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "GOOG": {
+      "symbol": "GOOG",
+      "name": "GOOG",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "TSLA": {
+      "symbol": "TSLA",
+      "name": "TSLA",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "USD": {
+      "symbol": "USD",
+      "name": "USD",
+      "security_type": "cash",
+      "currency": "USD"
+    },
+    "1159235": {
+      "symbol": "1159235",
+      "name": "1159235",
+      "security_type": "bond",
+      "currency": "ILS"
+    },
+    "5137740": {
+      "symbol": "5137740",
+      "name": "5137740",
+      "security_type": "bond",
+      "currency": "ILS"
+    },
+    "1183441": {
+      "symbol": "1183441",
+      "name": "1183441",
+      "security_type": "bond",
+      "currency": "ILS"
+    },
+    "QQQ": {
+      "symbol": "QQQ",
+      "name": "QQQ",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "VXUS": {
+      "symbol": "VXUS",
+      "name": "VXUS",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "5137641": {
+      "symbol": "5137641",
+      "name": "5137641",
+      "security_type": "bond",
+      "currency": "ILS"
+    },
+    "IBIT": {
+      "symbol": "IBIT",
+      "name": "IBIT",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "FSTA": {
+      "symbol": "FSTA",
+      "name": "FSTA",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "AVUV": {
+      "symbol": "AVUV",
+      "name": "AVUV",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "CRCL": {
+      "symbol": "CRCL",
+      "name": "CRCL",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "META": {
+      "symbol": "META",
+      "name": "META",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "NKE": {
+      "symbol": "NKE",
+      "name": "NKE",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "PANW": {
+      "symbol": "PANW",
+      "name": "PANW",
+      "security_type": "stock",
+      "currency": "USD"
+    },
+    "NVDA": {
+      "symbol": "NVDA",
+      "name": "NVDA",
+      "security_type": "stock",
+      "currency": "USD"
+    }
+  },
+  "global_current_prices": {
+    "CRCL": {
+      "price": 445.22099999999995,
+      "original_price": 133.7,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:00.023737"
+    },
+    "SMH": {
+      "price": 1012.0869,
+      "original_price": 303.93,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:03.208298"
+    },
+    "5137641": {
+      "price": 1.0823,
+      "original_price": 1.0823,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:03.751828"
+    },
+    "NKE": {
+      "price": 247.5189,
+      "original_price": 74.33,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:07.454064"
+    },
+    "1183441": {
+      "price": 4341.0,
+      "original_price": 4341.0,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:08.022640"
+    },
+    "1185164": {
+      "price": 444.5,
+      "original_price": 444.5,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:09.313819"
+    },
+    "IBIT": {
+      "price": 216.5499,
+      "original_price": 65.03,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:10.223197"
+    },
+    "NVDA": {
+      "price": 589.9761,
+      "original_price": 177.17,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:10.730375"
+    },
+    "1159235": {
+      "price": 344.3,
+      "original_price": 344.3,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:11.414798"
+    },
+    "FSTA": {
+      "price": 170.8956,
+      "original_price": 51.32,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:12.432436"
+    },
+    "USD": {
+      "price": 3.33,
+      "original_price": 1.0,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:12.938205"
+    },
+    "TSLA": {
+      "price": 1228.1373,
+      "original_price": 368.81,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:12.954521"
+    },
+    "5137740": {
+      "price": 10.8278,
+      "original_price": 10.8278,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:13.478628"
+    },
+    "META": {
+      "price": 2500.497,
+      "original_price": 750.9,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:14.395335"
+    },
+    "PANW": {
+      "price": 660.4389000000001,
+      "original_price": 198.33,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:14.940543"
+    },
+    "VXUS": {
+      "price": 244.1889,
+      "original_price": 73.33,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:15.696053"
+    },
+    "GOOG": {
+      "price": 801.7974,
+      "original_price": 240.78,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:16.253983"
+    },
+    "ILS": {
+      "price": 1.0,
+      "original_price": 1.0,
+      "currency": "ILS",
+      "last_updated": "2025-09-12T21:52:16.862966"
+    },
+    "AVUV": {
+      "price": 338.5611,
+      "original_price": 101.67,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:17.520897"
+    },
+    "VTI": {
+      "price": 1081.5174,
+      "original_price": 324.78,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:18.056883"
+    },
+    "QQQ": {
+      "price": 1944.9864000000002,
+      "original_price": 584.08,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:18.709110"
+    },
+    "MSFT": {
+      "price": 1668.3633,
+      "original_price": 501.01,
+      "currency": "USD",
+      "last_updated": "2025-09-12T21:52:19.272831"
+    }
+  },
+  "global_historical_prices": {
+    "CRCL": [
+      {
+        "date": "2025-09-08",
+        "price": 112.46
+      },
+      {
+        "date": "2025-09-09",
+        "price": 117.99
+      },
+      {
+        "date": "2025-09-10",
+        "price": 113.69
+      },
+      {
+        "date": "2025-09-11",
+        "price": 133.7
+      },
+      {
+        "date": "2025-09-12",
+        "price": 125.32
+      }
+    ],
+    "SMH": [
+      {
+        "date": "2025-09-08",
+        "price": 296.52
+      },
+      {
+        "date": "2025-09-09",
+        "price": 297.81
+      },
+      {
+        "date": "2025-09-10",
+        "price": 300.83
+      },
+      {
+        "date": "2025-09-11",
+        "price": 303.93
+      },
+      {
+        "date": "2025-09-12",
+        "price": 304.32
+      }
+    ],
+    "5137641": [
+      {
+        "date": "2025-09-07T00:00:00",
+        "price": 1.0819
+      },
+      {
+        "date": "2025-09-08T00:00:00",
+        "price": 1.0819
+      },
+      {
+        "date": "2025-09-09T00:00:00",
+        "price": 1.082
+      },
+      {
+        "date": "2025-09-10T00:00:00",
+        "price": 1.0822
+      },
+      {
+        "date": "2025-09-11T00:00:00",
+        "price": 1.0823
+      }
+    ],
+    "NKE": [
+      {
+        "date": "2025-09-08",
+        "price": 74.15
+      },
+      {
+        "date": "2025-09-09",
+        "price": 73.6
+      },
+      {
+        "date": "2025-09-10",
+        "price": 74.25
+      },
+      {
+        "date": "2025-09-11",
+        "price": 74.33
+      },
+      {
+        "date": "2025-09-12",
+        "price": 73.0
+      }
+    ],
+    "1183441": [
+      {
+        "date": "2025-09-06",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-07",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-08",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-09",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-10",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-11",
+        "price": 4341.0
+      },
+      {
+        "date": "2025-09-12",
+        "price": 4341.0
+      }
+    ],
+    "1185164": [
+      {
+        "date": "2025-09-06",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-07",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-08",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-09",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-10",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-11",
+        "price": 444.5
+      },
+      {
+        "date": "2025-09-12",
+        "price": 444.5
+      }
+    ],
+    "IBIT": [
+      {
+        "date": "2025-09-08",
+        "price": 63.7
+      },
+      {
+        "date": "2025-09-09",
+        "price": 63.22
+      },
+      {
+        "date": "2025-09-10",
+        "price": 64.53
+      },
+      {
+        "date": "2025-09-11",
+        "price": 65.03
+      },
+      {
+        "date": "2025-09-12",
+        "price": 66.38
+      }
+    ],
+    "NVDA": [
+      {
+        "date": "2025-09-08",
+        "price": 168.3
+      },
+      {
+        "date": "2025-09-09",
+        "price": 170.75
+      },
+      {
+        "date": "2025-09-10",
+        "price": 177.32
+      },
+      {
+        "date": "2025-09-11",
+        "price": 177.17
+      },
+      {
+        "date": "2025-09-12",
+        "price": 177.82
+      }
+    ],
+    "1159235": [
+      {
+        "date": "2025-09-06",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-07",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-08",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-09",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-10",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-11",
+        "price": 344.3
+      },
+      {
+        "date": "2025-09-12",
+        "price": 344.3
+      }
+    ],
+    "FSTA": [
+      {
+        "date": "2025-09-08",
+        "price": 51.28
+      },
+      {
+        "date": "2025-09-09",
+        "price": 51.39
+      },
+      {
+        "date": "2025-09-10",
+        "price": 50.84
+      },
+      {
+        "date": "2025-09-11",
+        "price": 51.32
+      },
+      {
+        "date": "2025-09-12",
+        "price": 51.19
+      }
+    ],
+    "USD": [
+      {
+        "date": "2025-09-06",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-07",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-08",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-09",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-10",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-11",
+        "price": 1.0
+      },
+      {
+        "date": "2025-09-12",
+        "price": 1.0
+      }
+    ],
+    "TSLA": [
+      {
+        "date": "2025-09-08",
+        "price": 346.4
+      },
+      {
+        "date": "2025-09-09",
+        "price": 346.97
+      },
+      {
+        "date": "2025-09-10",
+        "price": 347.79
+      },
+      {
+        "date": "2025-09-11",
+        "price": 368.81
+      },
+      {
+        "date": "2025-09-12",
+        "price": 395.94
+      }
+    ],
+    "5137740": [
+      {
+        "date": "2025-09-07T00:00:00",
+        "price": 10.824200000000001
+      },
+      {
+        "date": "2025-09-08T00:00:00",
+        "price": 10.8248
+      },
+      {
+        "date": "2025-09-09T00:00:00",
+        "price": 10.8257
+      },
+      {
+        "date": "2025-09-10T00:00:00",
+        "price": 10.8272
+      },
+      {
+        "date": "2025-09-11T00:00:00",
+        "price": 10.8278
+      }
+    ],
+    "META": [
+      {
+        "date": "2025-09-08",
+        "price": 752.3
+      },
+      {
+        "date": "2025-09-09",
+        "price": 765.7
+      },
+      {
+        "date": "2025-09-10",
+        "price": 751.98
+      },
+      {
+        "date": "2025-09-11",
+        "price": 750.9
+      },
+      {
+        "date": "2025-09-12",
+        "price": 755.59
+      }
+    ],
+    "PANW": [
+      {
+        "date": "2025-09-08",
+        "price": 197.38
+      },
+      {
+        "date": "2025-09-09",
+        "price": 197.55
+      },
+      {
+        "date": "2025-09-10",
+        "price": 197.33
+      },
+      {
+        "date": "2025-09-11",
+        "price": 198.33
+      },
+      {
+        "date": "2025-09-12",
+        "price": 196.29
+      }
+    ],
+    "VXUS": [
+      {
+        "date": "2025-09-08",
+        "price": 72.47
+      },
+      {
+        "date": "2025-09-09",
+        "price": 72.38
+      },
+      {
+        "date": "2025-09-10",
+        "price": 72.51
+      },
+      {
+        "date": "2025-09-11",
+        "price": 73.33
+      },
+      {
+        "date": "2025-09-12",
+        "price": 73.09
+      }
+    ],
+    "GOOG": [
+      {
+        "date": "2025-09-08",
+        "price": 234.16
+      },
+      {
+        "date": "2025-09-09",
+        "price": 239.94
+      },
+      {
+        "date": "2025-09-10",
+        "price": 239.56
+      },
+      {
+        "date": "2025-09-11",
+        "price": 240.78
+      },
+      {
+        "date": "2025-09-12",
+        "price": 241.38
+      }
+    ],
+    "ILS": [
+      {
+        "date": "2025-09-08",
+        "price": 0.298975
+      },
+      {
+        "date": "2025-09-09",
+        "price": 0.301022
+      },
+      {
+        "date": "2025-09-10",
+        "price": 0.299113
+      },
+      {
+        "date": "2025-09-11",
+        "price": 0.301062
+      },
+      {
+        "date": "2025-09-12",
+        "price": 0.300255
+      }
+    ],
+    "AVUV": [
+      {
+        "date": "2025-09-08",
+        "price": 100.84
+      },
+      {
+        "date": "2025-09-09",
+        "price": 99.8
+      },
+      {
+        "date": "2025-09-10",
+        "price": 100.04
+      },
+      {
+        "date": "2025-09-11",
+        "price": 101.67
+      },
+      {
+        "date": "2025-09-12",
+        "price": 100.14
+      }
+    ],
+    "VTI": [
+      {
+        "date": "2025-09-08",
+        "price": 320.57
+      },
+      {
+        "date": "2025-09-09",
+        "price": 320.98
+      },
+      {
+        "date": "2025-09-10",
+        "price": 321.8
+      },
+      {
+        "date": "2025-09-11",
+        "price": 324.78
+      },
+      {
+        "date": "2025-09-12",
+        "price": 324.31
+      }
+    ],
+    "QQQ": [
+      {
+        "date": "2025-09-08",
+        "price": 578.87
+      },
+      {
+        "date": "2025-09-09",
+        "price": 580.51
+      },
+      {
+        "date": "2025-09-10",
+        "price": 580.7
+      },
+      {
+        "date": "2025-09-11",
+        "price": 584.08
+      },
+      {
+        "date": "2025-09-12",
+        "price": 586.66
+      }
+    ],
+    "MSFT": [
+      {
+        "date": "2025-09-08",
+        "price": 498.2
+      },
+      {
+        "date": "2025-09-09",
+        "price": 498.41
+      },
+      {
+        "date": "2025-09-10",
+        "price": 500.37
+      },
+      {
+        "date": "2025-09-11",
+        "price": 501.01
+      },
+      {
+        "date": "2025-09-12",
+        "price": 509.9
+      }
+    ]
+  },
+  "user_tag_library": {
+    "id": null,
+    "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+    "tag_definitions": {
+      "asfsfs": {
+        "_id": null,
+        "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+        "name": "asfsfs",
+        "display_name": "FDS fdsfds",
+        "description": "fdsfdslkm mlkfds lfdsklm df",
+        "tag_type": "enum",
+        "enum_values": [
+          "test1",
+          "test2"
+        ],
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-19T09:41:26.012000",
+        "updated_at": "2025-07-19T09:41:26.014000",
+        "is_active": true
+      },
+      "investment_intent": {
+        "_id": null,
+        "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+        "name": "investment_intent",
+        "display_name": "Investment Intent",
+        "description": "Primary investment strategy for this holding",
+        "tag_type": "enum",
+        "enum_values": [
+          "Growth",
+          "Income",
+          "Speculation",
+          "Safety",
+          "Diversification"
+        ],
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T18:47:40.698000",
+        "updated_at": "2025-07-19T10:08:23.257000",
+        "is_active": true
+      },
+      "annual_dividend_yield": {
+        "_id": null,
+        "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+        "name": "annual_dividend_yield",
+        "display_name": "Annual Dividend Yield",
+        "description": "Expected annual dividend yield percentage",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "percentage",
+        "min_value": 0.0,
+        "max_value": 100.0,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T18:47:40.698000",
+        "updated_at": "2025-07-19T10:08:35.366000",
+        "is_active": true
+      },
+      "is_esg_compliant": {
+        "_id": null,
+        "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+        "name": "is_esg_compliant",
+        "display_name": "ESG Compliant",
+        "description": "Whether this holding meets ESG criteria",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T18:47:40.698000",
+        "updated_at": "2025-07-19T10:26:25.257000",
+        "is_active": true
+      },
+      "ben": {
+        "_id": null,
+        "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+        "name": "ben",
+        "display_name": "ben",
+        "description": "w?",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-19T11:29:56.215000",
+        "updated_at": "2025-07-19T11:29:56.217000",
+        "is_active": true
+      }
+    },
+    "template_tags": {
+      "investment_intent": {
+        "_id": null,
+        "user_id": "template",
+        "name": "investment_intent",
+        "display_name": "Investment Intent",
+        "description": "Primary investment strategy for this holding",
+        "tag_type": "enum",
+        "enum_values": [
+          "Growth",
+          "Income",
+          "Speculation",
+          "Safety",
+          "Diversification"
+        ],
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "sector": {
+        "_id": null,
+        "user_id": "template",
+        "name": "sector",
+        "display_name": "Sector",
+        "description": "Industry sector classification",
+        "tag_type": "enum",
+        "enum_values": [
+          "Technology",
+          "Healthcare",
+          "Financial",
+          "Energy",
+          "Real Estate",
+          "Consumer",
+          "Industrial",
+          "Utilities",
+          "Materials",
+          "Telecommunications"
+        ],
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "tax_treatment": {
+        "_id": null,
+        "user_id": "template",
+        "name": "tax_treatment",
+        "display_name": "Tax Treatment",
+        "description": "Tax status of the holding",
+        "tag_type": "enum",
+        "enum_values": [
+          "Taxable",
+          "Tax-free",
+          "Deferred",
+          "IRA",
+          "401k",
+          "Roth"
+        ],
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "geographic_exposure": {
+        "_id": null,
+        "user_id": "template",
+        "name": "geographic_exposure",
+        "display_name": "Geographic Exposure",
+        "description": "Geographic/country exposure weights",
+        "tag_type": "map",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": "country",
+        "allowed_keys": [
+          "US",
+          "EU",
+          "Asia",
+          "Emerging",
+          "Global"
+        ],
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "esg_score": {
+        "_id": null,
+        "user_id": "template",
+        "name": "esg_score",
+        "display_name": "ESG Score",
+        "description": "Environmental, Social, Governance scoring",
+        "tag_type": "map",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": "esg_factor",
+        "allowed_keys": [
+          "Environment",
+          "Social",
+          "Governance"
+        ],
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "annual_dividend_yield": {
+        "_id": null,
+        "user_id": "template",
+        "name": "annual_dividend_yield",
+        "display_name": "Annual Dividend Yield",
+        "description": "Expected annual dividend yield percentage",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "percentage",
+        "min_value": 0.0,
+        "max_value": 100.0,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "years_held": {
+        "_id": null,
+        "user_id": "template",
+        "name": "years_held",
+        "display_name": "Years Held",
+        "description": "Number of years holding this security",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "float",
+        "min_value": 0.0,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "target_sale_price": {
+        "_id": null,
+        "user_id": "template",
+        "name": "target_sale_price",
+        "display_name": "Target Sale Price",
+        "description": "Target price for selling this holding",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "currency",
+        "min_value": 0.0,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "risk_score": {
+        "_id": null,
+        "user_id": "template",
+        "name": "risk_score",
+        "display_name": "Risk Score",
+        "description": "Personal risk assessment (1-10 scale)",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "integer",
+        "min_value": 1.0,
+        "max_value": 10.0,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "conviction_level": {
+        "_id": null,
+        "user_id": "template",
+        "name": "conviction_level",
+        "display_name": "Conviction Level",
+        "description": "Personal conviction in this investment (1-5 scale)",
+        "tag_type": "scalar",
+        "enum_values": null,
+        "scalar_data_type": "integer",
+        "min_value": 1.0,
+        "max_value": 5.0,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "investment_goal": {
+        "_id": null,
+        "user_id": "template",
+        "name": "investment_goal",
+        "display_name": "Investment Goal",
+        "description": "Hierarchical investment goal classification",
+        "tag_type": "hierarchical",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": 3,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "is_esg_compliant": {
+        "_id": null,
+        "user_id": "template",
+        "name": "is_esg_compliant",
+        "display_name": "ESG Compliant",
+        "description": "Whether this holding meets ESG criteria",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "liquidity_buffer": {
+        "_id": null,
+        "user_id": "template",
+        "name": "liquidity_buffer",
+        "display_name": "Use in Liquidity Buffer",
+        "description": "Include this holding in emergency liquidity calculations",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "tax_loss_harvest": {
+        "_id": null,
+        "user_id": "template",
+        "name": "tax_loss_harvest",
+        "display_name": "Avoid for Tax Reasons",
+        "description": "Avoid selling this holding for tax optimization",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "under_restriction": {
+        "_id": null,
+        "user_id": "template",
+        "name": "under_restriction",
+        "display_name": "Under Legal Restriction",
+        "description": "This holding has legal restrictions on trading",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "option_collateral": {
+        "_id": null,
+        "user_id": "template",
+        "name": "option_collateral",
+        "display_name": "Option Collateral",
+        "description": "This holding is used as collateral for options",
+        "tag_type": "boolean",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "hold_until": {
+        "_id": null,
+        "user_id": "template",
+        "name": "hold_until",
+        "display_name": "Hold Until",
+        "description": "Target date to hold this investment until",
+        "tag_type": "time_based",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": "YYYY-MM-DD",
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "review_frequency": {
+        "_id": null,
+        "user_id": "template",
+        "name": "review_frequency",
+        "display_name": "Review Frequency",
+        "description": "How often to review this holding",
+        "tag_type": "time_based",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": "frequency",
+        "relationship_type": null,
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "hedged_by": {
+        "_id": null,
+        "user_id": "template",
+        "name": "hedged_by",
+        "display_name": "Hedged By",
+        "description": "Other holdings that hedge this position",
+        "tag_type": "relationship",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": "hedge",
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "underlying_of": {
+        "_id": null,
+        "user_id": "template",
+        "name": "underlying_of",
+        "display_name": "Underlying Of",
+        "description": "Derivative instruments based on this holding",
+        "tag_type": "relationship",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": "derivative",
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      },
+      "strategy_group": {
+        "_id": null,
+        "user_id": "template",
+        "name": "strategy_group",
+        "display_name": "Strategy Group",
+        "description": "Related holdings that are part of the same strategy",
+        "tag_type": "relationship",
+        "enum_values": null,
+        "scalar_data_type": null,
+        "min_value": null,
+        "max_value": null,
+        "map_key_type": null,
+        "allowed_keys": null,
+        "max_depth": null,
+        "path_separator": " > ",
+        "time_format": null,
+        "relationship_type": "strategy",
+        "created_at": "2025-07-18T11:46:40.309000",
+        "updated_at": "2025-07-18T11:46:40.309000",
+        "is_active": true
+      }
+    },
+    "created_at": "2025-07-18T11:47:08.877000",
+    "updated_at": "2025-07-19T11:29:56.217000"
+  },
+  "all_holding_tags": {
+    "NVDA": {
+      "symbol": "NVDA",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "geographic_exposure": {
+          "tag_name": "geographic_exposure",
+          "tag_type": "map",
+          "enum_value": null,
+          "map_value": {
+            "EU": 0.4
+          },
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-19T08:07:10.624000",
+          "updated_at": "2025-07-19T09:38:19.044000"
+        },
+        "investment_goal": {
+          "tag_name": "investment_goal",
+          "tag_type": "hierarchical",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": [
+            "retirement",
+            "stay at home"
+          ],
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-19T08:07:36.767000",
+          "updated_at": "2025-07-19T08:07:36.769000"
+        },
+        "is_esg_compliant": {
+          "tag_name": "is_esg_compliant",
+          "tag_type": "boolean",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": true,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-19T10:47:03.977000",
+          "updated_at": "2025-07-19T10:47:03.980000"
+        }
+      },
+      "created_at": "2025-07-18T11:48:39.091000",
+      "updated_at": "2025-07-19T10:47:03.980000"
+    },
+    "VTI": {
+      "symbol": "VTI",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "geographic_exposure": {
+          "tag_name": "geographic_exposure",
+          "tag_type": "map",
+          "enum_value": null,
+          "map_value": {
+            "US": 1.0
+          },
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-19T10:22:28.904000",
+          "updated_at": "2025-07-19T10:22:28.906000"
+        }
+      },
+      "created_at": "2025-07-18T11:56:07.903000",
+      "updated_at": "2025-07-19T10:22:28.906000"
+    },
+    "ILS": {
+      "symbol": "ILS",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "geographic_exposure": {
+          "tag_name": "geographic_exposure",
+          "tag_type": "map",
+          "enum_value": null,
+          "map_value": {
+            "Emerging": 0.9,
+            "Global": 0.1
+          },
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-19T10:22:48.278000",
+          "updated_at": "2025-07-19T10:22:48.280000"
+        }
+      },
+      "created_at": "2025-07-19T10:22:48.280000",
+      "updated_at": "2025-07-19T10:22:48.280000"
+    },
+    "MSFT": {
+      "symbol": "MSFT",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "ben": {
+          "tag_name": "ben",
+          "tag_type": "boolean",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": true,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:00.669000",
+          "updated_at": "2025-07-21T21:09:00.671000"
+        },
+        "is_esg_compliant": {
+          "tag_name": "is_esg_compliant",
+          "tag_type": "boolean",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": true,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:11.185000",
+          "updated_at": "2025-07-21T21:09:11.189000"
+        },
+        "investment_intent": {
+          "tag_name": "investment_intent",
+          "tag_type": "enum",
+          "enum_value": "Income",
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:16.761000",
+          "updated_at": "2025-07-21T21:09:16.764000"
+        },
+        "annual_dividend_yield": {
+          "tag_name": "annual_dividend_yield",
+          "tag_type": "scalar",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": 4,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:33.175000",
+          "updated_at": "2025-07-21T21:09:33.178000"
+        },
+        "asfsfs": {
+          "tag_name": "asfsfs",
+          "tag_type": "enum",
+          "enum_value": "test1",
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:37.748000",
+          "updated_at": "2025-07-21T21:09:37.750000"
+        }
+      },
+      "created_at": "2025-07-19T11:29:59.139000",
+      "updated_at": "2025-07-21T21:09:37.750000"
+    },
+    "GOOG": {
+      "symbol": "GOOG",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "hedged_by": {
+          "tag_name": "hedged_by",
+          "tag_type": "relationship",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": null,
+          "time_value": null,
+          "relationship_value": [
+            "MSFT"
+          ],
+          "created_at": "2025-07-20T07:25:15.797000",
+          "updated_at": "2025-07-20T07:25:15.802000"
+        }
+      },
+      "created_at": "2025-07-20T07:25:15.802000",
+      "updated_at": "2025-07-20T07:25:15.802000"
+    },
+    "TSLA": {
+      "symbol": "TSLA",
+      "user_id": "bynoQPq2uXaVwVjlb5CsNVcgJ9C3",
+      "portfolio_id": null,
+      "tags": {
+        "ben": {
+          "tag_name": "ben",
+          "tag_type": "boolean",
+          "enum_value": null,
+          "map_value": null,
+          "scalar_value": null,
+          "hierarchical_value": null,
+          "boolean_value": true,
+          "time_value": null,
+          "relationship_value": null,
+          "created_at": "2025-07-21T21:09:24.619000",
+          "updated_at": "2025-07-21T21:09:24.621000"
+        }
+      },
+      "created_at": "2025-07-21T21:09:24.622000",
+      "updated_at": "2025-07-21T21:09:24.622000"
+    }
+  },
+  "all_options_vesting": {
+    "6875556e9a233ad3b94d2ab8": {},
+    "6875e52f9a233ad3b94d2abc": {},
+    "68a86a199d3bc9d916a67d8a": {}
+  },
+  "user_preferences": {
+    "preferred_currency": "USD",
+    "default_portfolio_id": "68a86a199d3bc9d916a67d8a"
+  },
+  "computation_timestamp": "2025-09-12T21:52:20.003394"
+}

@@ -15,26 +15,28 @@ interface HoldingsHeatmapProps {
 
 const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible }) => {
   const isMobile = useMediaQuery('(max-width: 768px)');
-  const { getQuoteBySymbol } = usePortfolioData();
+  const { getPriceBySymbol, getPercentChange } = usePortfolioData();
 
-  // Get quotes from context for compatibility
+  // Calculate quotes from current prices and historical data
   const quotes = useMemo((): Record<string, Quote> => {
     const quotesFromContext: Record<string, Quote> = {};
 
     data.holdings.forEach(holding => {
-      const quote = getQuoteBySymbol(holding.symbol);
-      if (quote) {
+      const priceData = getPriceBySymbol(holding.symbol);
+      const percentChange = getPercentChange(holding.symbol);
+      
+      if (priceData) {
         quotesFromContext[holding.symbol] = {
-          symbol: quote.symbol,
-          current_price: quote.current_price,
-          percent_change: quote.percent_change,
-          last_updated: quote.last_updated
+          symbol: holding.symbol,
+          current_price: priceData.original_price || priceData.price,
+          percent_change: percentChange,
+          last_updated: priceData.last_updated
         };
       }
     });
 
     return quotesFromContext;
-  }, [data.holdings, getQuoteBySymbol]);
+  }, [data.holdings, getPriceBySymbol, getPercentChange]);
 
   const chartOptions = useMemo(() => {
     console.log('🌡️ [HEATMAP] Processing data:', {

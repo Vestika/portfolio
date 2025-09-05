@@ -25,10 +25,6 @@ class ChatMessageRequest(BaseModel):
     session_id: Optional[str] = None
     tagged_entities: Optional[list[dict[str, Any]]] = None
 
-class ChatSessionResponse(BaseModel):
-    session_id: str
-    messages: list[dict[str, Any]]
-
 @router.post("/portfolio/{portfolio_id}/analyze")
 async def analyze_portfolio_ai(portfolio_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
     """

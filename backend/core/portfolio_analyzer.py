@@ -1,10 +1,8 @@
 import logging
-from typing import Dict, Any, List, Optional
-from decimal import Decimal
+from typing import Dict, Any, List
 from collections import defaultdict
 
 from models.portfolio import Portfolio
-from models.security_type import SecurityType
 from portfolio_calculator import PortfolioCalculator
 from services.closing_price.service import get_global_service
 

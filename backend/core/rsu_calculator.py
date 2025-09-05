@@ -35,14 +35,12 @@ class RSUCalculator:
         if not rsu_plans:
             return {
                 "vesting_data": [],
-                "virtual_holdings": [],
-                "total_vested_value": 0.0
+                "virtual_holdings": []
             }
         
         now = datetime.now().date()
         vesting_data = []
         symbol_to_vested = {}
-        total_vested_value = 0.0
         
         for plan in rsu_plans:
             plan_result = self._calculate_single_rsu_plan(plan, now)
@@ -52,20 +50,30 @@ class RSUCalculator:
             symbol = plan_result["symbol"]
             vested = plan_result["vested_units"]
             symbol_to_vested[symbol] = symbol_to_vested.get(symbol, 0) + math.ceil(vested)
-            
-            # Add to total vested value
-            total_vested_value += plan_result["vested_value"]
         
-        # Create virtual holdings from vested RSUs
-        virtual_holdings = [
-            {"symbol": symbol, "units": units}
-            for symbol, units in symbol_to_vested.items()
-        ]
+        # Create virtual holdings from vested RSUs (no value calculations)
+        virtual_holdings = []
+        for symbol, units in symbol_to_vested.items():
+            if symbol in self.portfolio.securities:
+                security = self.portfolio.securities[symbol]
+                virtual_holdings.append({
+                    "symbol": symbol,
+                    "units": units,
+                    "currency": self.portfolio.base_currency.value,
+                    "name": security.name
+                })
+            else:
+                # Fallback if security not found
+                virtual_holdings.append({
+                    "symbol": symbol,
+                    "units": units,
+                    "currency": self.portfolio.base_currency.value,
+                    "name": symbol
+                })
         
         return {
             "vesting_data": vesting_data,
-            "virtual_holdings": virtual_holdings,
-            "total_vested_value": total_vested_value
+            "virtual_holdings": virtual_holdings
         }
     
     def _calculate_single_rsu_plan(self, plan: Dict[str, Any], current_date: date) -> Dict[str, Any]:
@@ -148,20 +156,11 @@ class RSUCalculator:
         # Clamp vested units to total
         vested_units = min(vested_units, total_units)
         
-        # Fetch current price for the symbol
         symbol = plan["symbol"]
-        price_data = self.closing_price_service.get_price_sync(symbol)
-        price = price_data.get('price', 0.0) if price_data else 0.0
-        price_currency = price_data.get('currency', 'USD') if price_data else 'USD'
         
-        # Calculate values
-        total_value = round(total_units * price, 2)
-        vested_value = round(vested_units * price, 2)
-        unvested_value = round((total_units - vested_units) * price, 2)
-        
-        # Convert to portfolio base currency
-        from models.currency import Currency
-        exchange_value = self.calculator.get_exchange_rate(Currency(price_currency), self.portfolio.base_currency)
+        # Get currency from security if available
+        security = self.portfolio.securities.get(symbol)
+        price_currency = security.currency.value if security else 'USD'
         
         return {
             "id": plan["id"],
@@ -175,11 +174,7 @@ class RSUCalculator:
             "cliff_months": cliff_months,
             "vesting_period_years": vesting_years,
             "vesting_frequency": vesting_frequency,
-            "price": price,
-            "price_currency": price_currency,
-            "total_value": total_value * exchange_value,
-            "vested_value": vested_value * exchange_value,
-            "unvested_value": unvested_value * exchange_value
+            "price_currency": price_currency
         }
     
     def get_rsu_holdings_for_portfolio_calculation(self) -> List[Dict[str, Any]]:
