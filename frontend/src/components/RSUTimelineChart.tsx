@@ -1,8 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-
-// Import the required modules - they will automatically extend Highcharts
 import 'highcharts/highcharts-more';
 import 'highcharts/modules/solid-gauge';
 
