@@ -83,3 +83,9 @@ api.interceptors.response.use(
 );
 
 export default api; 
+
+// Convenience helpers
+export const getRawPortfolio = async (portfolioId: string) => {
+  const res = await api.get(`/raw-portfolio`, { params: { portfolio_id: portfolioId } });
+  return res.data;
+};

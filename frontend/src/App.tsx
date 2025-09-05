@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import api from './utils/api';
+import api, { getRawPortfolio } from './utils/api';
+import { enrichRawPortfolioAccounts } from './utils/raw-portfolio';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
@@ -129,9 +130,24 @@ const App: React.FC = () => {
     }
     
     try {
+      // Prefetch raw portfolio document for frontend-side calculations
+      try {
+        const raw = await getRawPortfolio(selectedPortfolioId);
+        // Optionally pre-enrich accounts for future use
+        const baseCur = raw?.config?.base_currency || raw?.base_currency || 'USD';
+        const protfolioMetadataRaw = await enrichRawPortfolioAccounts(raw, baseCur);
+        setPortfolioMetadata(protfolioMetadataRaw);
+        setSelectedAccounts(protfolioMetadataRaw.accounts.map((acc: AccountInfo) => acc.account_name));
+        // Not wired yet; prepared for FE-only path
+        console.log('protfolioMetadataRaw', protfolioMetadataRaw);
+        // return protfolioMetadataRaw as PortfolioMetadata;
+      } catch (e) {
+        console.warn('Failed to prefetch raw portfolio', e);
+      }
       const metadata = await api.get(`/portfolio?portfolio_id=${selectedPortfolioId}`);
       setPortfolioMetadata(metadata.data);
       setSelectedAccounts(metadata.data.accounts.map((acc: AccountInfo) => acc.account_name));
+      console.log('metadata', metadata.data);
       return metadata.data as PortfolioMetadata;
     } catch (err: unknown) {
       if (isAxiosErrorWithStatus(err, 404)) {

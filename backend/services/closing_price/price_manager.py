@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timedelta
 from loguru import logger
 from typing import Optional, Any
+import asyncio
 
 from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
@@ -23,7 +24,7 @@ class PriceManager:
                 return cached_price
             
             # Check MongoDB for recent price
-            db_price = await self._get_db_price(symbol)
+            db_price = None and await self._get_db_price(symbol)
             if db_price and self._is_price_fresh(db_price.fetched_at):
                 logger.info(f"Retrieved fresh price from DB for {symbol}")
                 await self._cache_price(db_price)
@@ -70,6 +71,38 @@ class PriceManager:
         except Exception as e:
             logger.error(f"Error getting tracked prices: {e}")
             return []
+
+    async def get_prices_for_list(self, symbols: list[str]) -> dict[str, dict | None]:
+        """Get latest prices for a list of symbols using internal caching/fetching.
+
+        Returns a mapping symbol -> { current_price, change, percent_change, high, low, open, previous_close }
+        Matching the format of fetch_quotes in stock_fetcher for compatibility. Unknown fields are None.
+        """
+        results: dict[str, dict | None] = {}
+
+        async def fetch_one(sym: str):
+            try:
+                price = await self.get_price(sym)
+                if price is None:
+                    results[sym] = None
+                    return
+                results[sym] = {
+                    "current_price": price.price,
+                    "change": None,
+                    "percent_change": price.percent_change,
+                    "high": None,
+                    "low": None,
+                    "open": None,
+                    "previous_close": None,
+                }
+            except Exception as e:
+                logger.error(f"Error getting price for {sym}: {e}")
+                results[sym] = None
+
+        # Normalize symbols to uppercase for consistency
+        norm_symbols = [s.strip().upper() for s in symbols if s and s.strip()]
+        await asyncio.gather(*(fetch_one(s) for s in norm_symbols))
+        return results
     
     async def track_symbols(self, symbols: list[str]) -> dict[str, str]:
         """Add symbols to tracking list"""
@@ -297,5 +330,6 @@ class PriceManager:
             currency=stock_price.currency,
             market=stock_price.market,
             date=stock_price.date,
-            fetched_at=stock_price.fetched_at
+            fetched_at=stock_price.fetched_at,
+            percent_change=stock_price.percent_change
         ) 

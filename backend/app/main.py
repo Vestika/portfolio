@@ -1059,6 +1059,36 @@ async def download_portfolio_raw(portfolio_id: str, user=Depends(get_current_use
     yaml_str = yaml.dump(doc, allow_unicode=True)
     return Response(content=yaml_str, media_type="application/x-yaml")
 
+@app.get("/raw-portfolio")
+async def get_raw_portfolio(portfolio_id: str, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return the raw portfolio document as JSON without performing any calculations.
+    """
+    collection = db_manager.get_collection("portfolios")
+    doc = await collection.find_one({"_id": ObjectId(portfolio_id), "user_id": user.id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    # Convert ObjectId to string for JSON compatibility
+    doc["_id"] = str(doc["_id"])
+
+    # Transform accounts: 'name' -> 'account_name', 'properties' -> 'account_properties'
+    accounts = doc.get("accounts", []) or []
+    transformed_accounts = []
+    for acc in accounts:
+        try:
+            new_acc = dict(acc)
+            if "name" in new_acc:
+                new_acc["account_name"] = new_acc.pop("name")
+            if "properties" in new_acc:
+                new_acc["account_properties"] = new_acc.pop("properties")
+            transformed_accounts.append(new_acc)
+        except Exception:
+            # If any unexpected structure, keep the original account
+            transformed_accounts.append(acc)
+
+    doc["accounts"] = transformed_accounts
+    return doc
+
 @app.post("/portfolio/upload")
 async def upload_portfolio(file: UploadFile = File(...), user=Depends(get_current_user)):
     """
@@ -1092,7 +1122,8 @@ async def get_market_status(user=Depends(get_current_user)):
 @app.get("/quotes")
 async def get_quotes(symbols: str = Query(..., description="Comma-separated list of symbols"), user=Depends(get_current_user)):
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    return await fetch_quotes(symbol_list)
+    manager = PriceManager()
+    return await manager.get_prices_for_list(symbol_list)
 
 
 @app.get("/symbols/autocomplete")
