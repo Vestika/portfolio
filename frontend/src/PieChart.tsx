@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { ChartDataItem } from './types';
@@ -18,9 +18,7 @@ const PieChart: React.FC<PieChartProps> = ({
   baseCurrency,
   hideValues = false
 }) => {
-  const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
   const isMobile = useMediaQuery('(max-width: 768px)');
-  console.log(selectedSeries);
 
   // Format number with comma separators and no decimal
   const formatNumber = (value: number) =>
@@ -89,21 +87,7 @@ const PieChart: React.FC<PieChartProps> = ({
           format: '{point.percentage:.2f}%',
           color: 'white'
         },
-        showInLegend: true,
-        events: {
-          legendItemClick: function(e) {
-            const point = e.target;
-
-            if (point.visible) {
-              setSelectedSeries(prev =>
-                prev.includes(point.name!)
-                  ? prev.filter(name => name !== point.name!)
-                  : [...prev, point.name!]
-              );
-            }
-            return false;
-          }
-        }
+        showInLegend: true
       }
     },
     legend: {
