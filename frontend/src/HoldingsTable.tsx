@@ -170,21 +170,26 @@ const MiniChart: React.FC<{
     },
     legend: { enabled: false },
     tooltip: {
-      enabled: true,
-      useHTML: true,
       backgroundColor: 'rgba(17, 24, 39, 0.95)',
-      borderWidth: 0,
-      shadow: false,
-      style: {
-        color: '#e5e7eb',
-        fontWeight: 'normal',
-        fontSize: '12px',
-        borderRadius: 8,
-      },
+      borderColor: '#374151',
       borderRadius: 8,
-      outside: true,
+      borderWidth: 1,
+      shadow: {
+        color: 'rgba(0, 0, 0, 0.3)',
+        offsetX: 0,
+        offsetY: 4,
+        opacity: 0.3,
+        width: 8
+      },
+      style: {
+        color: 'white',
+        fontSize: '12px',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      },
       hideDelay: 0,
       followPointer: true,
+      outside: true,
+      zIndex: 9999,
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
@@ -192,19 +197,14 @@ const MiniChart: React.FC<{
         const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
         const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
 
-        return `
-          <div style="padding: 4px;">
-            <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString()}</div>
-            <div style="font-size: 14px; font-weight: 700; color: ${lineColor}; margin-bottom: 2px;">
-              ${point.y?.toFixed(2)} ${displayCurrency}
-            </div>
-            ${priceChange !== 0 ? `
-              <div style="font-size: 11px; color: ${priceChange > 0 ? '#10b981' : '#ef4444'};">
-                ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)} (${priceChangePercent > 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%)
-              </div>
-            ` : ''}
-          </div>
-        `;
+        let tooltipContent = `<b>${date.toLocaleDateString()}</b><br/>${point.y?.toFixed(2)} ${displayCurrency}`;
+        
+        if (priceChange !== 0) {
+          const changeColor = priceChange > 0 ? '#10b981' : '#ef4444';
+          tooltipContent += `<br/><span style="color: ${changeColor};">${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)} (${priceChangePercent > 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%)</span>`;
+        }
+        
+        return tooltipContent;
       }
     },
     plotOptions: {
@@ -231,7 +231,10 @@ const MiniChart: React.FC<{
               opacity: 0.2
             }
           }
-        }
+        },
+        stickyTracking: true,
+        enableMouseTracking: true,
+        trackByArea: true
       }
     },
     series: [{
