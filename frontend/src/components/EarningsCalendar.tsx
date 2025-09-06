@@ -10,8 +10,7 @@ interface EarningsCalendarProps {
 
 const EarningsCalendar: React.FC<EarningsCalendarProps> = ({ 
   earningsData, 
-  symbol, 
-  compact = false 
+  compact = false
 }) => {
   if (!earningsData || earningsData.length === 0) {
     return null;
@@ -135,7 +134,7 @@ const EarningsCalendar: React.FC<EarningsCalendarProps> = ({
         </h4>
       </div>
       <div className="space-y-3">
-        {sortedEarnings.map((earning, index) => {
+        {sortedEarnings.map((earning) => {
           const epsBeat = getEpsBeat(earning.epsActual, earning.epsEstimate);
           const revenueBeat = getRevenueBeat(earning.revenueActual, earning.revenueEstimate);
           const isUpcomingEarning = new Date(earning.date) > new Date();

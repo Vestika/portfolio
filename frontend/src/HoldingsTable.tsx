@@ -823,7 +823,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </th>
                     <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
-                        label={isMobile ? `Value (${dataWithRealEarnings.base_currency})` : `Total Value (${dataWithRealEarnings.base_currency})`}
                         sortKey="total_value"
                         sortConfig={sortConfig}
                         onSort={handleSort}
@@ -831,7 +830,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </th>
                   </>
                 )}
-                <th className="px-4 text-center text-sm font-medium text-gray-200 hidden md:table-cell">Earnings</th>
                 <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">7d Trend</th>
               </tr>
             </thead>
