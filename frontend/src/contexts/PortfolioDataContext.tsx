@@ -91,6 +91,7 @@ export interface HoldingData {
   security_type: string;
   security_name: string;
   tags?: Record<string, any>;  // ← RESTORED: Include tags in holding data
+  logo?: string;  // ← Added logo property to match backend data
   is_virtual?: boolean;
 }
 
@@ -493,7 +494,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         total_value: data.value,
         currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
         price_source: 'calculated',
-        logo: holdingFromAccount.logo,
+        logo: holdingFromAccount?.logo,
         historical_prices: currentPortfolioData.historical_prices?.[symbol] || [],
         account_breakdown: data.accounts.map(acc => {
           // Find the actual account and holding data

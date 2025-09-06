@@ -823,6 +823,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </th>
                     <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
+                        label="Total Value"
                         sortKey="total_value"
                         sortConfig={sortConfig}
                         onSort={handleSort}
