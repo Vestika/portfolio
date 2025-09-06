@@ -89,33 +89,24 @@ class LogoCacheService:
             return None
 
     async def _cache_logo(self, symbol: str, logo_url: str) -> bool:
-        """Store logo URL in the database (create entry if it doesn't exist)."""
+        """Update logo URL in the database only if the symbol already exists."""
         try:
             result = await self.symbols_collection.update_one(
-                {"symbol": {"$regex": f"^{symbol}$", "$options": "i"}},  # case-insensitive exact match
+                {"symbol": {"$regex": f":{symbol}$", "$options": "i"}},  # match e.g. NASDAQ:VGSR
                 {
                     "$set": {
                         "logo_url": logo_url,
                         "updated_at": datetime.utcnow(),
-                    },
-                    "$setOnInsert": {
-                        "symbol": symbol,
-                        "name": symbol,  # placeholder
-                        "symbol_type": "other",
-                        "currency": "USD",
-                        "logo_updated_at": datetime.utcnow(),
-                        "created_at": datetime.utcnow(),
-                        "is_active": True,
                     }
                 },
-                upsert=True
+                upsert=False
             )
 
-            if result.upserted_id:
-                logger.info(f"Created new symbol entry for {symbol}")
-            elif result.modified_count:
-                logger.info(f"Updated logo for existing symbol {symbol}")
+            if result.matched_count == 0:
+                logger.warning(f"No existing symbol found for {symbol}, skipped update.")
+                return False
 
+            logger.info(f"Updated logo for existing symbol {symbol}")
             return True
 
         except Exception as e:

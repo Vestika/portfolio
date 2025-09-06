@@ -34,6 +34,7 @@ import israelFlag from './assets/israel-flag.svg';
 import usFlag from './assets/us-flag.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
 import smhLogo from './assets/smh.svg';
+import vanguardLogo from './assets/vanguard.svg';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: { icon: "🏷️" },
@@ -85,6 +86,10 @@ const getLogoUrl = (holding: SecurityHolding) => {
 
   if (symbol.toUpperCase() === 'IBIT') {
     return bitcoinLogo;
+  }
+
+    if (symbol.toUpperCase() === 'VTI' || symbol.toUpperCase() === 'VXUS') {
+    return vanguardLogo;
   }
 
   if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
