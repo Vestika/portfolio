@@ -109,11 +109,8 @@ const MiniChart: React.FC<{
   data: SecurityHolding['historical_prices'], 
   symbol: string, 
   currency: string, 
-  baseCurrency: string,
-  onTooltipShow: (tooltipData: { x: number; y: number; content: string; visible: boolean }) => void,
-  onTooltipHide: () => void
-}> = ({ data, symbol, currency, baseCurrency, onTooltipShow, onTooltipHide }) => {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  baseCurrency: string
+}> = ({ data, symbol, currency, baseCurrency }) => {
   
   // Determine colors based on trend
   let lineColor = '#10b981'; // green by default
@@ -173,7 +170,7 @@ const MiniChart: React.FC<{
     },
     legend: { enabled: false },
     tooltip: {
-      enabled: false, // Disable built-in tooltip since we're using custom one
+      enabled: true,
       useHTML: true,
       backgroundColor: 'rgba(17, 24, 39, 0.95)',
       borderWidth: 0,
@@ -239,17 +236,9 @@ const MiniChart: React.FC<{
     },
     series: [{
       type: 'area',
-      data: data.map((point, index) => ({
+      data: data.map(point => ({
         x: new Date(point.date).getTime(),
-        y: point.price,
-        marker: {
-          enabled: hoveredIndex === index,
-          fillColor: lineColor,
-          lineColor: '#ffffff',
-          lineWidth: 2,
-          radius: 4,
-          symbol: 'circle'
-        }
+        y: point.price
       })),
       color: lineColor,
       fillColor: {
@@ -275,83 +264,7 @@ const MiniChart: React.FC<{
     }]
   };
 
-  return (
-    <div 
-      onMouseMove={(e) => {
-        if (!data || data.length === 0) return;
-        
-        const rect = e.currentTarget.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const chartWidth = rect.width;
-        
-        // Calculate which data point is closest to the mouse position
-        const dataIndex = Math.round((mouseX / chartWidth) * (data.length - 1));
-        const clampedIndex = Math.max(0, Math.min(dataIndex, data.length - 1));
-        const point = data[clampedIndex];
-        
-        // Only update hovered index if it actually changed
-        if (hoveredIndex !== clampedIndex) {
-          setHoveredIndex(clampedIndex);
-        }
-        
-        if (point) {
-          const date = new Date(point.date);
-          const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
-          
-          // Calculate daily change if not the first point
-          let dailyChange = 0;
-          let dailyChangePercent = 0;
-          if (clampedIndex > 0) {
-            const prevPrice = data[clampedIndex - 1].price;
-            dailyChange = point.price - prevPrice;
-            dailyChangePercent = ((dailyChange / prevPrice) * 100);
-          }
-          
-          const tooltipContent = `
-            <div style="padding: 6px;">
-              <div style="font-weight: 600; margin-bottom: 4px; color: #e5e7eb;">
-                ${date.toLocaleDateString('en-US', { 
-                  weekday: 'short',
-                  month: 'short', 
-                  day: 'numeric'
-                })}
-              </div>
-              <div style="font-size: 14px; font-weight: 700; color: ${lineColor}; margin-bottom: 2px;">
-                ${point.price.toFixed(2)} ${displayCurrency}
-              </div>
-              ${clampedIndex > 0 ? `
-                <div style="font-size: 11px; color: ${dailyChange >= 0 ? '#10b981' : '#ef4444'};">
-                  ${dailyChange >= 0 ? '+' : ''}${dailyChange.toFixed(2)} (${dailyChangePercent >= 0 ? '+' : ''}${dailyChangePercent.toFixed(2)}%) vs prev day
-                </div>
-              ` : `
-                <div style="font-size: 11px; color: #93c5fd;">
-                  First day
-                </div>
-              `}
-            </div>
-          `;
-          
-          onTooltipShow({
-            x: e.clientX,
-            y: rect.top - 10,
-            content: tooltipContent,
-            visible: true
-          });
-        }
-      }}
-      onMouseLeave={() => {
-        setHoveredIndex(null);
-        onTooltipHide();
-      }}
-    >
-      <HighchartsReact 
-        highcharts={Highcharts} 
-        options={options} 
-        allowChartUpdate={true}
-        updateArgs={[true, true, true]}
-      />
-    </div>
-  );
+  return <HighchartsReact highcharts={Highcharts} options={options} />;
 };
 
 const AccountBreakdownRow: React.FC<{
@@ -471,7 +384,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [expandedEarnings, setExpandedEarnings] = useState<string | null>(null);
-  const [chartTooltipData, setChartTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const [earningsTooltipData, setEarningsTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -1112,8 +1024,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           symbol={holding.symbol} 
                           currency={holding.original_currency} 
                           baseCurrency={dataWithRealEarnings.base_currency}
-                          onTooltipShow={setChartTooltipData}
-                          onTooltipHide={() => setChartTooltipData(null)}
                         />
                       ) : null}
                     </td>
@@ -1258,27 +1168,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
         />
       )}
 
-      {/* Chart Tooltip */}
-      {chartTooltipData && chartTooltipData.visible && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{
-            left: chartTooltipData.x,
-            top: chartTooltipData.y,
-            transform: 'translateX(-50%) translateY(-100%)',
-            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-            border: 'none',
-            borderRadius: '8px',
-            boxShadow: 'none',
-            color: '#e5e7eb',
-            fontSize: '12px',
-            fontWeight: 'normal',
-            padding: '4px',
-            maxWidth: '200px'
-          }}
-          dangerouslySetInnerHTML={{ __html: chartTooltipData.content }}
-        />
-      )}
 
       {/* Earnings Tooltip */}
       {earningsTooltipData && earningsTooltipData.visible && (

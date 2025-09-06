@@ -204,10 +204,25 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
         }
       },
       tooltip: {
+        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+        borderColor: '#374151',
+        borderRadius: 8,
+        borderWidth: 1,
+        shadow: {
+          color: 'rgba(0, 0, 0, 0.3)',
+          offsetX: 0,
+          offsetY: 4,
+          opacity: 0.3,
+          width: 8
+        },
+        style: {
+          color: 'white',
+          fontSize: '13px',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
         followPointer: true,
         outside: true,
-        headerFormat: '<span style="font-size: 0.9em">' +
-          '{point.custom.fullName}</span><br/>',
+        headerFormat: '<b>{point.custom.fullName}</b><br/>',
         pointFormat: '<b>Symbol:</b> {point.name}<br/>' +
           '<b>Performance:</b> {point.custom.performance}<br/>' +
           (isValueVisible ?

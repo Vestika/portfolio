@@ -65,14 +65,30 @@ const PieChart: React.FC<PieChartProps> = ({
       }
     },
     tooltip: {
+      backgroundColor: 'rgba(17, 24, 39, 0.95)',
+      borderColor: '#374151',
+      borderRadius: 8,
+      borderWidth: 1,
+      shadow: {
+        color: 'rgba(0, 0, 0, 0.3)',
+        offsetX: 0,
+        offsetY: 4,
+        opacity: 0.3,
+        width: 8
+      },
+      style: {
+        color: 'white',
+        fontSize: '13px',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      },
       pointFormatter: function() {
         const dataPoint = data.find(item => item.label === this.name);
 
         if (hideValues) {
-          return `<b>${this.name}</b> (${dataPoint?.percentage.toFixed(2)}%)`;
+          return `<b>${this.name}</b><br/>${dataPoint?.percentage.toFixed(2)}%`;
         }
 
-        return `<b>${formatNumber(this.y!)} ${baseCurrency}</b> (${dataPoint?.percentage.toFixed(2)}%)`;
+        return `<b>${this.name}</b><br/>${formatNumber(this.y!)} ${baseCurrency}<br/>${dataPoint?.percentage.toFixed(2)}%`;
       }
     },
     plotOptions: {

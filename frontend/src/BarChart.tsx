@@ -170,7 +170,6 @@ const BarChart: React.FC<BarChartProps> = ({
       tickInterval: initialYAxisMax <= 10 ? 2 : initialYAxisMax <= 50 ? 5 : 10
     },
     tooltip: {
-      useHTML: true,
       backgroundColor: 'rgba(17, 24, 39, 0.95)',
       borderColor: '#374151',
       borderRadius: 8,
@@ -193,22 +192,11 @@ const BarChart: React.FC<BarChartProps> = ({
         const percentage = dataPoint?.percentage.toFixed(2) || '0.00';
         
         if (hideValues) {
-          return `
-            <div class="p-2">
-              <div class="font-semibold text-white mb-1">${symbol}</div>
-              <div class="text-gray-300">${percentage}%</div>
-            </div>
-          `;
+          return `<b>${symbol}</b><br/>${percentage}%`;
         }
 
         const numericValue = formatNumber(dataPoint?.value || 0);
-        return `
-          <div class="p-2 space-y-1">
-            <div class="font-semibold text-white">${symbol}</div>
-            <div class="text-blue-400 font-medium">${numericValue} ${baseCurrency}</div>
-            <div class="text-gray-300">${percentage}%</div>
-          </div>
-        `;
+        return `<b>${symbol}</b><br/>${numericValue} ${baseCurrency}<br/>${percentage}%`;
       }
     },
     plotOptions: {
