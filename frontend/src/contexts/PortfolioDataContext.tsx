@@ -12,6 +12,17 @@ export interface AllPortfoliosData {
   global_securities: Record<string, SecurityData>;
   global_quotes: Record<string, QuoteData>;
   global_exchange_rates: Record<string, number>;
+  global_earnings_data: Record<string, Array<{
+    date: string;
+    epsActual?: number;
+    epsEstimate?: number;
+    hour: 'amc' | 'bmo';
+    quarter: number;
+    revenueActual?: number;
+    revenueEstimate?: number;
+    symbol: string;
+    year: number;
+  }>>;
   user_tag_library: any; // TagLibrary type from backend
   all_holding_tags: Record<string, any>; // HoldingTags by symbol
   all_options_vesting: Record<string, Record<string, any>>; // portfolio_id -> account_name -> vesting data
@@ -160,6 +171,19 @@ interface PortfolioDataContextType {
   // Options utilities
   getOptionsVestingByAccount: (portfolioId: string, accountName: string) => any | undefined;
   
+  // Earnings utilities
+  getEarningsBySymbol: (symbol: string) => Array<{
+    date: string;
+    epsActual?: number;
+    epsEstimate?: number;
+    hour: 'amc' | 'bmo';
+    quarter: number;
+    revenueActual?: number;
+    revenueEstimate?: number;
+    symbol: string;
+    year: number;
+  }> | undefined;
+  
   // Portfolio utilities
   getAvailablePortfolios: () => Array<{ portfolio_id: string; portfolio_name: string; display_name: string }>;
 }
@@ -233,6 +257,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         globalSecurities: Object.keys(data.global_securities).length,
         globalQuotes: Object.keys(data.global_quotes).length,
         globalExchangeRates: Object.keys(data.global_exchange_rates).length,
+        globalEarningsData: Object.keys(data.global_earnings_data || {}).length,
+        earningsSymbols: Object.keys(data.global_earnings_data || {}),
         userTagLibrary: Object.keys(data.user_tag_library?.tag_definitions || {}).length,
         holdingTags: Object.keys(data.all_holding_tags || {}).length,
         holdingTagsSymbols: Object.keys(data.all_holding_tags || {}),
@@ -615,6 +641,20 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [allPortfoliosData]);
 
+  // Earnings utilities with error handling
+  const getEarningsBySymbol = useCallback((symbol: string) => {
+    try {
+      const earnings = allPortfoliosData?.global_earnings_data?.[symbol];
+      if (earnings && earnings.length > 0) {
+        console.log(`📅 [PORTFOLIO CONTEXT] Found earnings data for ${symbol}: ${earnings.length} records`);
+      }
+      return earnings;
+    } catch (error) {
+      console.error('❌ [PORTFOLIO CONTEXT] Error in getEarningsBySymbol:', error);
+      return undefined;
+    }
+  }, [allPortfoliosData]);
+
   // Custom setSelectedAccountNames with logging
   const setSelectedAccountNamesWithLogging = useCallback((accountNames: string[]) => {
     console.log('🔄 [PORTFOLIO CONTEXT] Account selection changed:', {
@@ -668,6 +708,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     getUserTagLibrary,
     getHoldingTagsBySymbol,
     getOptionsVestingByAccount,
+    getEarningsBySymbol,
     getAvailablePortfolios
   };
   
