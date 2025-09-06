@@ -269,7 +269,9 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "tags": security.tags or {},  # Ensure tags is never None
                         "unit_price": security.unit_price
                     }
-                    
+                    manager = PriceManager()
+                    logo = await manager.get_logo(holding.symbol)
+
                     if security.tags and len(security.tags) > 0:
                         print(f"🏷️ [ALL PORTFOLIOS] Security {holding.symbol} has tags: {list(security.tags.keys())}")
                     
@@ -281,7 +283,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "original_currency": security.currency.value,
                         "security_type": security.security_type.value,
                         "security_name": security.name,
-                        "tags": security.tags or {}  # ← RESTORED: Include security tags directly like original!
+                        "tags": security.tags or {},  # ← RESTORED: Include security tags directly like original!
+                        "logo": logo
                     })
 
                 # Add RSU virtual holdings
@@ -289,12 +292,14 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                     "name": account.name,
                     "rsu_plans": account.rsu_plans or []
                 })
-                
+
                 for virtual_holding in rsu_result["virtual_holdings"]:
                     # Get security tags for RSU virtual holdings too
                     rsu_security = portfolio.securities.get(virtual_holding["symbol"])
                     rsu_tags = rsu_security.tags if rsu_security else {}
-                    
+                    manager = PriceManager()
+                    logo = await manager.get_logo(virtual_holding["symbol"])
+
                     if rsu_tags and len(rsu_tags) > 0:
                         print(f"🏷️ [ALL PORTFOLIOS] RSU virtual holding {virtual_holding['symbol']} has tags: {list(rsu_tags.keys())}")
                     
@@ -307,7 +312,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "security_type": "rsu_virtual",
                         "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
                         "tags": rsu_tags or {},  # ← Include security tags for RSU holdings too
-                        "is_virtual": True
+                        "is_virtual": True,
+                        "logo": logo
                     })
                     account_total += virtual_holding.get("total_value", 0)
                     all_symbols.add(virtual_holding["symbol"])

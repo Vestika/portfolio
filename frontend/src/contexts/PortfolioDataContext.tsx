@@ -467,6 +467,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         total_value: data.value,
         currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
         price_source: 'calculated',
+        logo: holdingFromAccount.logo,
         historical_prices: currentPortfolioData.historical_prices?.[symbol] || [],
         account_breakdown: data.accounts.map(acc => {
           // Find the actual account and holding data

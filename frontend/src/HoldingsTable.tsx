@@ -92,12 +92,8 @@ const getLogoUrl = (holding: SecurityHolding) => {
   if (symbol.toUpperCase() === 'USD') {
     return usFlag;
   }
-  if (type.toLowerCase() === 'crypto') {
-    return `https://cryptoicons.org/api/icon/${symbol.toLowerCase()}/32`;
-  }
-  if (type.toLowerCase() === 'stock' || type.toLowerCase() === 'etf') {
-    return `https://storage.googleapis.com/iex/api/logos/${symbol.toUpperCase()}.png`;
-  }
+
+
   // Default icon for other types
   return null;
 };
