@@ -104,6 +104,18 @@ export interface HistoricalPrice {
   price: number;
 }
 
+export interface EarningsData {
+  date: string;
+  epsActual?: number;
+  epsEstimate?: number;
+  hour: 'amc' | 'bmo'; // after market close / before market open
+  quarter: number;
+  revenueActual?: number;
+  revenueEstimate?: number;
+  symbol: string;
+  year: number;
+}
+
 export interface AccountBreakdown {
   account_name: string;
   account_type: string;
@@ -128,6 +140,7 @@ export interface SecurityHolding {
   historical_prices: HistoricalPrice[];
   logo?: string;
   account_breakdown?: AccountBreakdown[];
+  earnings_calendar?: EarningsData[];
 }
 
 export enum TagType {

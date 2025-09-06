@@ -7,6 +7,7 @@ import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
+import EarningsCalendar from './components/EarningsCalendar';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
 import TagAPI from './utils/tag-api';
 import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
@@ -26,12 +27,14 @@ import {
   ChevronRight,
   Users,
   Plus,
+  Calendar,
 } from 'lucide-react';
 
 import israelFlag from './assets/israel-flag.svg';
 import usFlag from './assets/us-flag.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
 import smhLogo from './assets/smh.svg';
+import vanguardLogo from './assets/vanguard.svg';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: { icon: "🏷️" },
@@ -73,7 +76,6 @@ const getSecurityTypeIcon = (type: string) => {
 // Helper to get logo URL
 const getLogoUrl = (holding: SecurityHolding) => {
     const symbol = holding.symbol;
-    const type = holding.security_type;
     if (symbol.toUpperCase() === 'SMH') {
         return smhLogo;
     }
@@ -86,18 +88,18 @@ const getLogoUrl = (holding: SecurityHolding) => {
     return bitcoinLogo;
   }
 
+    if (symbol.toUpperCase() === 'VTI' || symbol.toUpperCase() === 'VXUS') {
+    return vanguardLogo;
+  }
+
   if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
     return israelFlag;
   }
   if (symbol.toUpperCase() === 'USD') {
     return usFlag;
   }
-  if (type.toLowerCase() === 'crypto') {
-    return `https://cryptoicons.org/api/icon/${symbol.toLowerCase()}/32`;
-  }
-  if (type.toLowerCase() === 'stock' || type.toLowerCase() === 'etf') {
-    return `https://storage.googleapis.com/iex/api/logos/${symbol.toUpperCase()}.png`;
-  }
+
+
   // Default icon for other types
   return null;
 };
@@ -352,7 +354,31 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
 
+  // Get real earnings data from context
+  const { getEarningsBySymbol } = usePortfolioData();
+  
+  // Add real earnings data to holdings
+  const dataWithRealEarnings = {
+    ...data,
+    holdings: data.holdings.map(holding => {
+      const earningsData = getEarningsBySymbol(holding.symbol);
+      if (earningsData && earningsData.length > 0) {
+        console.log(`📅 [HOLDINGS TABLE] Adding real earnings data for ${holding.symbol}:`, {
+          earningsCount: earningsData.length,
+          sampleEarnings: earningsData.slice(0, 2)
+        });
+        return {
+          ...holding,
+          earnings_calendar: earningsData
+        };
+      }
+      return holding;
+    })
+  };
+
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [expandedEarnings, setExpandedEarnings] = useState<string | null>(null);
+  const [tooltipData, setTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [filters, setFilters] = useState<{
@@ -380,11 +406,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   useEffect(() => {
     console.log('🏷️ [HOLDINGS TABLE] === DEBUGGING TAGS LOADING ===');
     console.log('🏷️ [HOLDINGS TABLE] Holdings data received:', {
-      totalHoldings: data.holdings.length,
-      sampleHolding: data.holdings[0],
-      holdingsWithTagsObjects: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-      firstHoldingWithTags: data.holdings.find(h => h.tags && Object.keys(h.tags).length > 0),
-      allHoldingSymbols: data.holdings.map(h => h.symbol)
+      totalHoldings: dataWithRealEarnings.holdings.length,
+      sampleHolding: dataWithRealEarnings.holdings[0],
+      holdingsWithTagsObjects: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
+      firstHoldingWithTags: dataWithRealEarnings.holdings.find(h => h.tags && Object.keys(h.tags).length > 0),
+      allHoldingSymbols: dataWithRealEarnings.holdings.map(h => h.symbol)
     });
     
     try {
@@ -415,8 +441,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       console.log('🏷️ [HOLDINGS TABLE] Loading structured tags from context...');
       const tagsMap: Record<string, HoldingTags> = {};
       
-      data.holdings.forEach((holding, index) => {
-        console.log(`🔍 [HOLDINGS TABLE] Checking tags for holding ${index + 1}/${data.holdings.length}: ${holding.symbol}`);
+      dataWithRealEarnings.holdings.forEach((holding, index) => {
+        console.log(`🔍 [HOLDINGS TABLE] Checking tags for holding ${index + 1}/${dataWithRealEarnings.holdings.length}: ${holding.symbol}`);
         
         const holdingTags = getHoldingTagsBySymbol(holding.symbol);
         console.log(`   Context result for ${holding.symbol}:`, {
@@ -439,8 +465,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
         structuredTagsLoaded: Object.keys(tagsMap).length,
         structuredTagSymbols: Object.keys(tagsMap),
         willShowAddButton: Object.keys(library?.tag_definitions || {}).length > 0,
-        holdingsWithDirectTags: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-        holdingsWithDirectTagsSample: data.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).map(h => ({
+        holdingsWithDirectTags: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
+        holdingsWithDirectTagsSample: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).map(h => ({
           symbol: h.symbol,
           tags: Object.keys(h.tags || {})
         }))
@@ -451,7 +477,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       setStructuredTags({});
     }
-  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
+  }, [dataWithRealEarnings.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
 
   // Handle tag updates (refresh all data to get updated tags)
   const handleTagsUpdated = async () => {
@@ -474,7 +500,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     }
   };
 
-  const filteredAndSortedHoldings = [...data.holdings]
+  const filteredAndSortedHoldings = [...dataWithRealEarnings.holdings]
     .filter(holding => {
       // Apply symbol and type filters
       const matchesSymbol = holding.symbol.toLowerCase().includes(filters.symbol.toLowerCase());
@@ -514,7 +540,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   };
 
   const calculatePercentage = (holding: SecurityHolding) => {
-    const total = data.holdings.reduce((sum, h) => sum + h.total_value, 0);
+    const total = dataWithRealEarnings.holdings.reduce((sum, h) => sum + h.total_value, 0);
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
@@ -710,7 +736,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
               <span className="text-sm text-blue-200">
                 Filtered by: <span className="font-medium">{tagFilter.replace(/_/g, ' ')}</span>
                 <span className="text-xs ml-1 opacity-75">
-                  ({filteredAndSortedHoldings.length} of {data.holdings.length})
+                  ({filteredAndSortedHoldings.length} of {dataWithRealEarnings.holdings.length})
                 </span>
               </span>
               <button
@@ -797,7 +823,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </th>
                     <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
-                        label={isMobile ? `Value (${data.base_currency})` : `Total Value (${data.base_currency})`}
+                        label="Total Value"
                         sortKey="total_value"
                         sortConfig={sortConfig}
                         onSort={handleSort}
@@ -882,25 +908,138 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       </>
                     )}
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {( holding.symbol !== data.base_currency) ? (
-                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} baseCurrency={data.base_currency} />
+                      {holding.earnings_calendar && holding.earnings_calendar.length > 0 ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                          }}
+                          onMouseEnter={(e) => {
+                            if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                              const upcomingEarnings = holding.earnings_calendar
+                                .filter(earning => new Date(earning.date) > new Date())
+                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              
+                              if (upcomingEarnings.length > 0) {
+                                const nextEarnings = upcomingEarnings[0];
+                                const date = new Date(nextEarnings.date);
+                                const today = new Date();
+                                const diffTime = date.getTime() - today.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                
+                                const tooltipContent = `
+                                  <div style="padding: 4px;">
+                                    <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString('en-US', { 
+                                      weekday: 'long',
+                                      month: 'long', 
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })}</div>
+                                    <div style="font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 2px;">
+                                      Q${nextEarnings.quarter} Earnings
+                                    </div>
+                                    <div style="font-size: 11px; color: #93c5fd;">
+                                      ${diffDays === 1 ? 'Tomorrow' : 
+                                        diffDays === 0 ? 'Today' : 
+                                        `in ${diffDays} days`}
+                                    </div>
+                                  </div>
+                                `;
+                                
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setTooltipData({
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 10,
+                                  content: tooltipContent,
+                                  visible: true
+                                });
+                              }
+                            }
+                          }}
+                          onMouseLeave={() => {
+                            setTooltipData(null);
+                          }}
+                          className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                        >
+                          <Calendar size={16} />
+                          <div className="text-xs text-gray-300">
+                            {(() => {
+                              // Debug logging
+                              console.log(`🔍 [EARNINGS] Processing ${holding.symbol}:`, {
+                                hasEarnings: !!holding.earnings_calendar,
+                                earningsCount: holding.earnings_calendar?.length || 0,
+                                earningsDates: holding.earnings_calendar?.map(e => e.date) || []
+                              });
+                              
+                              // Find the next upcoming earnings date
+                              const upcomingEarnings = holding.earnings_calendar
+                                .filter(earning => new Date(earning.date) > new Date())
+                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              
+                              console.log(`📅 [EARNINGS] ${holding.symbol} upcoming:`, upcomingEarnings.length);
+                              
+                              if (upcomingEarnings.length > 0) {
+                                const nextEarnings = upcomingEarnings[0];
+                                const date = new Date(nextEarnings.date);
+                                const today = new Date();
+                                const diffTime = date.getTime() - today.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                
+                                return (
+                                  <span className="text-xs font-medium text-blue-300">
+                                    {diffDays === 1 ? 'Tomorrow' : 
+                                     diffDays === 0 ? 'Today' : 
+                                     `in ${diffDays} days`}
+                                  </span>
+                                );
+                              } else {
+                                // No upcoming earnings - show "No upcoming"
+                                return (
+                                  <span className="text-xs text-gray-500">
+                                    No upcoming
+                                  </span>
+                                );
+                              }
+                            })()}
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-center">
+                          <span className="text-xs text-gray-600">-</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 md:px-4 hidden md:table-cell">
+                      {( holding.symbol !== dataWithRealEarnings.base_currency) ? (
+                        <MiniChart data={holding.historical_prices} symbol={holding.symbol} currency={holding.original_currency} baseCurrency={dataWithRealEarnings.base_currency} />
                       ) : null}
                     </td>
                   </tr>
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
                     <tr>
-                      <td colSpan={isValueVisible ? 9 : 7} className="p-0">
+                      <td colSpan={isValueVisible ? 10 : 8} className="p-0">
                         <AccountBreakdownRow
                           accountBreakdown={holding.account_breakdown}
-                          baseCurrency={data.base_currency}
+                          baseCurrency={dataWithRealEarnings.base_currency}
                           isValueVisible={isValueVisible}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  {expandedEarnings === holding.symbol && holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                    <tr>
+                      <td colSpan={isValueVisible ? 10 : 8} className="p-0">
+                        <EarningsCalendar
+                          earningsData={holding.earnings_calendar}
+                          symbol={holding.symbol}
+                          compact={false}
                         />
                       </td>
                     </tr>
                   )}
                   {expandedRow === holding.symbol && isMobile && (
                     <tr className="bg-gray-800/50 md:hidden">
-                      <td colSpan={isValueVisible ? 9 : 7} className="p-4">
+                      <td colSpan={isValueVisible ? 10 : 8} className="p-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-bold text-gray-400">Name</p>
@@ -916,6 +1055,79 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               <p>{Math.round(holding.total_units).toLocaleString()}</p>
                             </div>
                           )}
+                          {holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                            <div className="col-span-2">
+                              <p className="font-bold text-gray-400 mb-2">Earnings</p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                                }}
+                                className="flex items-center gap-2 mb-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                                title={(() => {
+                                  // Create tooltip with date information for mobile
+                                  if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const date = new Date(nextEarnings.date);
+                                      return `Next earnings: ${date.toLocaleDateString('en-US', { 
+                                        weekday: 'long',
+                                        month: 'long', 
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                      })} Q${nextEarnings.quarter}`;
+                                    } else {
+                                      return "No upcoming earnings";
+                                    }
+                                  }
+                                  return "View earnings calendar";
+                                })()}
+                              >
+                                <Calendar 
+                                  size={14} 
+                                  className="text-blue-400 bg-transparent"
+                                />
+                                <span className="text-sm text-gray-300">
+                                  {(() => {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const today = new Date();
+                                      const date = new Date(nextEarnings.date);
+                                      const diffTime = date.getTime() - today.getTime();
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      
+                                      return (
+                                        <span className="text-gray-300">
+                                          Reports {diffDays === 1 ? '(tomorrow)' : 
+                                                   diffDays === 0 ? '(today)' : 
+                                                   `(in ${diffDays} days)`}
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span className="text-gray-400">
+                                          No upcoming earnings
+                                        </span>
+                                      );
+                                    }
+                                  })()}
+                                </span>
+                              </button>
+                              <EarningsCalendar
+                                earningsData={holding.earnings_calendar}
+                                symbol={holding.symbol}
+                                compact={true}
+                              />
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -928,7 +1140,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       )}
 
       {viewMode === 'heatmap' && (
-        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={data} isValueVisible={isValueVisible} />
+        isLoading ? <HoldingsHeatmapSkeleton /> : <HoldingsHeatmap data={dataWithRealEarnings} isValueVisible={isValueVisible} />
       )}
 
       {/* Tag Editor Dialog */}
@@ -940,6 +1152,28 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           tagDefinition={editingTag.definition}
           initialValue={editingTag.value}
           symbol={editingTag.symbol}
+        />
+      )}
+
+      {/* Custom Tooltip */}
+      {tooltipData && tooltipData.visible && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            left: tooltipData.x,
+            top: tooltipData.y,
+            transform: 'translateX(-50%) translateY(-100%)',
+            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+            border: 'none',
+            borderRadius: '8px',
+            boxShadow: 'none',
+            color: '#e5e7eb',
+            fontSize: '12px',
+            fontWeight: 'normal',
+            padding: '4px',
+            maxWidth: '200px'
+          }}
+          dangerouslySetInnerHTML={{ __html: tooltipData.content }}
         />
       )}
     </div>

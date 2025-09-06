@@ -16,6 +16,7 @@ from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
 from core.options_calculator import OptionsCalculator
+from services.earnings.service import get_earnings_service
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +270,9 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "tags": security.tags or {},  # Ensure tags is never None
                         "unit_price": security.unit_price
                     }
-                    
+                    manager = PriceManager()
+                    logo = await manager.get_logo(holding.symbol)
+
                     if security.tags and len(security.tags) > 0:
                         print(f"🏷️ [ALL PORTFOLIOS] Security {holding.symbol} has tags: {list(security.tags.keys())}")
                     
@@ -281,7 +284,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "original_currency": security.currency.value,
                         "security_type": security.security_type.value,
                         "security_name": security.name,
-                        "tags": security.tags or {}  # ← RESTORED: Include security tags directly like original!
+                        "tags": security.tags or {},  # ← RESTORED: Include security tags directly like original!
+                        "logo": logo
                     })
 
                 # Add RSU virtual holdings
@@ -289,12 +293,14 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                     "name": account.name,
                     "rsu_plans": account.rsu_plans or []
                 })
-                
+
                 for virtual_holding in rsu_result["virtual_holdings"]:
                     # Get security tags for RSU virtual holdings too
                     rsu_security = portfolio.securities.get(virtual_holding["symbol"])
                     rsu_tags = rsu_security.tags if rsu_security else {}
-                    
+                    manager = PriceManager()
+                    logo = await manager.get_logo(virtual_holding["symbol"])
+
                     if rsu_tags and len(rsu_tags) > 0:
                         print(f"🏷️ [ALL PORTFOLIOS] RSU virtual holding {virtual_holding['symbol']} has tags: {list(rsu_tags.keys())}")
                     
@@ -307,7 +313,8 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                         "security_type": "rsu_virtual",
                         "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
                         "tags": rsu_tags or {},  # ← Include security tags for RSU holdings too
-                        "is_virtual": True
+                        "is_virtual": True,
+                        "logo": logo
                     })
                     account_total += virtual_holding.get("total_value", 0)
                     all_symbols.add(virtual_holding["symbol"])
@@ -386,6 +393,41 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
             for portfolio_data in all_portfolios_data.values()
         )
         print(f"📈 [ALL PORTFOLIOS] Generated REAL historical price data for {total_historical_symbols} total symbols across all portfolios")
+        
+        # Get earnings calendar data for all stock/ETF symbols
+        print("📅 [ALL PORTFOLIOS] Fetching earnings calendar data for all stock/ETF symbols")
+        global_earnings_data = {}
+        
+        try:
+            earnings_service = get_earnings_service()
+            
+            # Filter to only stock/ETF symbols for earnings data
+            stock_etf_symbols = [
+                symbol for symbol in all_symbols 
+                if symbol in global_securities and 
+                global_securities[symbol]["security_type"].lower() in ['stock', 'etf']
+            ]
+            
+            if stock_etf_symbols:
+                print(f"📊 [ALL PORTFOLIOS] Fetching earnings for {len(stock_etf_symbols)} stock/ETF symbols: {stock_etf_symbols}")
+                
+                # Get earnings data for all symbols at once
+                earnings_data = await earnings_service.get_earnings_calendar(stock_etf_symbols)
+                
+                # Format the earnings data (1 upcoming + 3 previous per symbol)
+                for symbol, raw_earnings in earnings_data.items():
+                    formatted_earnings = earnings_service.format_earnings_data(raw_earnings)
+                    global_earnings_data[symbol] = formatted_earnings
+                    print(f"📅 [ALL PORTFOLIOS] {symbol}: {len(formatted_earnings)} earnings records (1 upcoming + 3 previous)")
+                
+                total_earnings_records = sum(len(earnings) for earnings in global_earnings_data.values())
+                print(f"✅ [ALL PORTFOLIOS] Fetched {total_earnings_records} total earnings records for {len(global_earnings_data)} symbols")
+            else:
+                print("📭 [ALL PORTFOLIOS] No stock/ETF symbols found for earnings data")
+                
+        except Exception as e:
+            print(f"❌ [ALL PORTFOLIOS] Error fetching earnings data: {e}")
+            global_earnings_data = {}
         
         # Get tags data for ALL portfolios
         print("🏷️ [ALL PORTFOLIOS] Fetching user tag library and holding tags")
@@ -643,6 +685,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
             "global_securities": global_securities,
             "global_quotes": global_quotes,
             "global_exchange_rates": global_exchange_rates,
+            "global_earnings_data": global_earnings_data,  # NEW: Include earnings calendar data
             "user_tag_library": user_tag_library,
             "all_holding_tags": all_holding_tags,
             "all_options_vesting": all_options_vesting,
@@ -654,7 +697,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         }
 
         print(f"🎯 [ALL PORTFOLIOS] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
-        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options, {total_historical_symbols} REAL historical price series")
+        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options, {total_historical_symbols} REAL historical price series, {len(global_earnings_data)} earnings symbols (1 upcoming + 3 previous each)")
         return result
 
     except HTTPException:
@@ -898,4 +941,83 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/earnings-calendar")
+async def get_earnings_calendar(
+    symbols: str = Query(..., description="Comma-separated list of stock symbols"),
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    user=Depends(get_current_user)
+) -> dict[str, Any]:
+    """
+    Get earnings calendar data for specified symbols using Finnhub API
+    
+    Args:
+        symbols: Comma-separated list of stock symbols (e.g., "AAPL,MSFT,GOOGL")
+        from_date: Start date in YYYY-MM-DD format (optional, defaults to 1 year ago)
+        to_date: End date in YYYY-MM-DD format (optional, defaults to 1 year from now)
+        
+    Returns:
+        Dictionary mapping symbol to list of earnings data
+    """
+    try:
+        # Parse symbols
+        symbol_list = [symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()]
+        
+        if not symbol_list:
+            raise HTTPException(status_code=400, detail="At least one symbol must be provided")
+        
+        # Parse dates if provided
+        from_date_obj = None
+        to_date_obj = None
+        
+        if from_date:
+            try:
+                from_date_obj = datetime.strptime(from_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid from_date format. Use YYYY-MM-DD")
+        
+        if to_date:
+            try:
+                to_date_obj = datetime.strptime(to_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid to_date format. Use YYYY-MM-DD")
+        
+        logger.info(f"📅 [EARNINGS API] Fetching earnings for symbols: {symbol_list}")
+        
+        # Get earnings service and fetch data
+        earnings_service = get_earnings_service()
+        earnings_data = await earnings_service.get_earnings_calendar(
+            symbol_list, 
+            from_date_obj, 
+            to_date_obj
+        )
+        
+        # Format the response
+        formatted_response = {}
+        total_records = 0
+        
+        for symbol, raw_earnings in earnings_data.items():
+            formatted_earnings = earnings_service.format_earnings_data(raw_earnings)
+            formatted_response[symbol] = formatted_earnings
+            total_records += len(formatted_earnings)
+            logger.info(f"📊 [EARNINGS API] {symbol}: {len(formatted_earnings)} earnings records (1 upcoming + 3 previous)")
+        
+        logger.info(f"✅ [EARNINGS API] Returning {total_records} total earnings records for {len(symbol_list)} symbols")
+        
+        return {
+            "earnings_data": formatted_response,
+            "symbols_requested": symbol_list,
+            "symbols_found": list(formatted_response.keys()),
+            "total_records": total_records,
+            "from_date": from_date_obj.isoformat() if from_date_obj else None,
+            "to_date": to_date_obj.isoformat() if to_date_obj else None,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [EARNINGS API] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

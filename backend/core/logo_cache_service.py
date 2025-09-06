@@ -1,9 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from bson import ObjectId
 
-from models.symbol import Symbol
 from core.database import db_manager
 from services.closing_price.stock_fetcher import FinnhubFetcher
 from config import settings
@@ -89,103 +87,28 @@ class LogoCacheService:
         except Exception as e:
             logger.error(f"Error fetching logo for {symbol}: {e}")
             return None
-    
+
     async def _cache_logo(self, symbol: str, logo_url: str) -> bool:
-        """Store logo URL in the database"""
+        """Update logo URL in the database only if the symbol already exists."""
         try:
-            # Try to update existing symbol document
             result = await self.symbols_collection.update_one(
-                {"symbol": symbol},
+                {"symbol": {"$regex": f":{symbol}$", "$options": "i"}},  # match e.g. NASDAQ:VGSR
                 {
                     "$set": {
                         "logo_url": logo_url,
-                        "logo_updated_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow()
+                        "updated_at": datetime.utcnow(),
                     }
-                }
+                },
+                upsert=False
             )
-            
+
             if result.matched_count == 0:
-                # Symbol doesn't exist, create a basic entry
-                symbol_doc = {
-                    "symbol": symbol,
-                    "name": symbol,  # Placeholder name
-                    "symbol_type": "other",
-                    "currency": "USD",  # Default currency
-                    "logo_url": logo_url,
-                    "logo_updated_at": datetime.utcnow(),
-                    "created_at": datetime.utcnow(),
-                    "updated_at": datetime.utcnow(),
-                    "is_active": True
-                }
-                await self.symbols_collection.insert_one(symbol_doc)
-                logger.info(f"Created new symbol entry for {symbol}")
-            
+                logger.warning(f"No existing symbol found for {symbol}, skipped update.")
+                return False
+
+            logger.info(f"Updated logo for existing symbol {symbol}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error caching logo for {symbol}: {e}")
             return False
-    
-    async def refresh_expired_logos(self) -> dict[str, int]:
-        """Refresh all expired logos in the database"""
-        try:
-            expiration_date = datetime.utcnow() - timedelta(days=self.logo_expiration_days)
-            
-            # Find symbols with expired logos
-            expired_symbols = self.symbols_collection.find({
-                "logo_url": {"$exists": True},
-                "logo_updated_at": {"$lt": expiration_date}
-            })
-            
-            refreshed_count = 0
-            failed_count = 0
-            
-            async for symbol_doc in expired_symbols:
-                symbol = symbol_doc["symbol"]
-                try:
-                    logo_url = await self.fetcher.get_company_logo(symbol)
-                    if logo_url:
-                        await self._cache_logo(symbol, logo_url)
-                        refreshed_count += 1
-                        logger.info(f"Refreshed logo for {symbol}")
-                    else:
-                        failed_count += 1
-                        logger.warning(f"Failed to refresh logo for {symbol}")
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"Error refreshing logo for {symbol}: {e}")
-            
-            logger.info(f"Logo refresh completed: {refreshed_count} refreshed, {failed_count} failed")
-            return {
-                "refreshed": refreshed_count,
-                "failed": failed_count
-            }
-            
-        except Exception as e:
-            logger.error(f"Error refreshing expired logos: {e}")
-            return {"refreshed": 0, "failed": 0}
-    
-    async def get_logo_stats(self) -> dict[str, int]:
-        """Get statistics about cached logos"""
-        try:
-            total_symbols = await self.symbols_collection.count_documents({})
-            symbols_with_logos = await self.symbols_collection.count_documents({"logo_url": {"$exists": True}})
-            
-            # Count expired logos
-            expiration_date = datetime.utcnow() - timedelta(days=self.logo_expiration_days)
-            expired_logos = await self.symbols_collection.count_documents({
-                "logo_url": {"$exists": True},
-                "logo_updated_at": {"$lt": expiration_date}
-            })
-            
-            return {
-                "total_symbols": total_symbols,
-                "symbols_with_logos": symbols_with_logos,
-                "expired_logos": expired_logos,
-                "fresh_logos": symbols_with_logos - expired_logos
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting logo stats: {e}")
-            return {}
