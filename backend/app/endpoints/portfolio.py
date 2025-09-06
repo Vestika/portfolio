@@ -653,6 +653,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                                 "percent_change": quote_data.change_percent or 0.0,
                                 "last_updated": current_time
                             }
+                            print("💹 [ALL PORTFOLIOS] Fetched quote for {quote_data.symbol}: price={quote_data.price}, change%={quote_data.change_percent}")
                     
                     print(f"✅ [ALL PORTFOLIOS] Fetched {len(global_quotes)} global live quotes (out of {len(stock_symbols)} requested)")
                     
