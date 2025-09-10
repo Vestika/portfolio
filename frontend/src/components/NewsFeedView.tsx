@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchNewsFeed, NewsItem, sendNewsFeedback } from '../utils/news-api';
-import { ExternalLink, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import NewsFilters, { NewsFiltersValue } from './NewsFilters';
 import newsPlaceholder from '../assets/news-placeholder.svg';
 
@@ -185,13 +185,19 @@ export default function NewsFeedView() {
 }
 
 function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: string, action: 'like' | 'dislike') => void }) {
+  const [feedbackState, setFeedbackState] = useState<'none' | 'liked' | 'disliked'>('none');
   const isPlaceholder = !item.imageUrl;
   const image = item.imageUrl ?? newsPlaceholder;
   let domain = '';
   try { domain = new URL(item.url).hostname.replace('www.', ''); } catch { domain = ''; }
   const dateStr = formatDate(item.publishedAt);
+
+  const handleFeedback = async (action: 'like' | 'dislike') => {
+    setFeedbackState(action === 'like' ? 'liked' : 'disliked');
+    await onFeedback(item.id, action);
+  };
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gradient-to-br from-gray-900/80 to-gray-950/80 backdrop-blur-sm hover:border-gray-700/70 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 hover:-translate-y-1">
+    <article className="group relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gradient-to-br from-gray-900/80 to-gray-950/80 backdrop-blur-sm hover:border-gray-700/70 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 hover:-translate-y-1 flex flex-col min-h-[400px]">
       {/* Image section with overlay */}
       <div className="relative w-full h-48 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden">
         <img
@@ -246,40 +252,58 @@ function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: st
       </div>
       
       {/* Content section */}
-      <div className="p-5">
-        <a 
-          href={item.url} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="block group/link"
-        >
-          <h3 className="font-semibold text-white leading-tight line-clamp-2 group-hover/link:text-indigo-300 transition-colors duration-200 mb-3">
-            {item.title}
-          </h3>
-        </a>
+      <div className="p-5 flex flex-col flex-1">
+        <div className="flex-1">
+          <a 
+            href={item.url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="block group/link"
+          >
+            <h3 className="font-semibold text-white leading-tight line-clamp-2 group-hover/link:text-indigo-300 transition-colors duration-200 mb-3">
+              {item.title}
+            </h3>
+          </a>
+          
+          {item.description && (
+            <p className="text-sm text-gray-400 leading-relaxed line-clamp-3">
+              {item.description}
+            </p>
+          )}
+        </div>
         
-        {item.description && (
-          <p className="text-sm text-gray-400 leading-relaxed line-clamp-3 mb-4">
-            {item.description}
-          </p>
-        )}
-        
-        {/* Action buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <IconButton onClick={() => onFeedback(item.id, 'like')} ariaLabel="Like article">
-              <ThumbsUp className="h-4 w-4" />
-            </IconButton>
-            <IconButton onClick={() => onFeedback(item.id, 'dislike')} ariaLabel="Dislike article">
-              <ThumbsDown className="h-4 w-4" />
-            </IconButton>
+        {/* Action buttons - always at bottom */}
+        <div className="flex items-center justify-between h-9 mt-4">
+          <div className="flex items-center gap-2 h-9">
+            <button
+              onClick={() => handleFeedback('like')}
+              className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 hover:scale-105 active:scale-95"
+              aria-label="Like article"
+            >
+              <span className={`text-sm transition-all duration-200 ${feedbackState === 'liked' ? 'scale-125 text-green-400' : 'hover:scale-110'}`}>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.818a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+                </svg>
+              </span>
+            </button>
+            <button
+              onClick={() => handleFeedback('dislike')}
+              className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 hover:scale-105 active:scale-95"
+              aria-label="Dislike article"
+            >
+              <span className={`text-sm transition-all duration-200 ${feedbackState === 'disliked' ? 'scale-125 text-red-400' : 'hover:scale-110'}`}>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.818a2 2 0 00-1.106-1.79l-.05-.025A4 4 0 0011.057 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" />
+                </svg>
+              </span>
+            </button>
           </div>
           
           <a
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all duration-200"
+            className="inline-flex items-center gap-2 px-4 h-9 text-sm font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all duration-200"
             aria-label="Read full article"
           >
             <span>Read</span>
@@ -294,7 +318,7 @@ function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: st
 function IconButton({ onClick, children, ariaLabel }: { onClick: () => void; children: React.ReactNode; ariaLabel: string }) {
   return (
     <button
-      className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 hover:scale-105"
+      className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 hover:scale-105 active:scale-95"
       onClick={onClick}
       aria-label={ariaLabel}
     >
