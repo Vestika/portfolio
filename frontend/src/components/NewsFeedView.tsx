@@ -315,17 +315,6 @@ function ArticleCard({ item, onFeedback }: { item: NewsItem; onFeedback: (id: st
   );
 }
 
-function IconButton({ onClick, children, ariaLabel }: { onClick: () => void; children: React.ReactNode; ariaLabel: string }) {
-  return (
-    <button
-      className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 hover:scale-105 active:scale-95"
-      onClick={onClick}
-      aria-label={ariaLabel}
-    >
-      {children}
-    </button>
-  );
-}
 
 function HeaderBar() {
   return (
