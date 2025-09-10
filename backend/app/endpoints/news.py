@@ -147,6 +147,7 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
                             "symbol": symbol,
                             "logo_url": symbol_logos[symbol]
                         })
+                        break  # Stop after finding the first match
             item["symbol_logos"] = item_logos
 
     # Compute next window for older items
