@@ -8,6 +8,7 @@ from core.auth import get_current_user
 from core.database import db_manager
 from services.news.service import NewsService
 from services.news.keyword_generator import KeywordTopicGenerator
+from services.closing_price.price_manager import PriceManager
 from models.portfolio import Portfolio
 
 # Create router for this module
@@ -15,6 +16,7 @@ router = APIRouter()
 
 # Initialize services
 news_service = NewsService()
+price_manager = PriceManager()
 
 # Request/Response models
 class NewsFeedRequest(BaseModel):
@@ -41,6 +43,7 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
     # Derive keywords/topics if not provided using user's holdings
     keywords = req.keywords or []
     topics = req.topics or []
+    symbols_set = set()  # Track unique symbols for logo fetching
     if not keywords or not topics:
         # Aggregate holdings across all portfolios
         portfolios_col = db_manager.get_collection("portfolios")
@@ -50,6 +53,7 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
             for acc in p.accounts:
                 for h in acc.holdings:
                     sec = p.securities.get(h.symbol)
+                    symbols_set.add(h.symbol)  # Collect symbols for logo fetching
                     holdings_ctx.append({
                         "symbol": h.symbol,
                         "name": getattr(sec, "name", h.symbol) if sec else h.symbol,
@@ -116,6 +120,34 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
                 or needle in domain
             )
         items = [it for it in items if matches_q(it)]
+
+    # Add logos to news items based on symbols from user's holdings
+    if symbols_set:
+        # Create a mapping of symbol to logo URL
+        symbol_logos = {}
+        for symbol in symbols_set:
+            try:
+                logo_url = await price_manager.get_logo(symbol)
+                if logo_url:
+                    symbol_logos[symbol] = logo_url
+            except Exception as e:
+                # Log error but continue processing
+                print(f"Error fetching logo for {symbol}: {e}")
+        
+        # Add logo URLs to news items based on symbol matching
+        for item in items:
+            item_logos = []
+            # Check if any of the user's symbols appear in the news item
+            for symbol in symbols_set:
+                if (symbol.lower() in (item.get("title", "").lower()) or 
+                    symbol.lower() in (item.get("description", "").lower()) or
+                    symbol.lower() in (item.get("source", "").lower())):
+                    if symbol in symbol_logos:
+                        item_logos.append({
+                            "symbol": symbol,
+                            "logo_url": symbol_logos[symbol]
+                        })
+            item["symbol_logos"] = item_logos
 
     # Compute next window for older items
     next_window = None

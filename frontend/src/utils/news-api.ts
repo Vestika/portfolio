@@ -9,6 +9,10 @@ export type NewsItem = {
   source: string;
   topic: string | null;
   keywords: string[];
+  symbol_logos?: Array<{
+    symbol: string;
+    logo_url: string;
+  }>;
 };
 
 export type NewsFeedResponse = {
