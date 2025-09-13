@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData, HoldingTags, TagDefinition, TagLibrary, TagType, TagValue } from './types';
@@ -450,24 +450,26 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   // Get real earnings data from context
   const { getEarningsBySymbol } = usePortfolioData();
   
-  // Add real earnings data to holdings
-  const dataWithRealEarnings = {
-    ...data,
-    holdings: data.holdings.map(holding => {
-      const earningsData = getEarningsBySymbol(holding.symbol);
-      if (earningsData && earningsData.length > 0) {
-        console.log(`📅 [HOLDINGS TABLE] Adding real earnings data for ${holding.symbol}:`, {
-          earningsCount: earningsData.length,
-          sampleEarnings: earningsData.slice(0, 2)
-        });
-        return {
-          ...holding,
-          earnings_calendar: earningsData
-        };
-      }
-      return holding;
-    })
-  };
+  // Add real earnings data to holdings - memoized to prevent infinite loops
+  const dataWithRealEarnings = useMemo(() => {
+    return {
+      ...data,
+      holdings: data.holdings.map(holding => {
+        const earningsData = getEarningsBySymbol(holding.symbol);
+        if (earningsData && earningsData.length > 0) {
+          console.log(`📅 [HOLDINGS TABLE] Adding real earnings data for ${holding.symbol}:`, {
+            earningsCount: earningsData.length,
+            sampleEarnings: earningsData.slice(0, 2)
+          });
+          return {
+            ...holding,
+            earnings_calendar: earningsData
+          };
+        }
+        return holding;
+      })
+    };
+  }, [data, getEarningsBySymbol]);
 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [expandedEarnings, setExpandedEarnings] = useState<string | null>(null);
@@ -571,7 +573,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       setStructuredTags({});
     }
-  }, [dataWithRealEarnings.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
+  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
 
   // Handle tag updates (refresh all data to get updated tags)
   const handleTagsUpdated = async () => {
