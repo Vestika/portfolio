@@ -142,6 +142,7 @@ export function PortfolioView({
                     accountName={accountName}
                     baseCurrency={displayMetadata.base_currency}
                     globalPrices={globalPrices}
+                    isValueVisible={isValueVisible}
                   />
                 </div>
               );

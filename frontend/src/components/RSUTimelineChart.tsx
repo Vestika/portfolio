@@ -30,11 +30,12 @@ interface RSUTimelineChartProps {
   accountName: string;
   baseCurrency: string;
   globalPrices: Record<string, any>;
+  isValueVisible?: boolean;
 }
 
 // Removed unused ChartDataPoint interface
 
-const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency, globalPrices }) => {
+const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency, globalPrices, isValueVisible = true }) => {
   const chartRef = useRef<HighchartsReact.RefObject>(null);
   const [hoveredGauge, setHoveredGauge] = useState<number | null>(null);
   
@@ -47,6 +48,11 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
       return `${(num / 1000).toFixed(0)}K`;
     }
     return num.toString();
+  };
+
+  // Utility function to generate dots for hidden values
+  const generateDots = (color: string = '#999999'): string => {
+    return `<span style="color: ${color};">•••</span>`;
   };
   
   // Use the same colors as pie charts
@@ -139,13 +145,17 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
           const grant = chartData.grantData[hoveredGauge];
           const grantColor = grant?.color || '#ffffff';
           // Grant-specific information in same format as base subtitle (replaces base when hovering)
-          const grantVestedInfo = `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${(grant?.planInfo?.vested_units || 0).toLocaleString()} of ${(grant?.planInfo?.total_units || 0).toLocaleString()} shares  |  ${Math.round(grant?.vestedValue || 0).toLocaleString()} of ${Math.round(grant?.totalValue || 0).toLocaleString()} ${baseCurrency}`;
+          const grantVestedInfo = isValueVisible ? 
+            `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${(grant?.planInfo?.vested_units || 0).toLocaleString()} of ${(grant?.planInfo?.total_units || 0).toLocaleString()} shares  |  ${Math.round(grant?.vestedValue || 0).toLocaleString()} of ${Math.round(grant?.totalValue || 0).toLocaleString()} ${baseCurrency}` :
+            `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${generateDots()} of ${generateDots()} shares  |  ${generateDots()} of ${generateDots()} ${baseCurrency}`;
           
           // Next vesting information - calculate value using global price
           const grantPriceData = globalPrices[grant?.planInfo?.symbol];
           const grantCurrentPrice = grantPriceData?.price || 0;
           const nextVestInfo = grant?.planInfo?.next_vest_date ? 
-            `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * grantCurrentPrice).toLocaleString()} ${baseCurrency}` :
+            (isValueVisible ?
+              `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * grantCurrentPrice).toLocaleString()} ${baseCurrency}` :
+              `Next Vest: ${grant.planInfo.next_vest_date}  |  ${generateDots()} shares  |  ${generateDots()} ${baseCurrency}`) :
             `No upcoming vesting`;
           
           return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
@@ -165,7 +175,9 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
             }
           });
           
-          const overallInfo = `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${chartData.totalVestedShares.toLocaleString()} of ${chartData.totalShares.toLocaleString()} shares  |  ${Math.round(chartData.totalVested).toLocaleString()} of ${Math.round(chartData.totalVested + chartData.totalUnvested).toLocaleString()} ${baseCurrency}`;
+          const overallInfo = isValueVisible ?
+            `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${chartData.totalVestedShares.toLocaleString()} of ${chartData.totalShares.toLocaleString()} shares  |  ${Math.round(chartData.totalVested).toLocaleString()} of ${Math.round(chartData.totalVested + chartData.totalUnvested).toLocaleString()} ${baseCurrency}` :
+            `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${generateDots()} of ${generateDots()} shares  |  ${generateDots()} of ${generateDots()} ${baseCurrency}`;
           
           let nextVestInfo = '';
           if (nextVestDate) {
@@ -280,19 +292,19 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
               format: hoveredGauge === index ? 
                 `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
                   <div style="font-size: 32px; font-weight: bold; color: ${grant.color}; line-height: 1.2; white-space: nowrap;">
-                    ${grantVestedShort} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+                    ${isValueVisible ? grantVestedShort : generateDots(grant.color)} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
                   </div>
                   <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
-                    ${Math.round(grant.vestedPercentage)}% of ${grantTotalShort}
+                    ${Math.round(grant.vestedPercentage)}% of ${isValueVisible ? grantTotalShort : generateDots('#cccccc')}
                   </div>
                 </div>` : 
                 (hoveredGauge === null && index === 0 ? 
                   `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
                     <div style="font-size: 32px; font-weight: bold; color: #ffffff; line-height: 1.2; white-space: nowrap;">
-                      ${totalVestedShort} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+                      ${isValueVisible ? totalVestedShort : generateDots('#ffffff')} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
                     </div>
                     <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
-                      ${Math.round(chartData.overallPercentage)}% of ${totalPortfolioShort}
+                      ${Math.round(chartData.overallPercentage)}% of ${isValueVisible ? totalPortfolioShort : generateDots('#cccccc')}
                     </div>
                   </div>` : 
                   ''),
