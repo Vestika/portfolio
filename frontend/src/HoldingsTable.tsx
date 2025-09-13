@@ -278,6 +278,7 @@ const MiniChart: React.FC<{
 
   return (
     <div 
+      data-chart-area
       onMouseMove={(e) => {
         if (!data || data.length === 0) return;
         
@@ -477,6 +478,38 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [chartTooltipData, setChartTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const [earningsTooltipData, setEarningsTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
+
+  // Auto-hide chart tooltip when mouse moves outside chart areas
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!chartTooltipData?.visible) return;
+
+      // Check if mouse is over any chart element
+      const target = e.target as HTMLElement;
+      const isOverChart = target?.closest('[data-chart-area]') || 
+                         target?.closest('.highcharts-container') ||
+                         target?.tagName?.toLowerCase() === 'svg';
+      
+      // If mouse is not over any chart area, hide the tooltip
+      if (!isOverChart) {
+        setChartTooltipData(null);
+      }
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    return () => document.removeEventListener('mousemove', handleGlobalMouseMove);
+  }, [chartTooltipData?.visible]);
+
+  // Auto-hide tooltip after 3 seconds as a safety net
+  useEffect(() => {
+    if (!chartTooltipData?.visible) return;
+
+    const hideTimer = setTimeout(() => {
+      setChartTooltipData(null);
+    }, 3000); // Hide after 3 seconds
+
+    return () => clearTimeout(hideTimer);
+  }, [chartTooltipData?.visible]);
 
   const [filters, setFilters] = useState<{
     symbol: string;
