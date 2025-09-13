@@ -460,7 +460,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         // Collect all unique symbols from RSU, ESPP, and Options plans
         const planSymbols = [
           ...editAccount.rsu_plans.map(plan => plan.symbol.trim()),
-          ...editAccount.espp_plans.map(plan => plan.symbol.trim()),
+          ...editAccount.espp_plans.map(plan => plan.stock_symbol.trim()),
           ...editAccount.options_plans.map(plan => plan.symbol.trim())
         ].filter(s => s);
         const uniqueSymbols = Array.from(new Set(planSymbols));
@@ -480,7 +480,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const validESPPPlans = editAccount.espp_plans
-        .filter(plan => plan.symbol.trim() && plan.units > 0);
+        .filter(plan => plan.stock_symbol.trim() && plan.units > 0);
 
       const validOptionsPlans = editAccount.options_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
@@ -1592,7 +1592,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                           <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
                             <div className="flex items-center justify-between mb-3">
                               <Label className="text-sm font-medium">
-                                ESPP Plan - {plan.symbol || 'New Plan'}
+                                ESPP Plan - {plan.stock_symbol || 'New Plan'}
                               </Label>
                               <Button
                                 type="button"
