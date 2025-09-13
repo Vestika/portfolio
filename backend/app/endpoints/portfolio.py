@@ -31,6 +31,8 @@ closing_price_service = get_global_service()
 
 # Cache for calculator instances to maintain cache across requests
 calculator_cache = {}
+maya = Maya()
+
 
 def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
     """Create a PortfolioCalculator with the global closing price service"""
@@ -710,9 +712,8 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             # Handle TASE symbols (numeric) using pymaya
             logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
             try:
-                maya = Maya()
                 tase_id = getattr(security, 'tase_id', None) or symbol
-                price_history = list(maya.get_price_history(security_id=str(tase_id), from_data=seven_days_ago))
+                price_history = list(maya.get_price_history(security_id=str(tase_id), from_date=seven_days_ago))
                 
                 for entry in reversed(price_history):
                     if entry.get('TradeDate') and entry.get('SellPrice'):
