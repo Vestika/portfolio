@@ -21,11 +21,7 @@ interface RSUVestingPlan {
   cliff_months: number;
   vesting_period_years: number;
   vesting_frequency: string;
-  price?: number;
   price_currency?: string;
-  total_value?: number;
-  vested_value?: number;
-  unvested_value?: number;
 }
 
 interface RSUTimelineChartProps {
@@ -33,11 +29,12 @@ interface RSUTimelineChartProps {
   symbol: string;
   accountName: string;
   baseCurrency: string;
+  globalPrices: Record<string, any>;
 }
 
 // Removed unused ChartDataPoint interface
 
-const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency }) => {
+const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency, globalPrices }) => {
   const chartRef = useRef<HighchartsReact.RefObject>(null);
   const [hoveredGauge, setHoveredGauge] = useState<number | null>(null);
   
@@ -78,9 +75,13 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
     let totalShares = 0;
     
     const grantData = plans.map((plan, index) => {
-      const vestedValue = (plan.vested_value || 0);
-      const unvestedValue = (plan.unvested_value || 0);
-      const totalValue = vestedValue + unvestedValue;
+      // Calculate values dynamically using global price data
+      const priceData = globalPrices[plan.symbol];
+      const currentPrice = priceData?.price || 0;
+      
+      const vestedValue = (plan.vested_units || 0) * currentPrice;
+      const totalValue = (plan.total_units || 0) * currentPrice;
+      const unvestedValue = totalValue - vestedValue;
       const vestedPercentage = totalValue > 0 ? (vestedValue / totalValue) * 100 : 0;
       
       totalVested += vestedValue;
@@ -140,9 +141,11 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
           // Grant-specific information in same format as base subtitle (replaces base when hovering)
           const grantVestedInfo = `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${(grant?.planInfo?.vested_units || 0).toLocaleString()} of ${(grant?.planInfo?.total_units || 0).toLocaleString()} shares  |  ${Math.round(grant?.vestedValue || 0).toLocaleString()} of ${Math.round(grant?.totalValue || 0).toLocaleString()} ${baseCurrency}`;
           
-          // Next vesting information
+          // Next vesting information - calculate value using global price
+          const grantPriceData = globalPrices[grant?.planInfo?.symbol];
+          const grantCurrentPrice = grantPriceData?.price || 0;
           const nextVestInfo = grant?.planInfo?.next_vest_date ? 
-            `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * (grant.planInfo.price || 0)).toLocaleString()} ${baseCurrency}` :
+            `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * grantCurrentPrice).toLocaleString()} ${baseCurrency}` :
             `No upcoming vesting`;
           
           return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">

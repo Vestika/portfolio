@@ -16,7 +16,6 @@ class OptionsCalculator:
         total_units: float,
         vesting_period_years: int,
         vesting_frequency: str,
-        has_cliff: bool = False,
         cliff_months: int = 0,
         left_company: bool = False,
         left_company_date: Optional[str] = None

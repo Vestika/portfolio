@@ -12,20 +12,29 @@ interface PortfolioSummaryProps {
   selectedAccountNames: string[];
   baseCurrency: string;
   isValueVisible: boolean;
+  globalPrices: Record<string, any>;
 }
 
 const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
   accounts,
   selectedAccountNames,
   baseCurrency,
-  isValueVisible
+  isValueVisible,
+  globalPrices
 }) => {
   const selectedAccounts = accounts.filter(account =>
     selectedAccountNames.includes(account.account_name)
   );
 
   const totalValue = selectedAccounts.reduce(
-    (sum, account) => sum + account.account_total,
+    (sum, account) => {
+      const accountTotal = (account.holdings || []).reduce((accSum, holding) => {
+        const priceData = globalPrices[holding.symbol];
+        if (!priceData) return accSum;
+        return accSum + (holding.units * priceData.price);
+      }, 0);
+      return sum + accountTotal;
+    },
     0
   );
 

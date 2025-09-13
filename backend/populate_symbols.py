@@ -302,8 +302,8 @@ async def populate_symbol_type(symbol_type: str, force: bool = False) -> Dict[st
             return result
         
         # Clear existing data for this symbol type
-        cleared_count = await clear_symbol_type(symbol_type)
-        
+        _ = await clear_symbol_type(symbol_type)
+
         # Convert to symbol documents
         symbols_to_insert = []
         

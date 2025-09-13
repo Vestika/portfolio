@@ -7,6 +7,9 @@ from pydantic import BaseModel
 import logging
 import yfinance as yf
 from pymaya.maya import Maya
+import asyncio
+import time
+import pandas as pd
 
 from core.auth import get_current_user
 from core.database import db_manager
@@ -82,6 +85,561 @@ class CreateAccountRequest(BaseModel):
     ibkr_flex: Optional[dict[str, str]] = None
 
 
+async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
+    """
+    Process all portfolio documents into structured data.
+    Returns: (all_portfolios_data, global_securities, all_symbols)
+    """
+    start_time = time.time()
+    all_portfolios_data = {}
+    global_securities = {}
+    all_symbols = set()
+    
+    for doc in portfolio_docs:
+        portfolio_id = str(doc["_id"])
+        
+        try:
+            portfolio = Portfolio.from_dict(doc)
+            calculator = get_or_create_calculator(portfolio_id, portfolio)
+            rsu_calculator = create_rsu_calculator(portfolio, calculator)
+            
+            print(f"🏢 [PROCESS PORTFOLIOS] Processing portfolio: {portfolio.portfolio_name} ({portfolio_id})")
+        except Exception as e:
+            print(f"❌ [PROCESS PORTFOLIOS] Error initializing portfolio {portfolio_id}: {str(e)}")
+            continue
+        
+        # Build accounts data
+        complete_accounts = []
+        
+        for account in portfolio.accounts:
+            try:
+                holdings_with_values = []
+                
+                # Add regular holdings
+                for holding in account.holdings:
+                    # Validate holding symbol
+                    if not hasattr(holding, 'symbol') or not holding.symbol:
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with missing symbol in account {account.name}")
+                        continue
+                        
+                    if not isinstance(holding.symbol, str):
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with non-string symbol: {holding.symbol} (type: {type(holding.symbol)})")
+                        continue
+                    
+                    if holding.symbol not in portfolio.securities:
+                        continue
+                        
+                    security = portfolio.securities[holding.symbol]
+                    all_symbols.add(holding.symbol)
+                    
+                    # Add to global securities with essential info only
+                    global_securities[holding.symbol] = {
+                        "symbol": holding.symbol,
+                        "name": security.name,
+                        "security_type": security.security_type.value,
+                        "currency": security.currency.value
+                    }
+                    
+                    holdings_with_values.append({
+                        "symbol": holding.symbol,
+                        "units": holding.units,
+                        "original_currency": security.currency.value,
+                        "security_type": security.security_type.value,
+                        "security_name": security.name
+                    })
+
+                # Add RSU virtual holdings
+                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
+                    "name": account.name,
+                    "rsu_plans": account.rsu_plans or []
+                })
+                
+                for virtual_holding in rsu_result["virtual_holdings"]:
+                    # Validate virtual holding symbol  
+                    if not virtual_holding.get("symbol") or not isinstance(virtual_holding["symbol"], str):
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping RSU virtual holding with invalid symbol: {virtual_holding.get('symbol')}")
+                        continue
+                    
+                    holdings_with_values.append({
+                        "symbol": virtual_holding["symbol"],
+                        "units": virtual_holding["units"],
+                        "original_currency": virtual_holding.get("currency", "USD"),
+                        "security_type": "rsu_virtual",
+                        "security_name": virtual_holding.get("name", virtual_holding["symbol"])
+                    })
+                    all_symbols.add(virtual_holding["symbol"])
+
+                complete_accounts.append({
+                    "account_name": account.name,
+                    "account_type": account.properties.get("type", "bank-account"),
+                    "owners": account.properties.get("owners", ["me"]),
+                    "holdings": holdings_with_values,
+                    "rsu_plans": account.rsu_plans or [],
+                    "espp_plans": account.espp_plans or [],
+                    "options_plans": account.options_plans or [],
+                    "rsu_vesting_data": rsu_result.get("vesting_data", []),
+                    "account_cash": {},
+                    "account_properties": account.properties
+                })
+                
+                # Add cash holdings
+                from models.security_type import SecurityType
+                for holding in account.holdings:
+                    if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
+                        complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
+            
+            except Exception as e:
+                print(f"❌ [PROCESS PORTFOLIOS] Error processing account {account.name} in portfolio {portfolio.portfolio_name}: {str(e)}")
+                continue
+
+        # Store portfolio data (without prices - moved to global level)
+        all_portfolios_data[portfolio_id] = {
+            "portfolio_metadata": {
+                "portfolio_id": portfolio_id,
+                "portfolio_name": portfolio.portfolio_name,
+                "base_currency": portfolio.base_currency.value,
+                "user_name": portfolio.user_name
+            },
+            "accounts": complete_accounts,
+            "computation_timestamp": datetime.utcnow().isoformat()
+        }
+
+    duration = time.time() - start_time
+    print(f"⏱️ [PROCESS PORTFOLIOS] Completed in {duration:.3f}s - {len(all_portfolios_data)} portfolios, {len(all_symbols)} symbols")
+    return all_portfolios_data, global_securities, all_symbols
+
+
+async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple:
+    """
+    Collect global current and historical prices for all symbols.
+    Returns: (global_current_prices, global_historical_prices)
+    """
+    start_time = time.time()
+    global_current_prices = {}
+    global_historical_prices = {}
+    
+    print(f"📈 [COLLECT PRICES] Collecting global prices for {len(all_symbols)} unique symbols")
+    
+    # Date range for 7-day historical data
+    today = date.today()
+    seven_days_ago = today - timedelta(days=7)
+    
+    # Get the first available portfolio to use its calculator and securities
+    first_portfolio = None
+    first_calculator = None
+    for doc in portfolio_docs:
+        try:
+            portfolio = Portfolio.from_dict(doc)
+            calculator = get_or_create_calculator(str(doc["_id"]), portfolio)
+            first_portfolio = portfolio
+            first_calculator = calculator
+            break
+        except:
+            continue
+    
+    if first_portfolio and first_calculator:
+        # Step 1: Calculate current prices quickly (fast operation)
+        current_prices_start = time.time()
+        historical_tasks = []
+        symbol_securities = {}
+        
+        for symbol in all_symbols:
+            # Find the security from any portfolio that has it
+            security = None
+            for doc in portfolio_docs:
+                try:
+                    portfolio = Portfolio.from_dict(doc)
+                    if symbol in portfolio.securities:
+                        security = portfolio.securities[symbol]
+                        break
+                except:
+                    continue
+            
+            if security:
+                # Calculate current price (fast)
+                price_info = first_calculator.calc_holding_value(security, 1)
+                
+                global_current_prices[symbol] = {
+                    "price": price_info["value"],  # Price in base currency (converted)
+                    "original_price": price_info["unit_price"],  # Price in original currency
+                    "currency": security.currency.value,
+                    "last_updated": datetime.utcnow().isoformat()
+                }
+                
+                # Prepare historical price task (don't await yet!)
+                historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today))
+                symbol_securities[symbol] = security
+        
+        current_prices_time = time.time() - current_prices_start
+        print(f"⚡ [COLLECT PRICES] Current prices calculated in {current_prices_time:.3f}s for {len(global_current_prices)} symbols")
+        
+        # Step 2: Fetch historical prices with batched yfinance + parallel execution
+        historical_start = time.time()
+        print(f"🚀 [COLLECT PRICES] Starting BATCHED historical price fetching for {len(symbol_securities)} symbols")
+        
+        # Separate symbols by data source for batch optimization
+        yfinance_symbols = []
+        tase_symbols = []
+        currency_symbols = []
+        symbol_lookup = {}
+        
+        for symbol, security in symbol_securities.items():
+            symbol_lookup[symbol] = security
+            
+            # Import SecurityType for proper type checking
+            from models.security_type import SecurityType
+            
+            if symbol == 'USD':
+                currency_symbols.append(symbol)
+            elif hasattr(security, 'security_type') and security.security_type == SecurityType.CASH:
+                currency_symbols.append(symbol)
+            elif symbol.isdigit():
+                tase_symbols.append(symbol)
+            else:
+                yfinance_symbols.append(symbol)
+        
+        print(f"📊 [COLLECT PRICES] Symbol distribution: {len(yfinance_symbols)} yfinance, {len(tase_symbols)} TASE, {len(currency_symbols)} currency")
+        
+        # Batch fetch yfinance symbols (MASSIVE TIME SAVER!)
+        if yfinance_symbols:
+            yf_start = time.time()
+            global_historical_prices.update(await fetch_yfinance_batch(yfinance_symbols, seven_days_ago, today, global_current_prices))
+            yf_time = time.time() - yf_start
+            print(f"🚀 [COLLECT PRICES] BATCHED yfinance completed in {yf_time:.3f}s for {len(yfinance_symbols)} symbols")
+        
+        # Process TASE and currency symbols in parallel (still individual calls needed)
+        remaining_tasks = []
+        remaining_symbols = []
+        
+        for symbol in tase_symbols + currency_symbols:
+            security = symbol_lookup[symbol]
+            price_info = first_calculator.calc_holding_value(security, 1)
+            remaining_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today))
+            remaining_symbols.append(symbol)
+        
+        if remaining_tasks:
+            remaining_start = time.time()
+            remaining_results = await asyncio.gather(*remaining_tasks)
+            for symbol, historical_data in zip(remaining_symbols, remaining_results):
+                global_historical_prices[symbol] = historical_data
+            remaining_time = time.time() - remaining_start
+            print(f"⚡ [COLLECT PRICES] TASE/Currency parallel fetching completed in {remaining_time:.3f}s for {len(remaining_tasks)} symbols")
+        
+        historical_time = time.time() - historical_start
+        print(f"🚀 [COLLECT PRICES] ALL historical fetching completed in {historical_time:.3f}s")
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT PRICES] Completed in {duration:.3f}s - Generated price data for {len(global_current_prices)} symbols with {len(global_historical_prices)} historical series")
+    return global_current_prices, global_historical_prices
+
+
+async def collect_global_logos(all_symbols: set) -> dict:
+    """
+    Collect logos for all symbols globally (no duplication per holding).
+    Returns: global_logos dict
+    """
+    start_time = time.time()
+    print(f"🖼️ [COLLECT LOGOS] Collecting logos for {len(all_symbols)} symbols")
+    global_logos = {}
+    
+    try:
+        manager = PriceManager()
+        
+        # Collect logos for all symbols in parallel  
+        logo_tasks = [manager.get_logo(symbol) for symbol in all_symbols]
+        logo_results = await asyncio.gather(*logo_tasks, return_exceptions=True)
+        
+        for symbol, logo in zip(all_symbols, logo_results):
+            if isinstance(logo, Exception):
+                global_logos[symbol] = None
+            else:
+                global_logos[symbol] = logo
+                
+        successful_logos = sum(1 for logo in global_logos.values() if logo is not None)
+        print(f"✅ [COLLECT LOGOS] Retrieved {successful_logos}/{len(all_symbols)} logos")
+        
+    except Exception as e:
+        print(f"❌ [COLLECT LOGOS] Error collecting logos: {e}")
+        global_logos = {}
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT LOGOS] Completed in {duration:.3f}s - {len(global_logos)} logo entries")
+    return global_logos
+
+
+async def collect_earnings_data(all_symbols: set, global_securities: dict) -> dict:
+    """
+    Collect earnings calendar data for all stock/ETF symbols.
+    Returns: global_earnings_data dict
+    """
+    start_time = time.time()
+    print("📅 [COLLECT EARNINGS] Fetching earnings calendar data for stock/ETF symbols")
+    global_earnings_data = {}
+    
+    try:
+        earnings_service = get_earnings_service()
+        
+        # Filter to only stock/ETF symbols for earnings data
+        stock_etf_symbols = [
+            symbol for symbol in all_symbols 
+            if symbol in global_securities and 
+            global_securities[symbol]["security_type"].lower() in ['stock', 'etf']
+        ]
+        
+        if stock_etf_symbols:
+            print(f"📊 [COLLECT EARNINGS] Fetching earnings for {len(stock_etf_symbols)} stock/ETF symbols")
+            
+            # Get earnings data for all symbols at once
+            earnings_data = await earnings_service.get_earnings_calendar(stock_etf_symbols)
+            
+            # Format the earnings data (1 upcoming + 3 previous per symbol)
+            for symbol, raw_earnings in earnings_data.items():
+                formatted_earnings = earnings_service.format_earnings_data(raw_earnings)
+                global_earnings_data[symbol] = formatted_earnings
+            
+            total_earnings_records = sum(len(earnings) for earnings in global_earnings_data.values())
+            print(f"✅ [COLLECT EARNINGS] Fetched {total_earnings_records} total earnings records for {len(global_earnings_data)} symbols")
+        else:
+            print("📭 [COLLECT EARNINGS] No stock/ETF symbols found for earnings data")
+            
+    except Exception as e:
+        print(f"❌ [COLLECT EARNINGS] Error fetching earnings data: {e}")
+        global_earnings_data = {}
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT EARNINGS] Completed in {duration:.3f}s - {len(global_earnings_data)} earnings symbols")
+    return global_earnings_data
+
+
+async def collect_user_tags(user) -> tuple:
+    """
+    Collect user tag library and holding tags.
+    Returns: (user_tag_library, all_holding_tags)
+    """
+    start_time = time.time()
+    print("🏷️ [COLLECT TAGS] Fetching user tag library and holding tags")
+    user_tag_library = {}
+    all_holding_tags = {}
+    
+    try:
+        # Determine correct user_id for tag operations
+        holding_tags_collection = db_manager.get_collection("holding_tags")
+        
+        # Check MongoDB ObjectId first
+        user_tags_count = await holding_tags_collection.count_documents({"user_id": user.id})
+        
+        # Check Firebase UID if available
+        firebase_tags_count = 0
+        if hasattr(user, 'firebase_uid') and user.firebase_uid:
+            firebase_tags_count = await holding_tags_collection.count_documents({"user_id": user.firebase_uid})
+        
+        # Decide which user_id to use
+        if user_tags_count > 0:
+            search_user_id = user.id
+        elif firebase_tags_count > 0:
+            search_user_id = user.firebase_uid
+        else:
+            search_user_id = user.id  # fallback to default
+        
+        # Get user tag library
+        from core.tag_service import TagService
+        tag_service = TagService(db_manager.database)
+        tag_library_result = await tag_service.get_user_tag_library(search_user_id)
+        
+        # Convert TagLibrary object to dict for JSON serialization
+        if tag_library_result:
+            user_tag_library = {
+                "id": getattr(tag_library_result, 'id', None),
+                "user_id": tag_library_result.user_id,
+                "tag_definitions": tag_library_result.tag_definitions,
+                "template_tags": tag_library_result.template_tags,
+                "created_at": getattr(tag_library_result, 'created_at', None),
+                "updated_at": getattr(tag_library_result, 'updated_at', None)
+            }
+        else:
+            user_tag_library = {"tag_definitions": {}, "template_tags": {}}
+        
+        # Get all holding tags
+        holding_tags_cursor = holding_tags_collection.find({"user_id": search_user_id})
+        holding_tags_found = 0
+        async for holding_tag_doc in holding_tags_cursor:
+            holding_tags_found += 1
+            symbol = holding_tag_doc["symbol"]
+            tags_data = holding_tag_doc.get("tags", {})
+            
+            # Convert to dict format expected by frontend - preserve TagValue structure exactly
+            all_holding_tags[symbol] = {
+                "symbol": symbol,
+                "user_id": holding_tag_doc["user_id"],
+                "portfolio_id": holding_tag_doc.get("portfolio_id"),
+                "tags": tags_data,  # Keep the TagValue structure exactly as stored
+                "created_at": holding_tag_doc.get("created_at"),
+                "updated_at": holding_tag_doc.get("updated_at")
+            }
+        
+    except Exception as e:
+        print(f"⚠️ [COLLECT TAGS] Error loading tags data: {e}")
+        user_tag_library = {"tag_definitions": {}, "template_tags": {}}
+        all_holding_tags = {}
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT TAGS] Completed in {duration:.3f}s - {len(user_tag_library.get('tag_definitions', {}))} tag definitions, {len(all_holding_tags)} holding tags")
+    return user_tag_library, all_holding_tags
+
+
+async def collect_options_vesting(all_portfolios_data: dict) -> dict:
+    """
+    Collect options vesting data for all company custodian accounts.
+    Returns: all_options_vesting
+    """
+    start_time = time.time()
+    print("📊 [COLLECT OPTIONS] Fetching options vesting for all company custodian accounts")
+    all_options_vesting = {}
+    
+    try:
+        for portfolio_id, portfolio_data in all_portfolios_data.items():
+            portfolio_options = {}
+            company_accounts = [
+                acc for acc in portfolio_data["accounts"] 
+                if acc["account_type"] == "company-custodian-account"
+            ]
+            
+            if company_accounts:
+                for account in company_accounts:
+                    try:
+                        # Get options vesting for this account
+                        options_plans = account.get("options_plans", [])
+                        if options_plans:
+                            vesting_data = []
+                            for plan in options_plans:
+                                try:
+                                    plan_vesting = OptionsCalculator.calculate_vesting_schedule(
+                                        grant_date=plan["grant_date"],
+                                        total_units=plan["units"],
+                                        vesting_period_years=plan["vesting_period_years"],
+                                        vesting_frequency=plan["vesting_frequency"],
+                                        has_cliff=plan.get("has_cliff", False),
+                                        cliff_months=plan.get("cliff_duration_months", 0) if plan.get("has_cliff") else 0,
+                                        left_company=plan.get("left_company", False),
+                                        left_company_date=plan.get("left_company_date")
+                                    )
+                                    vesting_data.append({
+                                        "id": plan["id"],
+                                        "symbol": plan["symbol"],
+                                        **plan_vesting
+                                    })
+                                except Exception as plan_error:
+                                    print(f"⚠️ [COLLECT OPTIONS] Error calculating vesting for plan {plan.get('id', 'unknown')}: {plan_error}")
+                            
+                            portfolio_options[account["account_name"]] = {"plans": vesting_data}
+                            
+                    except Exception as acc_error:
+                        print(f"⚠️ [COLLECT OPTIONS] Error processing options for account {account['account_name']}: {acc_error}")
+                        portfolio_options[account["account_name"]] = {"plans": []}
+            
+            all_options_vesting[portfolio_id] = portfolio_options
+            
+    except Exception as e:
+        print(f"❌ [COLLECT OPTIONS] Error loading options vesting: {e}")
+        all_options_vesting = {}
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT OPTIONS] Completed in {duration:.3f}s - Generated options data for {len(all_options_vesting)} portfolios")
+    return all_options_vesting
+
+
+async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date, current_prices: dict = None) -> dict:
+    """
+    Fetch historical prices for multiple yfinance symbols in a single API call.
+    Returns: dict of {symbol: historical_prices_list}
+    """
+    historical_data = {}
+    
+    if not symbols:
+        return historical_data
+    
+    try:
+        print(f"📈 [YFINANCE BATCH] Fetching 7d trend for {len(symbols)} symbols in SINGLE batch call")
+        
+        # Single yfinance call for all symbols with timeout!
+        def fetch_batch_sync():
+            return yf.download(symbols, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+        
+        loop = asyncio.get_event_loop()
+        data = await asyncio.wait_for(
+            loop.run_in_executor(None, fetch_batch_sync),
+            timeout=5.0  # 5 second timeout for batch call
+        )
+        
+        if not data.empty:
+            # Handle both single symbol and multi-symbol data structures
+            if len(symbols) == 1:
+                # Single symbol returns simple DataFrame
+                symbol = symbols[0]
+                if 'Close' in data.columns:
+                    prices = data["Close"].dropna().round(2)
+                    historical_data[symbol] = []
+                    for dt in prices.index:
+                        price = prices.loc[dt]
+                        historical_data[symbol].append({
+                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                            "price": float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
+                        })
+            else:
+                # Multiple symbols return MultiIndex DataFrame
+                for symbol in symbols:
+                    if ('Close', symbol) in data.columns:
+                        prices = data[('Close', symbol)].dropna().round(2)
+                        historical_data[symbol] = []
+                        for dt in prices.index:
+                            price = prices.loc[dt]
+                            if not pd.isna(price):
+                                historical_data[symbol].append({
+                                    "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                    "price": float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
+                                })
+                    else:
+                        print(f"⚠️ [YFINANCE BATCH] No data for symbol: {symbol}")
+                        # Create fallback data using current price
+                        fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
+                        historical_data[symbol] = []
+                        for i in range(7, 0, -1):
+                            day = today - timedelta(days=i)
+                            historical_data[symbol].append({
+                                "date": day.strftime("%Y-%m-%d"),
+                                "price": fallback_price
+                            })
+        
+        print(f"✅ [YFINANCE BATCH] Completed batch fetch for {len(symbols)} symbols")
+        
+    except asyncio.TimeoutError:
+        print(f"⏰ [YFINANCE BATCH] Timeout after 5s - using fallback data for all {len(symbols)} symbols")
+        # Create fallback data for all symbols using current prices
+        for symbol in symbols:
+            fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
+            historical_data[symbol] = []
+            for i in range(7, 0, -1):
+                day = today - timedelta(days=i)
+                historical_data[symbol].append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "price": fallback_price
+                })
+    except Exception as e:
+        print(f"❌ [YFINANCE BATCH] Error in batch fetch: {e}")
+        # Create fallback data for all symbols using current prices
+        for symbol in symbols:
+            fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
+            historical_data[symbol] = []
+            for i in range(7, 0, -1):
+                day = today - timedelta(days=i)
+                historical_data[symbol].append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "price": fallback_price
+                })
+    
+    return historical_data
+
+
 async def fetch_historical_prices(symbol: str, security, original_price: float, seven_days_ago: date, today: date) -> list:
     """
     Fetch real 7-day historical prices for any symbol using the original logic.
@@ -116,11 +674,24 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         "price": 1.0
                     })
             else:
-                # Fetch FX data using yfinance
+                # Fetch FX data using yfinance - RUN IN THREAD for true parallelism
                 ticker = f"{from_currency}{to_currency}=X"
                 logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
                 
-                data = yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                def fetch_fx_sync():
+                    """Synchronous FX fetching to run in thread pool for true parallelism"""
+                    return yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                
+                # Run the blocking yfinance call in a separate thread with timeout
+                loop = asyncio.get_event_loop()
+                try:
+                    data = await asyncio.wait_for(
+                        loop.run_in_executor(None, fetch_fx_sync),
+                        timeout=5.0  # 5 second timeout for FX calls
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {ticker} - using fallback")
+                    data = None
                 
                 if not data.empty:
                     prices = data["Close"].dropna().round(6)
@@ -206,19 +777,23 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
     - Global quotes data
     - User preferences
     """
-    try:
-        print(f"🌍 [ALL PORTFOLIOS] Fetching complete data for ALL user portfolios")
+    try:        
+        start_time = time.time()
+        print(f"🚀 [MAIN ENDPOINT] Starting complete data collection at {datetime.utcnow().isoformat()}")
         
         collection = db_manager.get_collection("portfolios")
         portfolio_docs = await collection.find({"user_id": user.id}).to_list(None)
         
         if not portfolio_docs:
-            print(f"📋 [ALL PORTFOLIOS] No portfolios found for user")
+            total_time = time.time() - start_time
+            print(f"⚡ [MAIN ENDPOINT] Empty portfolios response completed in {total_time:.3f}s")
             return {
                 "portfolios": {},
                 "global_securities": {},
-                "global_quotes": {},
-                "global_exchange_rates": {},
+                "global_current_prices": {},
+                "global_historical_prices": {},
+                "global_logos": {},
+                "global_earnings_data": {},
                 "user_preferences": {
                     "preferred_currency": "USD",
                     "default_portfolio_id": None
@@ -226,455 +801,40 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 "computation_timestamp": datetime.utcnow().isoformat()
             }
 
-        print(f"📁 [ALL PORTFOLIOS] Found {len(portfolio_docs)} portfolios to process")
+        print(f"📁 [MAIN ENDPOINT] Found {len(portfolio_docs)} portfolios to process")
         
-        all_portfolios_data = {}
-        global_securities = {}
-        all_symbols = set()
-        global_exchange_rates = {}
+        # Step 1: Process portfolios (sequential - provides dependencies)
+        step1_start = time.time()
+        all_portfolios_data, global_securities, all_symbols = await process_portfolio_data(portfolio_docs, user)
+        step1_time = time.time() - step1_start
+        print(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
         
-        # Process each portfolio
-        for doc in portfolio_docs:
-            portfolio_id = str(doc["_id"])
-            portfolio = Portfolio.from_dict(doc)
-            calculator = get_or_create_calculator(portfolio_id, portfolio)
-            rsu_calculator = create_rsu_calculator(portfolio, calculator)
-            
-            print(f"🏢 [ALL PORTFOLIOS] Processing portfolio: {portfolio.portfolio_name} ({portfolio_id})")
-            
-            # Build accounts data
-            complete_accounts = []
-            portfolio_symbols = set()
-            
-            for account in portfolio.accounts:
-                holdings_with_values = []
-                account_total = 0.0
-                
-                # Add regular holdings
-                for holding in account.holdings:
-                    if holding.symbol not in portfolio.securities:
-                        continue
-                        
-                    security = portfolio.securities[holding.symbol]
-                    holding_calc = calculator.calc_holding_value(security, holding.units)
-                    account_total += holding_calc["total"]
-                    all_symbols.add(holding.symbol)
-                    portfolio_symbols.add(holding.symbol)
-                    
-                    # Add to global securities with detailed logging
-                    global_securities[holding.symbol] = {
-                        "symbol": holding.symbol,
-                        "name": security.name,
-                        "security_type": security.security_type.value,
-                        "currency": security.currency.value,
-                        "tags": security.tags or {},  # Ensure tags is never None
-                        "unit_price": security.unit_price
-                    }
-                    manager = PriceManager()
-                    logo = await manager.get_logo(holding.symbol)
-
-                    if security.tags and len(security.tags) > 0:
-                        print(f"🏷️ [ALL PORTFOLIOS] Security {holding.symbol} has tags: {list(security.tags.keys())}")
-                    
-                    holdings_with_values.append({
-                        "symbol": holding.symbol,
-                        "units": holding.units,
-                        "value_per_unit": holding_calc["value"],
-                        "total_value": holding_calc["total"],
-                        "original_currency": security.currency.value,
-                        "security_type": security.security_type.value,
-                        "security_name": security.name,
-                        "tags": security.tags or {},  # ← RESTORED: Include security tags directly like original!
-                        "logo": logo
-                    })
-
-                # Add RSU virtual holdings
-                rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
-                    "name": account.name,
-                    "rsu_plans": account.rsu_plans or []
-                })
-
-                for virtual_holding in rsu_result["virtual_holdings"]:
-                    # Get security tags for RSU virtual holdings too
-                    rsu_security = portfolio.securities.get(virtual_holding["symbol"])
-                    rsu_tags = rsu_security.tags if rsu_security else {}
-                    manager = PriceManager()
-                    logo = await manager.get_logo(virtual_holding["symbol"])
-
-                    if rsu_tags and len(rsu_tags) > 0:
-                        print(f"🏷️ [ALL PORTFOLIOS] RSU virtual holding {virtual_holding['symbol']} has tags: {list(rsu_tags.keys())}")
-                    
-                    holdings_with_values.append({
-                        "symbol": virtual_holding["symbol"],
-                        "units": virtual_holding["units"],
-                        "value_per_unit": virtual_holding.get("value_per_unit", 0),
-                        "total_value": virtual_holding.get("total_value", 0),
-                        "original_currency": virtual_holding.get("currency", "USD"),
-                        "security_type": "rsu_virtual",
-                        "security_name": virtual_holding.get("name", virtual_holding["symbol"]),
-                        "tags": rsu_tags or {},  # ← Include security tags for RSU holdings too
-                        "is_virtual": True,
-                        "logo": logo
-                    })
-                    account_total += virtual_holding.get("total_value", 0)
-                    all_symbols.add(virtual_holding["symbol"])
-                    portfolio_symbols.add(virtual_holding["symbol"])
-
-                complete_accounts.append({
-                    "account_name": account.name,
-                    "account_type": account.properties.get("type", "bank-account"),
-                    "owners": account.properties.get("owners", ["me"]),
-                    "account_total": account_total,
-                    "holdings": holdings_with_values,
-                    "rsu_plans": account.rsu_plans or [],
-                    "espp_plans": account.espp_plans or [],
-                    "options_plans": account.options_plans or [],
-                    "rsu_vesting_data": rsu_result.get("vesting_data", []),
-                    "account_cash": {},
-                    "account_properties": account.properties
-                })
-                
-                # Add cash holdings
-                from models.security_type import SecurityType
-                for holding in account.holdings:
-                    if portfolio.securities[holding.symbol].security_type == SecurityType.CASH:
-                        complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
-
-            # Get current prices and 7-day historical data for this portfolio's symbols
-            current_prices = {}
-            historical_prices_data = {}
-            
-            # Date range for 7-day historical data
-            from datetime import date, timedelta
-            today = date.today()
-            seven_days_ago = today - timedelta(days=7)
-            
-            for symbol in portfolio_symbols:
-                if symbol in portfolio.securities:
-                    security = portfolio.securities[symbol]
-                    price_info = calculator.calc_holding_value(security, 1)
-                    current_prices[symbol] = {
-                        "price": price_info["value"],  # Price in base currency (converted)
-                        "original_price": price_info["unit_price"],  # Price in original currency
-                        "currency": security.currency.value,
-                        "last_updated": datetime.utcnow().isoformat()
-                    }
-                    
-                    # Get REAL 7-day historical prices using original logic
-                    historical_prices_data[symbol] = await fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today)
-            
-            # Add exchange rates to global rates
-            for currency_key, rate in portfolio.exchange_rates.items():
-                global_exchange_rates[currency_key.value] = rate
-
-            # Store portfolio data
-            total_portfolio_value = sum(acc["account_total"] for acc in complete_accounts)
-            
-            all_portfolios_data[portfolio_id] = {
-                "portfolio_metadata": {
-                    "portfolio_id": portfolio_id,
-                    "portfolio_name": portfolio.portfolio_name,
-                    "base_currency": portfolio.base_currency.value,
-                    "user_name": portfolio.user_name,
-                    "user_id": portfolio.user_id,
-                    "total_value": round(total_portfolio_value, 2)
-                },
-                "accounts": complete_accounts,
-                "current_prices": current_prices,
-                "historical_prices": historical_prices_data,  # NEW: Include 7-day historical data
-                "computation_timestamp": datetime.utcnow().isoformat()
-            }
-
-        print(f"🌐 [ALL PORTFOLIOS] Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
+        # Step 2: Run data collection in parallel for maximum performance (includes NEW features!)
+        step2_start = time.time()
+        print(f"⚡ [MAIN ENDPOINT] Step 2 starting - Running parallel data collection: prices, logos, earnings, tags, and options")
         
-        # Log historical prices summary
-        total_historical_symbols = sum(
-            len(portfolio_data.get("historical_prices", {})) 
-            for portfolio_data in all_portfolios_data.values()
+        (
+            (global_current_prices, global_historical_prices),
+            global_logos,
+            global_earnings_data,
+            (user_tag_library, all_holding_tags),
+            all_options_vesting
+        ) = await asyncio.gather(
+            collect_global_prices(all_symbols, portfolio_docs),
+            collect_global_logos(all_symbols),  # NEW: Logo collection in parallel
+            collect_earnings_data(all_symbols, global_securities),  # NEW: Earnings collection in parallel
+            collect_user_tags(user),
+            collect_options_vesting(all_portfolios_data)
         )
-        print(f"📈 [ALL PORTFOLIOS] Generated REAL historical price data for {total_historical_symbols} total symbols across all portfolios")
         
-        # Get earnings calendar data for all stock/ETF symbols
-        print("📅 [ALL PORTFOLIOS] Fetching earnings calendar data for all stock/ETF symbols")
-        global_earnings_data = {}
+        step2_time = time.time() - step2_start
+        print(f"✅ [MAIN ENDPOINT] Step 2 completed in {step2_time:.3f}s - Parallel data collection finished")
         
-        try:
-            earnings_service = get_earnings_service()
-            
-            # Filter to only stock/ETF symbols for earnings data
-            stock_etf_symbols = [
-                symbol for symbol in all_symbols 
-                if symbol in global_securities and 
-                global_securities[symbol]["security_type"].lower() in ['stock', 'etf']
-            ]
-            
-            if stock_etf_symbols:
-                print(f"📊 [ALL PORTFOLIOS] Fetching earnings for {len(stock_etf_symbols)} stock/ETF symbols: {stock_etf_symbols}")
-                
-                # Get earnings data for all symbols at once
-                earnings_data = await earnings_service.get_earnings_calendar(stock_etf_symbols)
-                
-                # Format the earnings data (1 upcoming + 3 previous per symbol)
-                for symbol, raw_earnings in earnings_data.items():
-                    formatted_earnings = earnings_service.format_earnings_data(raw_earnings)
-                    global_earnings_data[symbol] = formatted_earnings
-                    print(f"📅 [ALL PORTFOLIOS] {symbol}: {len(formatted_earnings)} earnings records (1 upcoming + 3 previous)")
-                
-                total_earnings_records = sum(len(earnings) for earnings in global_earnings_data.values())
-                print(f"✅ [ALL PORTFOLIOS] Fetched {total_earnings_records} total earnings records for {len(global_earnings_data)} symbols")
-            else:
-                print("📭 [ALL PORTFOLIOS] No stock/ETF symbols found for earnings data")
-                
-        except Exception as e:
-            print(f"❌ [ALL PORTFOLIOS] Error fetching earnings data: {e}")
-            global_earnings_data = {}
+        # Step 3: Final response building
+        step3_start = time.time()
         
-        # Get tags data for ALL portfolios
-        print("🏷️ [ALL PORTFOLIOS] Fetching user tag library and holding tags")
-        print(f"🔧 [ALL PORTFOLIOS] Current user object: {user}")
-        print(f"🔧 [ALL PORTFOLIOS] User ID: '{user.id}' (type: {type(user.id).__name__}) [MongoDB ObjectId]")
-        print(f"🔧 [ALL PORTFOLIOS] User email: '{getattr(user, 'email', 'N/A')}'")
-        print(f"🔧 [ALL PORTFOLIOS] Firebase UID: '{getattr(user, 'firebase_uid', 'N/A')}'")
-        print(f"🔧 [ALL PORTFOLIOS] User name: '{getattr(user, 'name', 'N/A')}'")
-        user_tag_library = {}
-        all_holding_tags = {}
-        
-        try:
-            # First determine which user_id to use for all tag operations
-            print(f"🔍 [ALL PORTFOLIOS] Determining correct user_id for tag lookups...")
-            
-            # Get direct collection access to check both possible user IDs
-            holding_tags_collection = db_manager.get_collection("holding_tags")
-            
-            # Check MongoDB ObjectId first
-            user_tags_count = await holding_tags_collection.count_documents({"user_id": user.id})
-            print(f"📊 [ALL PORTFOLIOS] Tags for MongoDB ObjectId {user.id}: {user_tags_count}")
-            
-            # Check Firebase UID if available
-            firebase_tags_count = 0
-            if hasattr(user, 'firebase_uid') and user.firebase_uid:
-                firebase_tags_count = await holding_tags_collection.count_documents({"user_id": user.firebase_uid})
-                print(f"📊 [ALL PORTFOLIOS] Tags for Firebase UID {user.firebase_uid}: {firebase_tags_count}")
-            
-            # Decide which user_id to use
-            if user_tags_count > 0:
-                search_user_id = user.id
-                print(f"✅ [ALL PORTFOLIOS] Using MongoDB ObjectId for all tag operations: {search_user_id}")
-            elif firebase_tags_count > 0:
-                search_user_id = user.firebase_uid
-                print(f"✅ [ALL PORTFOLIOS] Using Firebase UID for all tag operations: {search_user_id}")
-            else:
-                search_user_id = user.id  # fallback to default
-                print(f"⚠️ [ALL PORTFOLIOS] No tags found for either ID, using MongoDB ObjectId: {search_user_id}")
-            
-            # Get user tag library
-            from core.tag_service import TagService
-            print(f"🔧 [ALL PORTFOLIOS] Creating TagService with database: {db_manager.database}")
-            tag_service = TagService(db_manager.database)
-            print(f"✅ [ALL PORTFOLIOS] TagService created successfully, calling get_user_tag_library for user: {search_user_id}")
-            tag_library_result = await tag_service.get_user_tag_library(search_user_id)
-            
-            # Convert TagLibrary object to dict for JSON serialization
-            if tag_library_result:
-                user_tag_library = {
-                    "id": getattr(tag_library_result, 'id', None),
-                    "user_id": tag_library_result.user_id,
-                    "tag_definitions": tag_library_result.tag_definitions,
-                    "template_tags": tag_library_result.template_tags,
-                    "created_at": getattr(tag_library_result, 'created_at', None),
-                    "updated_at": getattr(tag_library_result, 'updated_at', None)
-                }
-            else:
-                user_tag_library = {"tag_definitions": {}, "template_tags": {}}
-                
-            print(f"✅ [ALL PORTFOLIOS] Loaded user tag library with {len(user_tag_library.get('tag_definitions', {}))} definitions")
-            
-            # Get all holding tags for all portfolios using the correct user_id
-            print(f"🔍 [ALL PORTFOLIOS] Loading holding tags from MongoDB...")
-            
-            # Show debug information
-            total_holding_tags = await holding_tags_collection.count_documents({})
-            print(f"📊 [ALL PORTFOLIOS] Total holding_tags documents in collection: {total_holding_tags}")
-            
-            # Show debug info about which user ID will be used (skip complex aggregation for now)
-            print(f"🔍 [ALL PORTFOLIOS] Tag lookup decision:")
-            print(f"   📊 MongoDB ObjectId {user.id}: {user_tags_count} tags")  
-            if hasattr(user, 'firebase_uid') and user.firebase_uid:
-                print(f"   📊 Firebase UID {user.firebase_uid}: {firebase_tags_count} tags")
-            print(f"   ✅ Selected user_id for tag operations: {search_user_id}")
-            
-            # Create cursor with the correct user_id
-            holding_tags_cursor = holding_tags_collection.find({"user_id": search_user_id})
-            print(f"📊 [ALL PORTFOLIOS] MongoDB query: holding_tags.find({{\"user_id\": \"{search_user_id}\"}})")
-            
-            # If no tags found for the selected user_id, show sample documents
-            if user_tags_count == 0 and firebase_tags_count == 0:
-                print(f"🔍 [ALL PORTFOLIOS] No tags found for either user ID. Showing sample documents for comparison:")
-                sample_docs = []
-                async for doc in holding_tags_collection.find({}).limit(3):
-                    sample_doc = {
-                        "user_id": doc.get("user_id"),
-                        "symbol": doc.get("symbol"),
-                        "user_id_type": type(doc.get("user_id")).__name__,
-                        "current_mongo_id_type": type(user.id).__name__,
-                        "current_firebase_uid_type": type(getattr(user, 'firebase_uid', '')).__name__
-                    }
-                    sample_docs.append(sample_doc)
-                    print(f"   📋 Sample: {sample_doc}")
-                print(f"🔧 [ALL PORTFOLIOS] Available user IDs mismatch - this explains why no tags are found!")
-            elif search_user_id != user.id:
-                print(f"✅ [ALL PORTFOLIOS] SUCCESS: Found tags using Firebase UID instead of MongoDB ObjectId!")
-            
-            
-            holding_tags_found = 0
-            async for holding_tag_doc in holding_tags_cursor:
-                holding_tags_found += 1
-                symbol = holding_tag_doc["symbol"]
-                tags_data = holding_tag_doc.get("tags", {})
-                
-                print(f"🏷️ [ALL PORTFOLIOS] Found holding tags for {symbol}: {list(tags_data.keys())}")
-                print(f"🔍 [ALL PORTFOLIOS] Sample tag structure for {symbol}:")
-                if tags_data:
-                    sample_tag_name = list(tags_data.keys())[0]
-                    sample_tag = tags_data[sample_tag_name]
-                    print(f"   Tag '{sample_tag_name}': tag_type={sample_tag.get('tag_type')}, has values: {[k for k, v in sample_tag.items() if v is not None and k.endswith('_value')]}")
-                
-                # Convert to dict format expected by frontend - preserve TagValue structure exactly
-                all_holding_tags[symbol] = {
-                    "symbol": symbol,
-                    "user_id": holding_tag_doc["user_id"],
-                    "portfolio_id": holding_tag_doc.get("portfolio_id"),
-                    "tags": tags_data,  # Keep the TagValue structure exactly as stored
-                    "created_at": holding_tag_doc.get("created_at"),
-                    "updated_at": holding_tag_doc.get("updated_at")
-                }
-            
-            print(f"✅ [ALL PORTFOLIOS] MongoDB query completed: found {holding_tags_found} holding tag documents")
-            print(f"✅ [ALL PORTFOLIOS] Loaded holding tags for {len(all_holding_tags)} symbols: {list(all_holding_tags.keys())}")
-            
-            # Also log security tags for comparison
-            security_tags_count = sum(
-                1 for securities in [portfolio.securities for portfolio in [Portfolio.from_dict(doc) for doc in portfolio_docs]]
-                for symbol, security in securities.items() 
-                if security.tags and len(security.tags) > 0
-            )
-            print(f"🔍 [ALL PORTFOLIOS] Found {security_tags_count} securities with security-level tags")
-            
-            # Summary of tags being included in holding objects
-            holdings_with_security_tags = sum(
-                1 for portfolio_data in all_portfolios_data.values()
-                for account in portfolio_data["accounts"]
-                for holding in account["holdings"]
-                if holding.get("tags") and len(holding["tags"]) > 0
-            )
-            print(f"📊 [ALL PORTFOLIOS] Including tags in {holdings_with_security_tags} holding objects (security tags restored)")
-            
-        except Exception as e:
-            print(f"⚠️ [ALL PORTFOLIOS] Error loading tags data: {e}")
-            user_tag_library = {"tag_definitions": {}, "template_tags": {}}
-            all_holding_tags = {}
-        
-        # Get options vesting data for ALL company custodian accounts across portfolios
-        print("📊 [ALL PORTFOLIOS] Fetching options vesting for all company custodian accounts")
-        all_options_vesting = {}
-        
-        try:
-            for portfolio_id, portfolio_data in all_portfolios_data.items():
-                portfolio_options = {}
-                company_accounts = [
-                    acc for acc in portfolio_data["accounts"] 
-                    if acc["account_type"] == "company-custodian-account"
-                ]
-                
-                if company_accounts:
-                    print(f"📊 [ALL PORTFOLIOS] Fetching options vesting for {len(company_accounts)} company accounts in portfolio {portfolio_id}")
-                    
-                    for account in company_accounts:
-                        try:
-                            # Get options vesting for this account
-                            options_plans = account.get("options_plans", [])
-                            if options_plans:
-                                vesting_data = []
-                                for plan in options_plans:
-                                    try:
-                                        plan_vesting = OptionsCalculator.calculate_vesting_schedule(
-                                            grant_date=plan["grant_date"],
-                                            total_units=plan["units"],
-                                            vesting_period_years=plan["vesting_period_years"],
-                                            vesting_frequency=plan["vesting_frequency"],
-                                            has_cliff=plan.get("has_cliff", False),
-                                            cliff_months=plan.get("cliff_duration_months", 0) if plan.get("has_cliff") else 0,
-                                            left_company=plan.get("left_company", False),
-                                            left_company_date=plan.get("left_company_date")
-                                        )
-                                        vesting_data.append({
-                                            "id": plan["id"],
-                                            "symbol": plan["symbol"],
-                                            **plan_vesting
-                                        })
-                                    except Exception as plan_error:
-                                        print(f"⚠️ [ALL PORTFOLIOS] Error calculating vesting for plan {plan.get('id', 'unknown')}: {plan_error}")
-                                
-                                portfolio_options[account["account_name"]] = {"plans": vesting_data}
-                                
-                        except Exception as acc_error:
-                            print(f"⚠️ [ALL PORTFOLIOS] Error processing options for account {account['account_name']}: {acc_error}")
-                            portfolio_options[account["account_name"]] = {"plans": []}
-                
-                all_options_vesting[portfolio_id] = portfolio_options
-                
-        except Exception as e:
-            print(f"❌ [ALL PORTFOLIOS] Error loading options vesting: {e}")
-            all_options_vesting = {}
-        
-        # Get live quotes for ALL symbols across all portfolios
-        global_quotes = {}
-        
-        try:
-            from services.closing_price.stock_fetcher import fetch_quotes
-            stock_symbols = [
-                symbol for symbol in all_symbols 
-                if symbol in global_securities and global_securities[symbol]["security_type"].lower() in ['stock', 'etf']
-            ]
-            
-            if stock_symbols:
-                print(f"📈 [ALL PORTFOLIOS] Fetching live quotes for {len(stock_symbols)} global stock/ETF symbols")
-                
-                try:
-                    manager = PriceManager()
-                    quotes_response = await manager.get_prices(stock_symbols)
-                    current_time = datetime.utcnow().isoformat()
-                    
-                    for quote_data in quotes_response:
-                        if quote_data is not None and quote_data.price is not None:
-                            global_quotes[quote_data.symbol] = {
-                                "symbol": quote_data.symbol,
-                                "current_price": quote_data.price,
-                                "percent_change": quote_data.change_percent or 0.0,
-                                "last_updated": current_time
-                            }
-                            print(f"💹 [ALL PORTFOLIOS] Fetched quote for {quote_data.symbol}: price={quote_data.price}, change%={quote_data.change_percent}")
-                    
-                    print(f"✅ [ALL PORTFOLIOS] Fetched {len(global_quotes)} global live quotes (out of {len(stock_symbols)} requested)")
-                    
-                except Exception as e:
-                    print(f"⚠️ [ALL PORTFOLIOS] Global quotes fetch failed, creating fallbacks: {str(e)}")
-                    current_time = datetime.utcnow().isoformat()
-                    for symbol in stock_symbols:
-                        global_quotes[symbol] = {
-                            "symbol": symbol,
-                            "current_price": 0.0,
-                            "percent_change": 0.0,
-                            "last_updated": current_time
-                        }
-                        
-        except Exception as e:
-            print(f"❌ [ALL PORTFOLIOS] Error creating global quotes: {str(e)}")
-            global_quotes = {}
-
         # Get user preferences/default portfolio
         try:
-            # Get default portfolio from user preferences or first portfolio
             user_prefs_collection = db_manager.get_collection("user_preferences") 
             user_prefs_doc = await user_prefs_collection.find_one({"user_id": user.id})
             default_portfolio_id = user_prefs_doc.get("default_portfolio_id") if user_prefs_doc else None
@@ -684,9 +844,10 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         result = {
             "portfolios": all_portfolios_data,
             "global_securities": global_securities,
-            "global_quotes": global_quotes,
-            "global_exchange_rates": global_exchange_rates,
-            "global_earnings_data": global_earnings_data,  # NEW: Include earnings calendar data
+            "global_current_prices": global_current_prices,
+            "global_historical_prices": global_historical_prices,
+            "global_logos": global_logos,  # NEW: Global logos (no duplication)
+            "global_earnings_data": global_earnings_data,  # NEW: Global earnings data
             "user_tag_library": user_tag_library,
             "all_holding_tags": all_holding_tags,
             "all_options_vesting": all_options_vesting,
@@ -696,15 +857,24 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
             },
             "computation_timestamp": datetime.utcnow().isoformat()
         }
+        
+        step3_time = time.time() - step3_start
 
-        print(f"🎯 [ALL PORTFOLIOS] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
-        print(f"📊 [ALL PORTFOLIOS] Complete summary: {len(global_securities)} securities, {len(global_quotes)} quotes, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options, {total_historical_symbols} REAL historical price series, {len(global_earnings_data)} earnings symbols (1 upcoming + 3 previous each)")
+        # Final timing and summary
+        total_time = time.time() - start_time
+        print(f"🎯 [MAIN ENDPOINT] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
+        print(f"📊 [MAIN ENDPOINT] Complete summary: {len(global_securities)} securities, {len(global_current_prices)} current prices, {len(global_historical_prices)} historical price series, {len(global_logos)} logos, {len(global_earnings_data)} earnings symbols, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options")
+        print(f"⏱️ [MAIN ENDPOINT] TIMING BREAKDOWN:")
+        print(f"   📁 Step 1 (Portfolio Processing): {step1_time:.3f}s")
+        print(f"   ⚡ Step 2 (Parallel Collection): {step2_time:.3f}s")
+        print(f"   📄 Step 3 (Response Building): {step3_time:.3f}s")
+        print(f"🏁 [MAIN ENDPOINT] TOTAL COMPLETION TIME: {total_time:.3f}s (target: <2s)")
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ [ALL PORTFOLIOS] Error: {str(e)}")
+        print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/portfolio")

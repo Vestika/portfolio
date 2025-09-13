@@ -37,6 +37,12 @@ class FinnhubFetcher(StockFetcher):
         if not self.api_key:
             logger.error("Finnhub API key not configured")
             return None
+        
+        # Always normalize symbol to uppercase for consistency
+        if not isinstance(symbol, str) or not symbol.strip():
+            logger.error(f"Invalid symbol provided to FinnhubFetcher: {symbol} (type: {type(symbol)})")
+            return None
+        symbol = symbol.upper()
             
         try:
             async with httpx.AsyncClient() as client:

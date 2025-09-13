@@ -14,11 +14,6 @@ class IBFlexPreviewRequest(BaseModel):
     access_token: str
     query_id: str
 
-class IBFlexImportRequest(BaseModel):
-    access_token: str
-    query_id: str
-    target_account_name: str
-    owners: list[str] | None = None
 
 @router.post("/ibkr/flex/preview")
 async def ibkr_flex_preview_global(

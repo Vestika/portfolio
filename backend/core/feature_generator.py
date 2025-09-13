@@ -1,3 +1,4 @@
+from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 from typing import Type, Dict
 from models.base_model import BaseFeatureModel, FeatureConfig
@@ -53,7 +54,7 @@ class FeatureGenerator:
 
         # Generate nested child endpoints if any
         if config.nested_children:
-            self._create_nested_child_endpoints(router, model_class, crud, auth_dep, config)
+            self._create_nested_child_endpoints(router, config)
 
         # Store for reference
         self.registered_features[config.collection_name] = {
@@ -82,7 +83,7 @@ class FeatureGenerator:
         auth_dep = get_auth_dependency(config.auth_required)
 
         # Generate nested endpoints
-        self._create_nested_endpoints(router, model_class, crud, auth_dep, config, nested_config)
+        self._create_nested_endpoints(router, config, nested_config)
 
         # Store nested relationship info
         if parent_collection not in self.nested_relationships:
@@ -96,8 +97,7 @@ class FeatureGenerator:
 
         return router
 
-    def _create_nested_child_endpoints(self, parent_router: APIRouter, parent_model: Type[BaseFeatureModel],
-                                       parent_crud: CRUDOperations, auth_dep, parent_config: FeatureConfig):
+    def _create_nested_child_endpoints(self, parent_router: APIRouter, parent_config: FeatureConfig):
         """Create nested child endpoints on parent router"""
         for child_class_name in parent_config.nested_children:
             if child_class_name in self.nested_relationships.get(parent_config.collection_name, {}):

@@ -75,6 +75,20 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     setHighlightedIndex(-1);
   };
 
+  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const trimmedValue = e.target.value.trim();
+    if (trimmedValue && trimmedValue !== value) {
+      // Normalize to uppercase when user finishes typing
+      onChange(trimmedValue.toUpperCase());
+    }
+    
+    // Close dropdown after a small delay to allow for clicks on suggestions
+    setTimeout(() => {
+      setIsOpen(false);
+      setHighlightedIndex(-1);
+    }, 150);
+  };
+
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -109,7 +123,8 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
-    onChange(suggestion.symbol);
+    // Always normalize symbol to uppercase for consistency
+    onChange(suggestion.symbol.toUpperCase());
     setIsOpen(false);
     setHighlightedIndex(-1);
   };
@@ -160,6 +175,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
         onFocus={handleInputFocus}
+        onBlur={handleInputBlur}
         className={className}
         autoComplete="off"
       />

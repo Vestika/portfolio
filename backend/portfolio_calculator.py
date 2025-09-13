@@ -1,7 +1,3 @@
-import functools
-import json
-import os
-from datetime import datetime
 from typing import Optional, Any
 
 from loguru import logger
@@ -194,7 +190,6 @@ class PortfolioCalculator:
             total_units=options_plan["units"],
             vesting_period_years=options_plan["vesting_period_years"],
             vesting_frequency=options_plan["vesting_frequency"],
-            has_cliff=options_plan.get("has_cliff", False),
             cliff_months=options_plan.get("cliff_duration_months", 0) if options_plan.get("has_cliff") else 0,
             left_company=options_plan.get("left_company", False),
             left_company_date=options_plan.get("left_company_date")

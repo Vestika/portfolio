@@ -57,6 +57,11 @@ async def startup_event():
         try:
             await closing_price_service.initialize()
             logger.info("Closing price service initialized successfully")
+            
+            # Create database indexes for closing price service
+            from services.closing_price.database import create_database_indexes
+            await create_database_indexes()
+            
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")
 

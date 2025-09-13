@@ -19,6 +19,7 @@ interface PortfolioViewProps {
   isValueVisible: boolean
   mainRSUVesting: Record<string, any>
   mainOptionsVesting: Record<string, any>
+  globalPrices: Record<string, any>
 }
 
 export function PortfolioView({
@@ -29,6 +30,7 @@ export function PortfolioView({
   isValueVisible,
   mainRSUVesting,
   mainOptionsVesting,
+  globalPrices
 }: PortfolioViewProps) {
   const showEmptyState = availablePortfolios.length === 0
   
@@ -139,6 +141,7 @@ export function PortfolioView({
                     symbol={symbol}
                     accountName={accountName}
                     baseCurrency={displayMetadata.base_currency}
+                    globalPrices={globalPrices}
                   />
                 </div>
               );

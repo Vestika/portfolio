@@ -45,7 +45,8 @@ const App: React.FC = () => {
     loadAllPortfoliosData,
     refreshAllPortfoliosData,
     getAvailablePortfolios,
-    getOptionsVestingByAccount
+    getOptionsVestingByAccount,
+    allPortfoliosData
   } = usePortfolioData();
 
   // Local state for UI and navigation
@@ -65,10 +66,15 @@ const App: React.FC = () => {
     user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
     accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
       account_name: acc.account_name,
-      account_total: acc.account_total,
       account_type: acc.account_type,
       owners: acc.owners,
-      holdings: (acc.holdings || []).map((h: any) => ({ symbol: h.symbol, units: h.units })),
+      holdings: (acc.holdings || []).map((h: any) => ({
+        symbol: h.symbol,
+        units: h.units,
+        original_currency: h.original_currency,
+        security_type: h.security_type,
+        security_name: h.security_name
+      })),
       rsu_plans: acc.rsu_plans || [],
       espp_plans: acc.espp_plans || [],
       options_plans: acc.options_plans || [],
@@ -383,12 +389,14 @@ const App: React.FC = () => {
                 onProfileClick={handleProfileClick}
                 onSettingsClick={handleSettingsClick}
                 onSignOutClick={handleSignOutClick}
+                globalPrices={allPortfoliosData?.global_current_prices || {}}
               />
               <PortfolioSummary
                 accounts={displayMetadata.accounts}
                 selectedAccountNames={selectedAccountNames}
                 baseCurrency={displayMetadata.base_currency}
                 isValueVisible={isValueVisible}
+                globalPrices={allPortfoliosData?.global_current_prices || {}}
               />
             </>
           )}
@@ -425,6 +433,7 @@ const App: React.FC = () => {
                   isValueVisible={isValueVisible}
                   mainRSUVesting={mainRSUVesting}
                   mainOptionsVesting={mainOptionsVesting}
+                  globalPrices={allPortfoliosData?.global_current_prices || {}}
                 />
               )
             )}

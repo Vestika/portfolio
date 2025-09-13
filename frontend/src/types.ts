@@ -51,12 +51,14 @@ export interface OptionsPlan {
 
 export interface AccountInfo {
   account_name: string;
-  account_total: number;
   account_type: string;
   owners: string[];
   holdings: {
     symbol: string;
     units: number;
+    original_currency: string;
+    security_type: string;
+    security_name: string;
   }[];
   rsu_plans?: RSUPlan[];
   espp_plans?: ESPPPlan[];
