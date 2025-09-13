@@ -105,7 +105,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
       return {
         id: holding.symbol,
         name: holding.symbol,
-        value: isValueVisible ? holding.total_value : holding.total_units,
+        value: holding.total_value, // Always use total_value for consistent block sizes
         colorKey: holding.performance,
         color: color,
         custom: {
@@ -214,7 +214,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
           '<b>Performance:</b> {point.custom.performance}<br/>' +
           (isValueVisible ?
             '<b>Total Value:</b> ' + data.base_currency + ' {point.value:,.0f}<br/>' :
-            '<b>Total Units:</b> {point.value:,.0f}<br/>'
+            ''
           ) +
           '<b>Current Price:</b> $ {point.custom.currentPrice}'
       },
