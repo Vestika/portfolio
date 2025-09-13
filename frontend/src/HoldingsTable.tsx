@@ -395,24 +395,24 @@ const AccountBreakdownRow: React.FC<{
                 )}
               </div>
               <div className="flex items-center gap-4 text-sm text-gray-300">
-                <span className="flex items-center gap-1">
-                  <span className="text-gray-400">Units:</span>
-                  <span className="font-medium">{Math.round(account.units).toLocaleString()}</span>
-                </span>
                 {isValueVisible && (
                   <>
+                    <span className="flex items-center gap-1">
+                      <span className="text-gray-400">Units:</span>
+                      <span className="font-medium">{Math.round(account.units).toLocaleString()}</span>
+                    </span>
                     <span className="flex items-center gap-1">
                       <span className="text-gray-400">Value:</span>
                       <span className="font-medium text-blue-200">
                         {Math.round(account.value).toLocaleString()} {baseCurrency}
                       </span>
                     </span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-gray-400">Share:</span>
-                      <span className="font-medium text-green-300">{percentage}%</span>
-                    </span>
                   </>
                 )}
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-400">Share:</span>
+                  <span className="font-medium text-green-300">{percentage}%</span>
+                </span>
               </div>
             </div>
           );
