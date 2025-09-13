@@ -390,7 +390,6 @@ const App: React.FC = () => {
                 onSettingsClick={handleSettingsClick}
                 onSignOutClick={handleSignOutClick}
                 globalPrices={allPortfoliosData?.global_current_prices || {}}
-                globalSecurities={allPortfoliosData?.global_securities || {}}
               />
               <PortfolioSummary
                 accounts={displayMetadata.accounts}
@@ -398,7 +397,6 @@ const App: React.FC = () => {
                 baseCurrency={displayMetadata.base_currency}
                 isValueVisible={isValueVisible}
                 globalPrices={allPortfoliosData?.global_current_prices || {}}
-                globalSecurities={allPortfoliosData?.global_securities || {}}
               />
             </>
           )}

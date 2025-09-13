@@ -69,7 +69,6 @@ interface AccountSelectorProps {
   onSettingsClick: () => void;
   onSignOutClick: () => Promise<void>;
   globalPrices: Record<string, any>;
-  globalSecurities: Record<string, any>;
 }
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
@@ -90,8 +89,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onProfileClick,
   onSettingsClick,
   onSignOutClick,
-  globalPrices,
-  globalSecurities
+  globalPrices
 }) => {
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({

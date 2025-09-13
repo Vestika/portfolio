@@ -13,7 +13,6 @@ interface PortfolioSummaryProps {
   baseCurrency: string;
   isValueVisible: boolean;
   globalPrices: Record<string, any>;
-  globalSecurities: Record<string, any>;
 }
 
 const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
@@ -21,8 +20,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
   selectedAccountNames,
   baseCurrency,
   isValueVisible,
-  globalPrices,
-  globalSecurities
+  globalPrices
 }) => {
   const selectedAccounts = accounts.filter(account =>
     selectedAccountNames.includes(account.account_name)
