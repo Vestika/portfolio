@@ -35,6 +35,7 @@ import usFlag from './assets/us-flag.svg';
 import bitcoinLogo from './assets/bitcoin.svg';
 import smhLogo from './assets/smh.svg';
 import vanguardLogo from './assets/vanguard.svg';
+import appLogo from './assets/logo.png';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: { icon: "🏷️" },
@@ -100,8 +101,8 @@ const getLogoUrl = (holding: SecurityHolding) => {
   }
 
 
-  // Default icon for other types
-  return null;
+  // Default to app logo for other types
+  return appLogo;
 };
 
 
