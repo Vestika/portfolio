@@ -5,16 +5,17 @@ import finnhub
 import logging
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional
-import os
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 class EarningsService:
     def __init__(self):
-        """Initialize Finnhub client with API key from environment"""
-        self.api_key = os.getenv("FINNHUB_API_KEY")
+        """Initialize Finnhub client with API key from settings"""
+        self.api_key = settings.finnhub_api_key
         if not self.api_key:
-            logger.warning("FINNHUB_API_KEY not found in environment variables")
+            logger.warning("FINNHUB_API_KEY not found in settings (check your .env file)")
             self.client = None
         else:
             self.client = finnhub.Client(api_key=self.api_key)
