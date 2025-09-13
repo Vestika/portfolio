@@ -7,6 +7,9 @@ from loguru import logger
 from typing import Optional, Literal, Any
 from config import settings
 
+# Create Maya instance and get detailed stock data including price
+maya = Maya()
+
 
 class StockFetcher(ABC):
     """Abstract base class for stock price fetchers"""
@@ -160,10 +163,7 @@ class TaseFetcher(StockFetcher):
                 try:
                     # Convert symbol to integer for TASE
                     symbol_int = int(symbol)
-                    
-                    # Create Maya instance and get detailed stock data including price
-                    maya = Maya()
-                    
+
                     # Get detailed information for the specific security (includes current price)
                     details = maya.get_details(str(symbol_int))
                     

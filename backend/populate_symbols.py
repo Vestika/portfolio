@@ -26,6 +26,9 @@ from config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize Maya client
+maya = Maya()
+
 # Currencies and crypto - keep these hardcoded as they're standards
 CURRENCIES = [
     {"symbol": "USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar"]},
@@ -163,9 +166,6 @@ async def fetch_tase_securities() -> List[Dict[str, Any]]:
     logger.info("Fetching TASE securities from PyMaya...")
     
     try:
-        # Initialize Maya client
-        maya = Maya()
-        
         # Get all securities
         all_securities = maya.get_all_securities()
         logger.info(f"Found {len(all_securities)} securities from PyMaya")

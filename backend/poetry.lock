@@ -1793,18 +1793,18 @@ tests = ["coverage[toml] (==5.0.4)", "pytest (>=6.0.0,<7.0.0)"]
 
 [[package]]
 name = "pymaya"
-version = "0.4.0"
+version = "0.5.1"
 description = "Python client to interact with maya.tase.co.il"
 optional = false
 python-versions = ">=3.5"
 groups = ["main"]
 files = [
-    {file = "pymaya-0.4.0-py3-none-any.whl", hash = "sha256:d088a9204ea4270f49dccfba69459a306e1338fc208ed8db4148c081aeaa4923"},
-    {file = "pymaya-0.4.0.tar.gz", hash = "sha256:7a7529d57c8532dd915faf51643e7d391137c5478bc9a87a76e3d3433b33bb8a"},
+    {file = "pymaya-0.5.1-py3-none-any.whl", hash = "sha256:44693be79c7eff0f702656cdf4fa46ab1a74b068ef583177a462f680c43a3aaa"},
+    {file = "pymaya-0.5.1.tar.gz", hash = "sha256:64aed7f378f976a0d357009535fbe6cd186ff2819695fc0c40a70db194a9aa5d"},
 ]
 
 [package.dependencies]
-cachetools = ">=5.0,<=6.1.0"
+cachetools = ">=5.0,<6.0"
 requests = ">=2.32.4"
 
 [[package]]
@@ -2366,4 +2366,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "a450e79b6f27426d89ff895753b1dc335252becda97cf258a72e48ca7a589bad"
+content-hash = "4fe3b80de2d158fd563937fa04abb5ae79285cdef9e044375c941db5894d35a4"
