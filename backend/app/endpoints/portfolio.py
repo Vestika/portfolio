@@ -155,21 +155,6 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                     "name": account.name,
                     "rsu_plans": account.rsu_plans or []
                 })
-                
-                for virtual_holding in rsu_result["virtual_holdings"]:
-                    # Validate virtual holding symbol  
-                    if not virtual_holding.get("symbol") or not isinstance(virtual_holding["symbol"], str):
-                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping RSU virtual holding with invalid symbol: {virtual_holding.get('symbol')}")
-                        continue
-                    
-                    holdings_with_values.append({
-                        "symbol": virtual_holding["symbol"],
-                        "units": virtual_holding["units"],
-                        "original_currency": virtual_holding.get("currency", "USD"),
-                        "security_type": "rsu_virtual",
-                        "security_name": virtual_holding.get("name", virtual_holding["symbol"])
-                    })
-                    all_symbols.add(virtual_holding["symbol"])
 
                 complete_accounts.append({
                     "account_name": account.name,
