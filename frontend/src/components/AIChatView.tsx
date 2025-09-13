@@ -14,7 +14,7 @@ export function AIChatView() {
 
       <div className="flex-1 min-h-0">
         <div className="h-full">
-          <AIChat portfolioName="Portfolio" isOpen={true} />
+          <AIChat isOpen={true} />
         </div>
       </div>
     </div>
