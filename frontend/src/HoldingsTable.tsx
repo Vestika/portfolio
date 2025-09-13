@@ -450,7 +450,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   }>({ key: 'total_value', direction: 'desc' });
 
   // Get real earnings data from context
-  const { getEarningsBySymbol } = usePortfolioData();
+  const { getEarningsBySymbol, getPercentChange } = usePortfolioData();
   
   // Add real earnings data to holdings - memoized to prevent infinite loops
   const dataWithRealEarnings = useMemo(() => {
@@ -941,6 +941,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     onSort={handleSort}
                   />
                 </th>
+                <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
+                  1d Change
+                </th>
                 {isValueVisible && (
                   <>
                     <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
@@ -1025,6 +1028,22 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
                       <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                    </td>
+                    <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                      {(() => {
+                        const percentChange = getPercentChange(holding.symbol);
+                        const isPositive = percentChange > 0;
+                        const isNeutral = percentChange === 0;
+                        
+                        return (
+                          <span className={`font-medium ${
+                            isNeutral ? 'text-gray-400' : 
+                            isPositive ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                          </span>
+                        );
+                      })()}
                     </td>
                     {isValueVisible && (
                       <>
@@ -1156,7 +1175,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   </tr>
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
                     <tr>
-                      <td colSpan={isValueVisible ? 10 : 8} className="p-0">
+                      <td colSpan={isValueVisible ? 11 : 9} className="p-0">
                         <AccountBreakdownRow
                           accountBreakdown={holding.account_breakdown}
                           baseCurrency={dataWithRealEarnings.base_currency}
@@ -1167,7 +1186,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   )}
                   {expandedEarnings === holding.symbol && holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
                     <tr>
-                      <td colSpan={isValueVisible ? 10 : 8} className="p-0">
+                      <td colSpan={isValueVisible ? 11 : 9} className="p-0">
                         <EarningsCalendar
                           earningsData={holding.earnings_calendar}
                           symbol={holding.symbol}
@@ -1178,11 +1197,30 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   )}
                   {expandedRow === holding.symbol && isMobile && (
                     <tr className="bg-gray-800/50 md:hidden">
-                      <td colSpan={isValueVisible ? 10 : 8} className="p-4">
+                      <td colSpan={isValueVisible ? 11 : 9} className="p-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-bold text-gray-400">Name</p>
                             <p>{holding.name}</p>
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-400">Performance</p>
+                            <p>
+                              {(() => {
+                                const percentChange = getPercentChange(holding.symbol);
+                                const isPositive = percentChange > 0;
+                                const isNeutral = percentChange === 0;
+                                
+                                return (
+                                  <span className={`font-medium ${
+                                    isNeutral ? 'text-gray-400' : 
+                                    isPositive ? 'text-green-400' : 'text-red-400'
+                                  }`}>
+                                    {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                                  </span>
+                                );
+                              })()}
+                            </p>
                           </div>
                           <div>
                             <p className="font-bold text-gray-400">Tags</p>
