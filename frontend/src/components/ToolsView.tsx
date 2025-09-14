@@ -7,7 +7,7 @@ import ScenarioComparisonTool from './ScenarioComparisonTool'
 export function ToolsView() {
   type ToolKey = 'compound' | 'scenario'
   const [activeTool, setActiveTool] = useState<ToolKey>('compound')
-  const [collapsed, setCollapsed] = useState<boolean>(false)
+  const [collapsed, setCollapsed] = useState<boolean>(true)
 
   const tools: Array<{ key: ToolKey; name: string; description: string; icon: LucideIcon }> = [
     { key: 'compound', name: 'Compound Interest', description: 'Project growth with deposits and rate', icon: Calculator },
