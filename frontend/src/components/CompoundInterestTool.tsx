@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
+import { Maximize2, X } from 'lucide-react'
 import { usePortfolioData } from '../contexts/PortfolioDataContext'
 
 type Scope = 'portfolio' | 'accounts'
@@ -130,6 +131,10 @@ export function CompoundInterestTool() {
     ]
   }), [yearlyPoints, baseCurrency])
 
+  const [expanded, setExpanded] = useState<boolean>(false)
+  const openExpanded = () => setExpanded(true)
+  const closeExpanded = () => setExpanded(false)
+
   const handleAccountToggle = (name: string) => {
     setSelectedAccounts((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
@@ -137,6 +142,7 @@ export function CompoundInterestTool() {
   }
 
   return (
+    <>
     <div className="bg-gray-800 rounded-lg p-4 md:p-6">
       <h3 className="text-xl font-semibold text-white mb-4">Compound Interest Calculator</h3>
 
@@ -239,7 +245,15 @@ export function CompoundInterestTool() {
           </div>
         </div>
 
-        <div className="md:col-span-2 bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700">
+        <div className="md:col-span-2 bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700 relative">
+          <button
+            className="absolute right-2 top-2 z-10 pointer-events-auto bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+            onClick={openExpanded}
+            aria-label="Expand chart"
+            title="Expand"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
           <HighchartsReact highcharts={Highcharts} options={chartOptions} />
         </div>
       </div>
@@ -282,6 +296,34 @@ export function CompoundInterestTool() {
         </table>
       </div>
     </div>
+    {expanded && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/70" onClick={closeExpanded} />
+        <div className="relative bg-gray-900 border border-gray-700 rounded-lg p-3 md:p-4 w-[95vw] max-w-6xl">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-white font-semibold text-sm md:text-base">Compound Interest Projection</div>
+            <button
+              className="bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+              onClick={closeExpanded}
+              aria-label="Close expanded chart"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="bg-gray-800 border border-gray-700 rounded-md p-2">
+            <HighchartsReact
+              highcharts={Highcharts}
+              options={{
+                ...chartOptions,
+                chart: { ...(chartOptions.chart || {}), height: 650, backgroundColor: 'transparent' },
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 

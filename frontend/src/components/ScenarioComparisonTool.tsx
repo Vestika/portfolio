@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Maximize2, X } from 'lucide-react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
 import { usePortfolioData } from '../contexts/PortfolioDataContext'
@@ -212,6 +212,12 @@ export default function ScenarioComparisonTool() {
     series: yearlySeriesPerScenario.map(({ name, data }) => ({ type: 'line', name, data: data.map((p) => Math.round(p.debtBalance)) }))
   }), [yearlySeriesPerScenario, categories, baseCurrency])
 
+  const [expanded, setExpanded] = useState<null | { title: string; options: Highcharts.Options }>(null)
+  const openExpanded = (title: string, options: Highcharts.Options) => {
+    setExpanded({ title, options })
+  }
+  const closeExpanded = () => setExpanded(null)
+
   return (
     <div className="bg-gray-800 rounded-lg p-4 md:p-6">
       <h3 className="text-xl font-semibold text-white mb-4">Scenario Comparison</h3>
@@ -288,20 +294,72 @@ export default function ScenarioComparisonTool() {
         </div>
 
         <div className="md:col-span-2 space-y-4">
-          <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700">
+          <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700 relative">
+            <button
+              className="absolute right-2 top-2 z-10 pointer-events-auto bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+              onClick={() => openExpanded('Net Worth by Scenario', chartOptionsNetWorth)}
+              aria-label="Expand net worth chart"
+              title="Expand"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
             <HighchartsReact highcharts={Highcharts} options={chartOptionsNetWorth} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700">
+            <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700 relative">
+              <button
+                className="absolute right-2 top-2 z-10 pointer-events-auto bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+                onClick={() => openExpanded('Investment Balance', chartOptionsInvestment)}
+                aria-label="Expand investment chart"
+                title="Expand"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
               <HighchartsReact highcharts={Highcharts} options={chartOptionsInvestment} />
             </div>
-            <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700">
+            <div className="bg-gray-900 rounded-md p-2 md:p-4 border border-gray-700 relative">
+              <button
+                className="absolute right-2 top-2 z-10 pointer-events-auto bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+                onClick={() => openExpanded('Debt Balance', chartOptionsDebt)}
+                aria-label="Expand debt chart"
+                title="Expand"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
               <HighchartsReact highcharts={Highcharts} options={chartOptionsDebt} />
             </div>
           </div>
         </div>
       </div>
+
+      {expanded && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={closeExpanded} />
+          <div className="relative bg-gray-900 border border-gray-700 rounded-lg p-3 md:p-4 w-[95vw] max-w-6xl">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-white font-semibold text-sm md:text-base">{expanded.title}</div>
+              <button
+                className="bg-transparent border border-transparent text-[#d1d5db] hover:text-[#ffffff] p-1 rounded"
+                onClick={closeExpanded}
+                aria-label="Close expanded chart"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="bg-gray-800 border border-gray-700 rounded-md p-2">
+              <HighchartsReact
+                highcharts={Highcharts}
+                options={{
+                  ...expanded.options,
+                  chart: { ...(expanded.options.chart || {}), height: 650, backgroundColor: 'transparent' },
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
