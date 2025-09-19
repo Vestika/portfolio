@@ -413,6 +413,65 @@ async def collect_earnings_data(all_symbols: set, global_securities: dict) -> di
     return global_earnings_data
 
 
+async def collect_autocomplete_data() -> list[dict]:
+    """
+    Collect all autocomplete data for symbols from the database.
+    This will be cached on the frontend for fast autocomplete.
+    Returns: list of symbol dictionaries for autocomplete (deduplicated)
+    """
+    start_time = time.time()
+    print("🔍 [COLLECT AUTOCOMPLETE] Fetching all active symbols for autocomplete")
+    autocomplete_data = []
+    
+    try:
+        collection = db_manager.get_collection("symbols")
+        
+        # Get all active symbols with only the fields needed for autocomplete
+        cursor = collection.find(
+            {"is_active": True},
+            {
+                "symbol": 1,
+                "name": 1,
+                "symbol_type": 1,
+                "currency": 1,
+                "short_name": 1,
+                "market": 1,
+                "sector": 1,
+                "search_terms": 1,
+                "_id": 0  # Exclude the MongoDB _id field
+            }
+        )
+        
+        # Convert cursor to list
+        raw_data = await cursor.to_list(None)
+        print(f"📊 [COLLECT AUTOCOMPLETE] Raw data fetched: {len(raw_data)} symbols")
+        
+        # Deduplicate based on symbol + symbol_type + currency combination
+        seen_keys = set()
+        deduplicated_data = []
+        
+        for item in raw_data:
+            # Create a unique key for deduplication
+            key = f"{item.get('symbol', '')}-{item.get('symbol_type', '')}-{item.get('currency', '')}"
+            
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduplicated_data.append(item)
+        
+        autocomplete_data = deduplicated_data
+        duplicates_removed = len(raw_data) - len(deduplicated_data)
+        
+        print(f"✅ [COLLECT AUTOCOMPLETE] Deduplicated: {len(autocomplete_data)} symbols (removed {duplicates_removed} duplicates)")
+        
+    except Exception as e:
+        print(f"❌ [COLLECT AUTOCOMPLETE] Error collecting autocomplete data: {e}")
+        autocomplete_data = []
+    
+    duration = time.time() - start_time
+    print(f"⏱️ [COLLECT AUTOCOMPLETE] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
+    return autocomplete_data
+
+
 async def collect_user_tags(user) -> tuple:
     """
     Collect user tag library and holding tags.
@@ -777,6 +836,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
     - Global securities data
     - Global quotes data
     - User preferences
+    Note: Autocomplete data is now served via a separate /autocomplete endpoint
     """
     try:        
         start_time = time.time()
@@ -877,6 +937,36 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
     except Exception as e:
         print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/autocomplete")
+async def get_autocomplete_data(user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Dedicated endpoint for autocomplete symbol data.
+    Returns deduplicated autocomplete data for fast frontend caching.
+    Can be cached separately from portfolio data.
+    """
+    try:
+        start_time = time.time()
+        print("🔍 [AUTOCOMPLETE ENDPOINT] Starting autocomplete data collection")
+        
+        # Collect autocomplete data (already includes deduplication)
+        autocomplete_data = await collect_autocomplete_data()
+        
+        result = {
+            "autocomplete_data": autocomplete_data,
+            "total_symbols": len(autocomplete_data),
+            "computation_timestamp": datetime.utcnow().isoformat()
+        }
+        
+        duration = time.time() - start_time
+        print(f"✅ [AUTOCOMPLETE ENDPOINT] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ [AUTOCOMPLETE ENDPOINT] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/portfolio")
 async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_current_user)) -> dict[str, str]:

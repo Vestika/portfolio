@@ -70,6 +70,25 @@ async def startup_event():
             await db_manager.connect("vestika")
             logger.info("Database connected successfully")
 
+            # Auto-populate symbols if data is older than 1 month
+            try:
+                logger.info("Checking symbols data age...")
+                from populate_symbols import is_symbols_data_stale, populate_symbols
+                
+                if await is_symbols_data_stale(max_age_days=30):
+                    logger.info("Symbols data is stale, starting population...")
+                    result = await populate_symbols(force=False)  # Only update if needed
+                    logger.info(f"Symbol population completed: {result['total_symbols']} total symbols")
+                    if result['updated_types']:
+                        logger.info(f"Updated symbol types: {result['updated_types']}")
+                    if result['skipped_types']:
+                        logger.info(f"Skipped symbol types (already up to date): {result['skipped_types']}")
+                else:
+                    logger.info("Symbols data is fresh, skipping population")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to check/populate symbols on startup: {e}")
+
             # Register feature models only if database is available
             models_to_register = [User, Product, UserPreferences, Symbol]
             for model_class in models_to_register:

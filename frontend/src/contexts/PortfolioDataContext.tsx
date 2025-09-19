@@ -6,6 +6,25 @@ const arraysEqual = (a: string[], b: string[]) => {
   return a.length === b.length && a.every((val, index) => val === b[index]);
 };
 
+// Autocomplete symbol interface
+export interface AutocompleteSymbol {
+  symbol: string;
+  name: string;
+  symbol_type: string;
+  currency: string;
+  short_name: string;
+  market: string;
+  sector: string;
+  search_terms?: string[];
+}
+
+// Autocomplete data response interface  
+export interface AutocompleteDataResponse {
+  autocomplete_data: AutocompleteSymbol[];
+  total_symbols: number;
+  computation_timestamp: string;
+}
+
 // Types for the complete portfolio data structure (ALL portfolios)
 export interface AllPortfoliosData {
   portfolios: Record<string, SinglePortfolioData>;
@@ -129,7 +148,9 @@ export interface ComputedPortfolioData {
 interface PortfolioDataContextType {
   // Raw data (ALL portfolios)
   allPortfoliosData: AllPortfoliosData | null;
+  autocompleteData: AutocompleteSymbol[];
   isLoading: boolean;
+  isAutocompleteLoading: boolean;
   error: string | null;
   
   // Portfolio selection state
@@ -179,6 +200,9 @@ interface PortfolioDataContextType {
 
   // Portfolio utilities
   getAvailablePortfolios: () => Array<{ portfolio_id: string; portfolio_name: string; display_name: string }>;
+  
+  // NEW: Autocomplete utilities
+  getAutocompleteData: () => AutocompleteSymbol[];
 }
 
 const PortfolioDataContext = createContext<PortfolioDataContextType | undefined>(undefined);
@@ -202,7 +226,9 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   
   // State for ALL portfolios data
   const [allPortfoliosData, setAllPortfoliosData] = useState<AllPortfoliosData | null>(null);
+  const [autocompleteData, setAutocompleteData] = useState<AutocompleteSymbol[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Portfolio selection state
@@ -228,7 +254,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [selectedPortfolioId, allPortfoliosData, selectedAccountNames.length]);
 
-  // Load ALL portfolios data function
+  // Load ALL portfolios data and autocomplete data in parallel
   const loadAllPortfoliosData = useCallback(async () => {
     // Prevent multiple simultaneous calls
     if (isLoading) {
@@ -236,39 +262,62 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       return;
     }
 
-    console.log('🌍 [PORTFOLIO CONTEXT] Loading ALL portfolios data');
+    console.log('🌍 [PORTFOLIO CONTEXT] Loading ALL portfolios data and autocomplete data in parallel');
     setIsLoading(true);
+    setIsAutocompleteLoading(true);
     setError(null);
 
     try {
-      const response = await api.get(`/portfolios/complete-data`);
-      const data: AllPortfoliosData = response.data;
+      // Fetch both endpoints in parallel for maximum performance
+      const [portfolioResponse, autocompleteResponse] = await Promise.all([
+        api.get(`/portfolios/complete-data`),
+        api.get(`/autocomplete`)
+      ]);
+
+      const portfolioData: AllPortfoliosData = portfolioResponse.data;
+      const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
       
       // Calculate total historical price series (now global)
-      const totalHistoricalSeries = Object.keys(data.global_historical_prices || {}).length;
+      const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
 
-      console.log('✅ [PORTFOLIO CONTEXT] ALL portfolios data loaded successfully:', {
-        portfoliosCount: Object.keys(data.portfolios).length,
-        portfolioIds: Object.keys(data.portfolios),
-        globalSecurities: Object.keys(data.global_securities).length,
-        globalCurrentPrices: Object.keys(data.global_current_prices || {}).length,
-        globalHistoricalPrices: Object.keys(data.global_historical_prices || {}).length,
-        globalEarningsData: Object.keys(data.global_earnings_data || {}).length,
-        earningsSymbols: Object.keys(data.global_earnings_data || {}),
-        userTagLibrary: Object.keys(data.user_tag_library?.tag_definitions || {}).length,
-        holdingTags: Object.keys(data.all_holding_tags || {}).length,
-        holdingTagsSymbols: Object.keys(data.all_holding_tags || {}),
-        optionsVesting: Object.keys(data.all_options_vesting || {}).length,
+      // Check for duplicates in autocomplete data (one-time global check)
+      if (autocompleteDataResponse.autocomplete_data && autocompleteDataResponse.autocomplete_data.length > 0) {
+        const symbolCounts = new Map<string, number>();
+        autocompleteDataResponse.autocomplete_data.forEach(symbol => {
+          const key = `${symbol.symbol}-${symbol.symbol_type}`;
+          symbolCounts.set(key, (symbolCounts.get(key) || 0) + 1);
+        });
+        const duplicates = Array.from(symbolCounts.entries()).filter(([, count]) => count > 1);
+        if (duplicates.length > 0) {
+          console.warn(`⚠️ [PORTFOLIO CONTEXT] Found ${duplicates.length} duplicate symbols in backend data - this should be fixed at the backend level`);
+        } else {
+          console.log(`✅ [PORTFOLIO CONTEXT] Autocomplete data verified clean - no duplicates found`);
+        }
+      }
+
+      console.log('✅ [PORTFOLIO CONTEXT] ALL data loaded successfully:', {
+        portfoliosCount: Object.keys(portfolioData.portfolios).length,
+        portfolioIds: Object.keys(portfolioData.portfolios),
+        globalSecurities: Object.keys(portfolioData.global_securities).length,
+        globalCurrentPrices: Object.keys(portfolioData.global_current_prices || {}).length,
+        globalHistoricalPrices: Object.keys(portfolioData.global_historical_prices || {}).length,
+        globalEarningsData: Object.keys(portfolioData.global_earnings_data || {}).length,
+        earningsSymbols: Object.keys(portfolioData.global_earnings_data || {}),
+        userTagLibrary: Object.keys(portfolioData.user_tag_library?.tag_definitions || {}).length,
+        holdingTags: Object.keys(portfolioData.all_holding_tags || {}).length,
+        holdingTagsSymbols: Object.keys(portfolioData.all_holding_tags || {}),
+        optionsVesting: Object.keys(portfolioData.all_options_vesting || {}).length,
+        autocompleteData: autocompleteDataResponse.total_symbols, // NEW: Log autocomplete data count
         historicalPriceSeries: totalHistoricalSeries,
-        defaultPortfolio: data.user_preferences.default_portfolio_id,
-        timestamp: data.computation_timestamp,
-        sampleHoldingTag: Object.values(data.all_holding_tags || {})[0] || 'No holding tags found'
+        defaultPortfolio: portfolioData.user_preferences.default_portfolio_id,
+        timestamp: portfolioData.computation_timestamp,
+        sampleHoldingTag: Object.values(portfolioData.all_holding_tags || {})[0] || 'No holding tags found'
       });
       
       // Debug a sample holding tag structure
-      if (data.all_holding_tags && Object.keys(data.all_holding_tags).length > 0) {
-        const sampleSymbol = Object.keys(data.all_holding_tags)[0];
-        const sampleHoldingTag = data.all_holding_tags[sampleSymbol];
+      if (portfolioData.all_holding_tags && Object.keys(portfolioData.all_holding_tags).length > 0) {
+        const sampleSymbol = Object.keys(portfolioData.all_holding_tags)[0];
+        const sampleHoldingTag = portfolioData.all_holding_tags[sampleSymbol];
         console.log(`🏷️ [PORTFOLIO CONTEXT] Sample holding tag structure for ${sampleSymbol}:`, {
           hasTagsObject: !!(sampleHoldingTag.tags),
           tagNames: Object.keys(sampleHoldingTag.tags || {}),
@@ -276,12 +325,14 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         });
       }
 
-      setAllPortfoliosData(data);
+      // Set both portfolio data and autocomplete data
+      setAllPortfoliosData(portfolioData);
+      setAutocompleteData(autocompleteDataResponse.autocomplete_data);
       
       // Auto-select portfolio and accounts after data loads
-      if (data.portfolios && Object.keys(data.portfolios).length > 0) {
-        const portfolioIds = Object.keys(data.portfolios);
-        const defaultId = data.user_preferences?.default_portfolio_id;
+      if (portfolioData.portfolios && Object.keys(portfolioData.portfolios).length > 0) {
+        const portfolioIds = Object.keys(portfolioData.portfolios);
+        const defaultId = portfolioData.user_preferences?.default_portfolio_id;
         const portfolioToSelect = (defaultId && portfolioIds.includes(defaultId)) ? defaultId : portfolioIds[0];
         
         console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting portfolio after load:', portfolioToSelect);
@@ -289,7 +340,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         
         // Auto-select all accounts for the selected portfolio
         setTimeout(() => {
-          const portfolio = data.portfolios[portfolioToSelect];
+          const portfolio = portfolioData.portfolios[portfolioToSelect];
           if (portfolio?.accounts) {
             const accountNames = portfolio.accounts.map((acc: any) => acc.account_name);
             console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting accounts after load:', accountNames);
@@ -298,18 +349,18 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         }, 50);
       }
       
-      setIsLoading(false);
-      
     } catch (err: any) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error loading all portfolios data:', err);
+      console.error('❌ [PORTFOLIO CONTEXT] Error loading data:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to load portfolios data');
+    } finally {
       setIsLoading(false);
+      setIsAutocompleteLoading(false);
     }
   }, [isLoading]);
 
   // Refresh all portfolios data
   const refreshAllPortfoliosData = useCallback(async () => {
-    console.log('🔄 [PORTFOLIO CONTEXT] Refreshing all portfolios data');
+    console.log('🔄 [PORTFOLIO CONTEXT] Refreshing all portfolios and autocomplete data');
     await loadAllPortfoliosData();
   }, [loadAllPortfoliosData]);
 
@@ -716,9 +767,21 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [selectedPortfolioId, allPortfoliosData]);
 
+  // NEW: Autocomplete utilities (memoized for performance)
+  const getAutocompleteData = useCallback((): AutocompleteSymbol[] => {
+    try {
+      return autocompleteData;
+    } catch (error) {
+      console.error('❌ [PORTFOLIO CONTEXT] Error in getAutocompleteData:', error);
+      return [];
+    }
+  }, [autocompleteData]);
+
   const value: PortfolioDataContextType = {
     allPortfoliosData,
+    autocompleteData,
     isLoading,
+    isAutocompleteLoading,
     error,
     selectedPortfolioId,
     setSelectedPortfolioId: setSelectedPortfolioIdWithLogging,
@@ -737,7 +800,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     getLogoBySymbol,
     getEarningsBySymbol,
     getOptionsVestingByAccount,
-    getAvailablePortfolios
+    getAvailablePortfolios,
+    getAutocompleteData
   };
   
   console.log('✅ [PORTFOLIO PROVIDER] Context value created successfully');
