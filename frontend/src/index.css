@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Autocomplete dropdown styles - prevents forced reflow */
+.autocomplete-suggestions-dropdown {
+  /* Optimize for performance and prevent layout thrashing */
+  will-change: opacity, transform;
+  contain: layout style paint;
+}
+
+.autocomplete-suggestions-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.autocomplete-suggestions-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.autocomplete-suggestions-dropdown::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.5);
+  border-radius: 4px;
+}
+
+.autocomplete-suggestions-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(155, 155, 155, 0.7);
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

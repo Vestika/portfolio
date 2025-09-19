@@ -103,6 +103,65 @@ async def should_update_symbol_type(symbol_type: str, new_checksum: str) -> bool
     logger.info(f"Checksum unchanged for {symbol_type}, skipping")
     return False
 
+
+async def symbols_collection_exists() -> bool:
+    """Check if symbols collection has any data"""
+    try:
+        collection = db_manager.get_collection("symbols")
+        count = await collection.count_documents({"is_active": True}, limit=1)
+        return count > 0
+    except Exception as e:
+        logger.warning(f"Error checking symbols collection: {e}")
+        return False
+
+
+async def is_symbols_data_stale(max_age_days: int = 30) -> bool:
+    """
+    Check if symbols data is older than the specified number of days.
+    Returns True if data needs to be updated, False if data is fresh.
+    """
+    try:
+        # First check if any symbols exist at all
+        if not await symbols_collection_exists():
+            logger.info("No symbols found in database, population needed")
+            return True
+        
+        metadata = await get_or_create_metadata()
+        last_updated_dict = metadata.get("last_updated", {})
+        
+        if not last_updated_dict:
+            logger.info("No symbols metadata found, population needed")
+            return True
+        
+        # Check the most recent update across all symbol types
+        most_recent_update = None
+        for symbol_type, last_updated in last_updated_dict.items():
+            if last_updated:
+                if most_recent_update is None or last_updated > most_recent_update:
+                    most_recent_update = last_updated
+        
+        if not most_recent_update:
+            logger.info("No valid last_updated timestamps found, population needed")
+            return True
+        
+        # Calculate age in days
+        now = datetime.now()
+        age_delta = now - most_recent_update
+        age_days = age_delta.total_seconds() / (24 * 3600)
+        
+        is_stale = age_days > max_age_days
+        
+        if is_stale:
+            logger.info(f"Symbols data is {age_days:.1f} days old (max age: {max_age_days} days), population needed")
+        else:
+            logger.info(f"Symbols data is {age_days:.1f} days old, still fresh (max age: {max_age_days} days)")
+        
+        return is_stale
+        
+    except Exception as e:
+        logger.warning(f"Error checking symbols data age: {e}, assuming stale")
+        return True
+
 async def clear_symbol_type(symbol_type: str) -> int:
     """Clear all symbols of a specific type"""
     collection = db_manager.get_collection("symbols")

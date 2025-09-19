@@ -27,7 +27,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Debounced search with improved logic
+  // Debounced search with improved logic (optimized for local search)
   useEffect(() => {
     // Clear existing timeout
     if (debounceTimeoutRef.current) {
@@ -36,9 +36,10 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
 
     // Only search if we have a query and dropdown is open
     if (value.trim() && isOpen) {
+      // Optimized debounce timeout for performance balance
       debounceTimeoutRef.current = setTimeout(() => {
         fetchSuggestions(value.trim());
-      }, 300);
+      }, 150); // Balanced timeout to prevent excessive computation while maintaining good UX
     } else if (!value.trim()) {
       clearSuggestions();
     }
@@ -50,17 +51,20 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     };
   }, [value, isOpen, fetchSuggestions, clearSuggestions]);
 
-  // Handle clicks outside to close dropdown
+  // Handle clicks outside to close dropdown (optimized to prevent forced reflows)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setHighlightedIndex(-1);
-      }
+      // Use requestAnimationFrame to defer DOM operations and prevent forced reflow
+      requestAnimationFrame(() => {
+        if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+          setHighlightedIndex(-1);
+        }
+      });
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside, { passive: true });
     }
 
     return () => {
@@ -83,10 +87,13 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     }
     
     // Close dropdown after a small delay to allow for clicks on suggestions
-    setTimeout(() => {
-      setIsOpen(false);
-      setHighlightedIndex(-1);
-    }, 150);
+    // Use requestAnimationFrame to avoid forced reflow
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+      }, 150);
+    });
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -130,10 +137,13 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const handleInputFocus = () => {
-    setIsOpen(true);
-    if (value.trim() && value.trim().length >= 2) {
-      fetchSuggestions(value.trim());
-    }
+    // Use requestAnimationFrame to avoid forced reflow on focus
+    requestAnimationFrame(() => {
+      setIsOpen(true);
+      if (value.trim() && value.trim().length >= 2) {
+        fetchSuggestions(value.trim());
+      }
+    });
   };
 
   const getSymbolTypeColor = (type: string) => {
@@ -184,35 +194,22 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         <div
           ref={dropdownRef}
           className={cn(
-            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-0 text-popover-foreground shadow-lg outline-none animate-in fade-in-0 zoom-in-95",
-            "max-h-80 overflow-y-auto"
+            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-0 text-popover-foreground shadow-lg outline-none",
+            "max-h-80 overflow-y-auto autocomplete-suggestions-dropdown"
           )}
           style={{
             minWidth: '350px',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent'
+            scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent',
+            // Use transform for better performance instead of animate-in classes
+            opacity: 1,
+            transform: 'scale(1)',
+            transition: 'opacity 0.15s ease-out, transform 0.15s ease-out'
           }}
         >
-          <style dangerouslySetInnerHTML={{
-            __html: `
-              .autocomplete-dropdown::-webkit-scrollbar {
-                width: 8px;
-              }
-              .autocomplete-dropdown::-webkit-scrollbar-track {
-                background: transparent;
-              }
-              .autocomplete-dropdown::-webkit-scrollbar-thumb {
-                background-color: rgba(155, 155, 155, 0.5);
-                border-radius: 4px;
-              }
-              .autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
-                background-color: rgba(155, 155, 155, 0.7);
-              }
-            `
-          }} />
           {suggestions.map((suggestion, index) => (
             <div
-              key={`${suggestion.symbol}-${suggestion.symbol_type}`}
+              key={`${index}-${suggestion.symbol}-${suggestion.symbol_type}-${suggestion.currency}`}
               className={cn(
                 "relative flex cursor-pointer select-none items-center px-4 py-3 text-sm outline-none autocomplete-dropdown",
                 "hover:bg-accent hover:text-accent-foreground",
@@ -257,12 +254,17 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         </div>
       )}
       
-      {isLoading && value.trim().length >= 2 && (
+      {isLoading && value.trim().length >= 2 && !suggestions.length && (
         <div 
           className={cn(
-            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-4 text-popover-foreground shadow-lg",
-            "min-w-[350px]"
+            "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-4 text-popover-foreground shadow-lg"
           )}
+          style={{
+            minWidth: '350px',
+            // Consistent positioning to prevent layout shifts
+            opacity: 1,
+            transform: 'scale(1)'
+          }}
         >
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
