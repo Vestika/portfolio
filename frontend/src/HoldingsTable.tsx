@@ -426,9 +426,9 @@ const AccountBreakdownRow: React.FC<{
 
 const SortableHeader: React.FC<{
   label: string;
-  sortKey: keyof SecurityHolding;
-  sortConfig: { key: keyof SecurityHolding; direction: 'asc' | 'desc' };
-  onSort: (key: keyof SecurityHolding) => void;
+  sortKey: keyof SecurityHolding | 'percent_change';
+  sortConfig: { key: keyof SecurityHolding | 'percent_change'; direction: 'asc' | 'desc' };
+  onSort: (key: keyof SecurityHolding | 'percent_change') => void;
 }> = ({ label, sortKey, sortConfig, onSort }) => (
   <div
     className="flex items-center gap-1 cursor-pointer group"
@@ -445,7 +445,7 @@ const SortableHeader: React.FC<{
 
 const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isLoading = false }) => {
   const [sortConfig, setSortConfig] = useState<{
-    key: keyof SecurityHolding;
+    key: keyof SecurityHolding | 'percent_change';
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
 
@@ -654,15 +654,25 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       }
       // Then sort by the selected key
       const key = sortConfig.key;
-      const aValue = a[key];
-      const bValue = b[key];
+      let aValue, bValue;
+      
+      if (key === 'percent_change') {
+        // Special handling for percent_change which comes from getPercentChange function
+        aValue = getPercentChange(a.symbol);
+        bValue = getPercentChange(b.symbol);
+      } else {
+        // Regular property access for SecurityHolding properties
+        aValue = a[key as keyof SecurityHolding];
+        bValue = b[key as keyof SecurityHolding];
+      }
+      
       if (aValue === undefined || bValue === undefined) return 0;
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
 
-  const handleSort = (key: keyof SecurityHolding) => {
+  const handleSort = (key: keyof SecurityHolding | 'percent_change') => {
     setSortConfig({
       key,
       direction: sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc',
@@ -942,7 +952,12 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   />
                 </th>
                 <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
-                  1d Change
+                  <SortableHeader
+                    label="1d Change"
+                    sortKey="percent_change" 
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                  />
                 </th>
                 {isValueVisible && (
                   <>

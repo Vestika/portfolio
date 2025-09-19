@@ -46,18 +46,28 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
       holdingTypes: [...new Set(data.holdings.map(h => h.security_type.toLowerCase()))]
     });
 
-    // Filter to only include stocks and securities with historical data
-    const stockHoldings = data.holdings.filter(holding =>
-      holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf'
-    );
-
-    console.log('🎯 [HEATMAP] Stock/ETF holdings filtered:', {
-      originalCount: data.holdings.length,
-      stockETFCount: stockHoldings.length,
-      filtered: stockHoldings.map(h => `${h.symbol} (${h.security_type})`)
+    // Filter to include all holdings that can have performance data (exclude pure cash positions)
+    const performanceHoldings = data.holdings.filter(holding => {
+      // Include all holdings except pure cash positions that don't have quotes
+      const quote = quotes && quotes[holding.symbol];
+      const hasPerformanceData = quote && typeof quote.percent_change === 'number';
+      const isCash = holding.security_type.toLowerCase() === 'cash';
+      
+      // Include if it has performance data, or if it's not cash (even with 0% performance)
+      return hasPerformanceData || !isCash;
     });
 
-    const holdingsWithPerformance = stockHoldings.map(holding => {
+    console.log('🎯 [HEATMAP] Performance holdings filtered:', {
+      originalCount: data.holdings.length,
+      performanceCount: performanceHoldings.length,
+      filtered: performanceHoldings.map(h => `${h.symbol} (${h.security_type})`),
+      excludedCashPositions: data.holdings.filter(h => 
+        h.security_type.toLowerCase() === 'cash' && 
+        !(quotes && quotes[h.symbol] && typeof quotes[h.symbol].percent_change === 'number')
+      ).length
+    });
+
+    const holdingsWithPerformance = performanceHoldings.map(holding => {
       // Use percent_change from quotes if available
       const quote = quotes && quotes[holding.symbol];
       const percentChange = quote && typeof quote.percent_change === 'number' ? quote.percent_change : 0;
@@ -235,19 +245,23 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
     return options;
   }, [data, isValueVisible, quotes, isMobile]);
 
-  // Filter to only include stocks (don't require historical data since we use quotes for performance)
-  const stockHoldings = data.holdings.filter(holding =>
-    holding.security_type.toLowerCase() === 'stock' || holding.security_type.toLowerCase() === 'etf'
-  );
-
-  console.log('🔍 [HEATMAP] Final stock holdings check:', {
-    totalHoldings: data.holdings.length,
-    stockHoldings: stockHoldings.length,
-    quotesCount: quotes ? Object.keys(quotes).length : 0,
-    willShowHeatmap: stockHoldings.length > 0
+  // Filter to include all holdings that can be displayed meaningfully (same logic as chartOptions)
+  const displayableHoldings = data.holdings.filter(holding => {
+    const quote = quotes && quotes[holding.symbol];
+    const hasPerformanceData = quote && typeof quote.percent_change === 'number';
+    const isCash = holding.security_type.toLowerCase() === 'cash';
+    
+    return hasPerformanceData || !isCash;
   });
 
-  if (stockHoldings.length === 0) {
+  console.log('🔍 [HEATMAP] Final displayable holdings check:', {
+    totalHoldings: data.holdings.length,
+    displayableHoldings: displayableHoldings.length,
+    quotesCount: quotes ? Object.keys(quotes).length : 0,
+    willShowHeatmap: displayableHoldings.length > 0
+  });
+
+  if (displayableHoldings.length === 0) {
     return (
       <div className="p-8 bg-gray-800/50 rounded-lg border border-gray-700">
         <div className="text-center">
@@ -256,9 +270,9 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-200 mb-2">No Stock Data Available</h3>
+          <h3 className="text-lg font-medium text-gray-200 mb-2">No Performance Data Available</h3>
           <p className="text-sm text-gray-400">
-            The heatmap displays stocks and ETFs with live performance data from market quotes.
+            The heatmap displays holdings with live performance data from market quotes.
           </p>
         </div>
       </div>
