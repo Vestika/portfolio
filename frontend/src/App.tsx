@@ -20,6 +20,8 @@ import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { PopupManager } from './components/PopupManager';
 import { signOutUser } from './firebase';
 import {
   PortfolioMetadata,
@@ -354,12 +356,14 @@ const App: React.FC = () => {
   });
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
-      {/* Top Bar Navigation */}
-      <TopBar 
-        activeView={activeView} 
-        onViewChange={setActiveView} 
-      />
+    <NotificationProvider>
+      <PopupManager />
+      <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
+        {/* Top Bar Navigation */}
+        <TopBar 
+          activeView={activeView} 
+          onViewChange={setActiveView} 
+        />
       
             {/* Sticky Header Section - only show for portfolios view */}
       {activeView === 'portfolios' && (
@@ -457,7 +461,8 @@ const App: React.FC = () => {
 
 
       </div>
-    </div>
+      </div>
+    </NotificationProvider>
   );
 };
 

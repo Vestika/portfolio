@@ -23,6 +23,7 @@ import {
   Info
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
+import { NotificationBell } from './components/NotificationBell';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -712,7 +713,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
 
-          
+          {/* Notification Bell */}
+          <NotificationBell />
 
           {/* Person Icon Dropdown */}
           <div className="relative">
