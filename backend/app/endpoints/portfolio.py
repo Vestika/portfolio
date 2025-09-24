@@ -97,6 +97,10 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
     global_securities = {}
     all_symbols = set()
     
+    # Import notification service for RSU event detection
+    from core.notification_service import get_notification_service
+    notification_service = get_notification_service()
+    
     for doc in portfolio_docs:
         portfolio_id = str(doc["_id"])
         
@@ -205,6 +209,18 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
             "accounts": complete_accounts,
             "computation_timestamp": datetime.utcnow().isoformat()
         }
+        
+        # Check for RSU vesting events and create notifications
+        try:
+            user_id = user.firebase_uid
+            if user_id:
+                notification_ids = await notification_service.check_rsu_vesting_events(
+                    user_id, all_portfolios_data[portfolio_id]
+                )
+                if notification_ids:
+                    print(f"🔔 [RSU EVENTS] Created {len(notification_ids)} RSU vesting notifications for user {user_id}")
+        except Exception as e:
+            print(f"⚠️ [RSU EVENTS] Failed to check RSU vesting events: {e}")
 
     duration = time.time() - start_time
     print(f"⏱️ [PROCESS PORTFOLIOS] Completed in {duration:.3f}s - {len(all_portfolios_data)} portfolios, {len(all_symbols)} symbols")

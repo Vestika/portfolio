@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core import feature_generator
 from core.database import db_manager
 from core.firebase import FirebaseAuthMiddleware
-from models import User, Product, UserPreferences, Symbol
+from models import User, Product, UserPreferences, Symbol, Notification
 from services.closing_price.service import get_global_service
 
 # Import endpoint routers
@@ -20,6 +20,7 @@ from .endpoints.market import router as market_router
 from .endpoints.news import router as news_router
 from .endpoints.ibkr import router as ibkr_router
 from .endpoints.files import router as files_router
+from .endpoints.notifications import router as notifications_router
 
 logger = logging.Logger(__name__)
 
@@ -90,7 +91,7 @@ async def startup_event():
                 logger.warning(f"Failed to check/populate symbols on startup: {e}")
 
             # Register feature models only if database is available
-            models_to_register = [User, Product, UserPreferences, Symbol]
+            models_to_register = [User, Product, UserPreferences, Symbol, Notification]
             for model_class in models_to_register:
                 router = feature_generator.register_feature(model_class)
                 app.include_router(router, prefix="/api/v1")
@@ -123,6 +124,7 @@ app.include_router(market_router)
 app.include_router(news_router)
 app.include_router(ibkr_router)
 app.include_router(files_router)
+app.include_router(notifications_router)
 
 # Predefined charts with their aggregation keys - keep this here as it's used by portfolio endpoints
 from utils import filter_security
