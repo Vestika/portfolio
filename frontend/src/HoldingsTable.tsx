@@ -1176,7 +1176,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       )}
                     </td>
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {( holding.symbol !== dataWithRealEarnings.base_currency) ? (
+                      {/* Show 7-day trend for non-base currency holdings, and USD/ILS exchange rate trend for USD holdings */}
+                      {(holding.symbol !== dataWithRealEarnings.base_currency || 
+                        (holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS')) ? (
                         <MiniChart 
                           data={holding.historical_prices} 
                           symbol={holding.symbol} 
