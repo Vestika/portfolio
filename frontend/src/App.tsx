@@ -275,10 +275,6 @@ const App: React.FC = () => {
     setSubView('settings');
   };
 
-  const handleBackToPortfolio = () => {
-    setSubView(null);
-  };
-
   const handleViewChange = (view: NavigationView) => {
     setActiveView(view);
     setSubView(null); // Clear subView when switching to main views
@@ -412,11 +408,10 @@ const App: React.FC = () => {
           <main className="flex-1">
             {/* Profile and Settings take precedence over main views */}
             {subView === 'profile' && (
-              <ProfileView onBack={handleBackToPortfolio} />
+              <ProfileView />
             )}
             {subView === 'settings' && (
               <SettingsView 
-                onBack={handleBackToPortfolio}
                 onToggleVisibility={handleToggleVisibility}
                 isValueVisible={isValueVisible}
               />

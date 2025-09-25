@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Globe, Save, Mail, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Globe, Save, Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,10 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
 
 interface ProfileViewProps {
-  onBack: () => void;
+  // No props needed since we removed the back button
 }
 
-const ProfileView: React.FC<ProfileViewProps> = ({ onBack }) => {
+const ProfileView: React.FC<ProfileViewProps> = () => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);

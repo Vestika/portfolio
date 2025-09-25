@@ -9,12 +9,11 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
 
 interface SettingsViewProps {
-  onBack: () => void;
   onToggleVisibility: () => void;
   isValueVisible: boolean;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ onBack, onToggleVisibility, isValueVisible }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValueVisible }) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
