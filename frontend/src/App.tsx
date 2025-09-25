@@ -18,6 +18,8 @@ import { NewsView } from './components/NewsView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
+import ProfileView from './components/ProfileView';
+import SettingsView from './components/SettingsView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -57,6 +59,7 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
+  const [subView, setSubView] = useState<'profile' | 'settings' | null>(null);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();
@@ -265,13 +268,15 @@ const App: React.FC = () => {
   };
 
   const handleProfileClick = () => {
-    // TODO: Implement profile functionality
-    console.log('Profile clicked');
+    setSubView('profile');
   };
 
   const handleSettingsClick = () => {
-    // TODO: Implement settings functionality
-    console.log('Settings clicked');
+    setSubView('settings');
+  };
+
+  const handleBackToPortfolio = () => {
+    setSubView(null);
   };
 
   const handleSignOutClick = async () => {
@@ -400,7 +405,20 @@ const App: React.FC = () => {
 
         >
           <main className="flex-1">
-            {activeView === 'portfolios' && (
+            {/* Profile and Settings take precedence over main views */}
+            {subView === 'profile' && (
+              <ProfileView onBack={handleBackToPortfolio} />
+            )}
+            {subView === 'settings' && (
+              <SettingsView 
+                onBack={handleBackToPortfolio}
+                onToggleVisibility={handleToggleVisibility}
+                isValueVisible={isValueVisible}
+              />
+            )}
+            
+            {/* Main views only show when no subView is active */}
+            {!subView && activeView === 'portfolios' && (
               (() => {
                 const shouldShowSkeleton = isLoading || !portfolioMetadata || !portfolioData;
                 console.log('🎯 [APP] Main content loading decision:', {
@@ -426,19 +444,19 @@ const App: React.FC = () => {
                 />
               )
             )}
-            {activeView === 'explore' && (
+            {!subView && activeView === 'explore' && (
               isLoading ? <ViewTransitionSkeleton /> : <ExploreView />
             )}
-            {activeView === 'news' && (
+            {!subView && activeView === 'news' && (
               isLoading ? <NewsViewSkeleton /> : <NewsView />
             )}
-            {activeView === 'analyst' && (
+            {!subView && activeView === 'analyst' && (
               isLoading ? <AIChatViewSkeleton /> : <AIChatView />
             )}
-            {activeView === 'tags' && (
+            {!subView && activeView === 'tags' && (
               isLoading ? <ManageTagsViewSkeleton /> : <ManageTagsView />
             )}
-            {activeView === 'tools' && (
+            {!subView && activeView === 'tools' && (
               isLoading ? <ViewTransitionSkeleton /> : <ToolsView />
             )}
           </main>

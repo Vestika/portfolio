@@ -46,14 +46,8 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
       holdingTypes: [...new Set(data.holdings.map(h => h.security_type.toLowerCase()))]
     });
 
-    // Filter to include all holdings that can have performance data (exclude pure cash positions and currency holdings)
+    // Filter to include all holdings that can have performance data (exclude pure cash positions)
     const performanceHoldings = data.holdings.filter(holding => {
-      // Exclude ILS and USD currency holdings
-      const isCurrencyHolding = holding.symbol === 'ILS' || holding.symbol === 'USD';
-      if (isCurrencyHolding) {
-        return false;
-      }
-      
       // Include all holdings except pure cash positions that don't have quotes
       const quote = quotes && quotes[holding.symbol];
       const hasPerformanceData = quote && typeof quote.percent_change === 'number';
@@ -253,12 +247,6 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
 
   // Filter to include all holdings that can be displayed meaningfully (same logic as chartOptions)
   const displayableHoldings = data.holdings.filter(holding => {
-    // Exclude ILS and USD currency holdings
-    const isCurrencyHolding = holding.symbol === 'ILS' || holding.symbol === 'USD';
-    if (isCurrencyHolding) {
-      return false;
-    }
-    
     const quote = quotes && quotes[holding.symbol];
     const hasPerformanceData = quote && typeof quote.percent_change === 'number';
     const isCash = holding.security_type.toLowerCase() === 'cash';
