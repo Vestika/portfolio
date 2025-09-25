@@ -728,14 +728,44 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
         from models.security_type import SecurityType
         
         if symbol == 'USD':
-            # Handle USD currency holdings - always 1.0 in USD base currency
-            for i in range(7, 0, -1):
-                day = today - timedelta(days=i)
-                historical_prices.append({
-                    "date": day.strftime("%Y-%m-%d"),
-                    "price": 1.0
-                })
-            logger.info(f"📈 [FETCH HISTORICAL] Generated USD currency data for {symbol}")
+            # Handle USD currency holdings - fetch actual USD/ILS exchange rate history
+            # This shows how USD strength changes relative to ILS over time
+            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d USD/ILS exchange rate trend for {symbol}")
+            
+            def fetch_usd_ils_sync():
+                """Synchronous USD/ILS FX fetching to run in thread pool for true parallelism"""
+                return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+            
+            # Run the blocking yfinance call in a separate thread with timeout
+            loop = asyncio.get_event_loop()
+            try:
+                data = await asyncio.wait_for(
+                    loop.run_in_executor(None, fetch_usd_ils_sync),
+                    timeout=5.0  # 5 second timeout for FX calls
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"⏰ [FETCH HISTORICAL] USD/ILS FX timeout after 5s - using fallback")
+                data = None
+            
+            if not data.empty:
+                prices = data["Close"].dropna().round(4)  # More precision for exchange rates
+                # Handle yfinance DataFrame properly for FX data
+                for dt in prices.index:
+                    price = prices.loc[dt]
+                    historical_prices.append({
+                        "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                        "price": float(price)
+                    })
+                logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} USD/ILS exchange rate points for {symbol}")
+            else:
+                logger.warning(f"⚠️ [FETCH HISTORICAL] No USD/ILS FX data available - using fallback")
+                # Fallback to static rate if no historical data
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    historical_prices.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": original_price  # Use the current exchange rate as fallback
+                    })
             
         elif security.security_type == SecurityType.CASH:
             # Handle other currency holdings using exchange rates
