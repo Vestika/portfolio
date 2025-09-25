@@ -279,6 +279,11 @@ const App: React.FC = () => {
     setSubView(null);
   };
 
+  const handleViewChange = (view: NavigationView) => {
+    setActiveView(view);
+    setSubView(null); // Clear subView when switching to main views
+  };
+
   const handleSignOutClick = async () => {
     await handleSignOut();
   };
@@ -355,7 +360,7 @@ const App: React.FC = () => {
         {/* Top Bar Navigation */}
         <TopBar 
           activeView={activeView} 
-          onViewChange={setActiveView} 
+          onViewChange={handleViewChange} 
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
