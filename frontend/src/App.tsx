@@ -54,7 +54,6 @@ const App: React.FC = () => {
   // Local state for UI and navigation
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
@@ -265,28 +264,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
   const handleProfileClick = () => {
-    handleMenuClose();
     // TODO: Implement profile functionality
     console.log('Profile clicked');
   };
 
   const handleSettingsClick = () => {
-    handleMenuClose();
     // TODO: Implement settings functionality
     console.log('Settings clicked');
   };
 
   const handleSignOutClick = async () => {
-    handleMenuClose();
     await handleSignOut();
   };
 
@@ -387,9 +375,6 @@ const App: React.FC = () => {
                 onPortfolioDeleted={handlePortfolioDeleted}
                 onAccountDeleted={handleAccountDeleted}
                 onDefaultPortfolioSet={handleDefaultPortfolioSet}
-                anchorEl={anchorEl}
-                onMenuOpen={handleMenuOpen}
-                onMenuClose={handleMenuClose}
                 onProfileClick={handleProfileClick}
                 onSettingsClick={handleSettingsClick}
                 onSignOutClick={handleSignOutClick}
