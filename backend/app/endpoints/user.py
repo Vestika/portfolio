@@ -70,15 +70,6 @@ async def root(user=Depends(get_current_user)):
         "user": user.email
     }
 
-@router.get("/test")
-async def test_endpoint(user=Depends(get_current_user)):
-    """Test endpoint to verify user router is working"""
-    return {
-        "message": "User router is working",
-        "user_id": user.id,
-        "user_email": user.email
-    }
-
 @router.get("/default-portfolio")
 async def get_default_portfolio(user=Depends(get_current_user)) -> dict[str, Any]:
     """
