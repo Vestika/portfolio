@@ -43,6 +43,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import HamburgerMenu from "@/components/ui/HamburgerMenu";
 
 
@@ -63,9 +70,6 @@ interface AccountSelectorProps {
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
-  anchorEl: null | HTMLElement;
-  onMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
-  onMenuClose: () => void;
   onProfileClick: () => void;
   onSettingsClick: () => void;
   onSignOutClick: () => Promise<void>;
@@ -84,9 +88,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onPortfolioDeleted,
   onAccountDeleted,
   onDefaultPortfolioSet,
-  anchorEl,
-  onMenuOpen,
-  onMenuClose,
   onProfileClick,
   onSettingsClick,
   onSignOutClick,
@@ -606,12 +607,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             isValueVisible={isValueVisible}
             toggleValueVisibility={toggleValueVisibility}
             setShowAddAccountModal={setShowAddAccountModal}
-            onMenuOpen={onMenuOpen}
             onProfileClick={onProfileClick}
             onSettingsClick={onSettingsClick}
             onSignOutClick={onSignOutClick}
-            anchorEl={anchorEl}
-            onMenuClose={onMenuClose}
           />
         </div>
 
@@ -717,45 +715,41 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           <NotificationBell />
 
           {/* Person Icon Dropdown */}
-          <div className="relative">
-            <button
-              onClick={onMenuOpen}
-              className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+                <User size={20} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
+              sideOffset={8}
             >
-              <User size={20} />
-            </button>
-
-            {Boolean(anchorEl) && (
-              <div
-                className="absolute right-0 top-full mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-50"
-                onMouseLeave={onMenuClose}
+              <DropdownMenuItem 
+                onClick={onProfileClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
-                <div className="py-1">
-                  <button
-                    onClick={onProfileClick}
-                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
-                  >
-                    <User size={16} className="mr-3" />
-                    Profile
-                  </button>
-                  <button
-                    onClick={onSettingsClick}
-                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
-                  >
-                    <Settings size={16} className="mr-3" />
-                    Settings
-                  </button>
-                  <button
-                    onClick={onSignOutClick}
-                    className="flex items-center w-full px-4 py-2 text-sm text-white hover:bg-gray-600 transition-colors"
-                  >
-                    <LogOut size={16} className="mr-3" />
-                    Sign Out
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+                <User size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={onSettingsClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
+              >
+                <Settings size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-700" />
+              <DropdownMenuItem 
+                onClick={onSignOutClick}
+                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
+              >
+                <LogOut size={16} className="mr-3" />
+                <span className="font-medium">Sign Out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       
