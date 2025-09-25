@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from '../contexts/AuthContext';
+import api from '../utils/api';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -13,7 +15,11 @@ interface SettingsViewProps {
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({ onBack, onToggleVisibility, isValueVisible }) => {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
   const [settings, setSettings] = useState({
     // Notification settings
     emailNotifications: true,
@@ -32,19 +38,72 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onBack, onToggleVisibility,
     volume: 50,
   });
 
+  // Load settings data on component mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoadingSettings(true);
+        const response = await api.get('/user/settings');
+        setSettings({
+          emailNotifications: response.data.email_notifications,
+          pushNotifications: response.data.push_notifications,
+          priceAlerts: response.data.price_alerts,
+          newsUpdates: response.data.news_updates,
+          earningsAlerts: response.data.earnings_alerts,
+          profileVisibility: response.data.profile_visibility,
+          dataSharing: response.data.data_sharing,
+          analyticsTracking: response.data.analytics_tracking,
+          soundEnabled: response.data.sound_enabled,
+          volume: response.data.volume,
+        });
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        // Keep default values if loading fails
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+
+    if (user) {
+      loadSettings();
+    }
+  }, [user]);
+
   const handleSave = async () => {
     setIsLoading(true);
+    setSaveStatus('idle');
+    setErrorMessage('');
+    
     try {
-      // TODO: Implement API call to save settings
-      console.log('Saving settings:', settings);
+      const response = await api.put('/user/settings', {
+        email_notifications: settings.emailNotifications,
+        push_notifications: settings.pushNotifications,
+        price_alerts: settings.priceAlerts,
+        news_updates: settings.newsUpdates,
+        earnings_alerts: settings.earningsAlerts,
+        profile_visibility: settings.profileVisibility,
+        data_sharing: settings.dataSharing,
+        analytics_tracking: settings.analyticsTracking,
+        sound_enabled: settings.soundEnabled,
+        volume: settings.volume,
+      });
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setSaveStatus('success');
+      console.log('Settings saved successfully:', response.data);
       
-      // TODO: Show success notification
-    } catch (error) {
+      // Clear success message after 3 seconds
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      
+    } catch (error: any) {
       console.error('Error saving settings:', error);
-      // TODO: Show error notification
+      setSaveStatus('error');
+      setErrorMessage(error.response?.data?.detail || 'Failed to save settings');
+      
+      // Clear error message after 5 seconds
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setErrorMessage('');
+      }, 5000);
     } finally {
       setIsLoading(false);
     }
@@ -78,6 +137,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onBack, onToggleVisibility,
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+        {isLoadingSettings ? (
+          <Card className="bg-gray-800/40 backdrop-blur-xl border-gray-700/50 shadow-2xl">
+            <CardContent className="p-8">
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mr-3"></div>
+                <span className="text-gray-300">Loading settings...</span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
         
         {/* Notification Settings */}
         <Card className="bg-gray-800/40 backdrop-blur-xl border-gray-700/50 shadow-2xl">
@@ -287,26 +357,43 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onBack, onToggleVisibility,
           </CardContent>
         </Card>
 
-        {/* Save Button */}
-        <div className="flex justify-end pt-8">
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white px-10 py-4 h-14 text-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                Saving Settings...
-              </>
-            ) : (
-              <>
-                <Save size={20} className="mr-3" />
-                Save All Settings
-              </>
+            {/* Status Messages */}
+            {saveStatus === 'success' && (
+              <div className="flex items-center space-x-2 p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
+                <CheckCircle size={20} className="text-green-400" />
+                <span className="text-green-300">Settings saved successfully!</span>
+              </div>
             )}
-          </Button>
-        </div>
+            
+            {saveStatus === 'error' && (
+              <div className="flex items-center space-x-2 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+                <AlertCircle size={20} className="text-red-400" />
+                <span className="text-red-300">{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Save Button */}
+            <div className="flex justify-end pt-8">
+              <Button
+                onClick={handleSave}
+                disabled={isLoading}
+                className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white px-10 py-4 h-14 text-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                    Saving Settings...
+                  </>
+                ) : (
+                  <>
+                    <Save size={20} className="mr-3" />
+                    Save All Settings
+                  </>
+                )}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
