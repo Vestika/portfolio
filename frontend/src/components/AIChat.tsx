@@ -31,6 +31,16 @@ const AIChat: React.FC<AIChatProps> = ({
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Example questions to show when chat is empty
+  const exampleQuestions = [
+    "How is my portfolio performing?",
+    "What's my current asset allocation?",
+    "Which stocks are my biggest winners?",
+    "Show me my portfolio diversification",
+    "What's my risk exposure?",
+    "How much did I gain/lose this month?"
+  ];
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -97,6 +107,10 @@ const AIChat: React.FC<AIChatProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleExampleQuestion = (question: string) => {
+    setInputMessage(question);
   };
 
 
@@ -203,8 +217,8 @@ const AIChat: React.FC<AIChatProps> = ({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {messages.length === 0 && !isLoading && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center max-w-md">
+          <div className="flex flex-col items-center justify-end h-full pb-4">
+            <div className="text-center max-w-md mb-6">
               <div className="w-16 h-16 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -214,6 +228,22 @@ const AIChat: React.FC<AIChatProps> = ({
               <p className="text-gray-400 mb-6">
                 Ask about portfolio analysis, diversification, risk assessment, or investment strategies.
               </p>
+            </div>
+            
+            {/* Example Questions */}
+            <div className="w-full max-w-2xl">
+              <p className="text-sm text-gray-400 text-center mb-4">Try asking:</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {exampleQuestions.map((question, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleExampleQuestion(question)}
+                    className="p-3 text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl transition-all duration-200 text-sm text-gray-300 hover:text-white"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -292,7 +322,7 @@ const AIChat: React.FC<AIChatProps> = ({
       )}
 
       {/* Input */}
-      <div className={`${messages.length === 0 ? 'absolute inset-x-0 bottom-8 px-6' : 'px-6 py-4 border-t border-white/10 bg-white/5 backdrop-blur-sm'}`}>
+      <div className={`${messages.length === 0 ? 'px-6 py-4 border-t border-white/10 bg-white/5 backdrop-blur-sm' : 'px-6 py-4 border-t border-white/10 bg-white/5 backdrop-blur-sm'}`}>
         <div className="flex space-x-3 max-w-4xl mx-auto">
           <TaggingInput
             value={inputMessage}
