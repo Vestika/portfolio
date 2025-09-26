@@ -42,7 +42,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
     const loadSettings = async () => {
       try {
         setIsLoadingSettings(true);
-        const response = await api.get('/user/settings');
+        const response = await api.get('/settings');
         setSettings({
           emailNotifications: response.data.email_notifications,
           pushNotifications: response.data.push_notifications,
@@ -74,7 +74,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
     setErrorMessage('');
     
     try {
-      const response = await api.put('/user/settings', {
+      const response = await api.put('/settings', {
         email_notifications: settings.emailNotifications,
         push_notifications: settings.pushNotifications,
         price_alerts: settings.priceAlerts,

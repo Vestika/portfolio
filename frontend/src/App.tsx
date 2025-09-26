@@ -23,6 +23,7 @@ import SettingsView from './components/SettingsView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { UserProfileProvider } from './contexts/UserProfileContext';
 import { PopupManager } from './components/PopupManager';
 import { signOutUser } from './firebase';
 import {
@@ -351,8 +352,9 @@ const App: React.FC = () => {
 
   return (
     <NotificationProvider>
-      <PopupManager />
-      <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
+      <UserProfileProvider>
+        <PopupManager />
+        <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
         {/* Top Bar Navigation */}
         <TopBar 
           activeView={activeView} 
@@ -465,6 +467,7 @@ const App: React.FC = () => {
 
       </div>
       </div>
+      </UserProfileProvider>
     </NotificationProvider>
   );
 };

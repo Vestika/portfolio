@@ -6,6 +6,20 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
+import ProfileImageUpload from './ProfileImageUpload';
+import { useUserProfile } from '../contexts/UserProfileContext';
+
+// Helper function to construct full image URL
+const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
+  if (!imageUrl) return undefined;
+  
+  // If it's already a full URL, return as is
+  if (imageUrl.startsWith('http')) return imageUrl;
+  
+  // If it's a relative path, prepend the API base URL
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  return `${apiUrl}${imageUrl}`;
+};
 
 interface ProfileViewProps {
   // No props needed since we removed the back button
@@ -13,6 +27,7 @@ interface ProfileViewProps {
 
 const ProfileView: React.FC<ProfileViewProps> = () => {
   const { user } = useAuth();
+  const { refreshProfile } = useUserProfile();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -21,7 +36,10 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     displayName: '',
     email: '',
     timezone: 'UTC',
+    profileImageUrl: '',
   });
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imageError, setImageError] = useState('');
 
   const timezones = [
     'America/New_York',
@@ -46,12 +64,19 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     const loadProfile = async () => {
       try {
         setIsLoadingProfile(true);
-        const response = await api.get('/user/profile');
+        const response = await api.get('/profile');
         setFormData({
           displayName: response.data.display_name || '',
           email: response.data.email || user?.email || '',
           timezone: response.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          profileImageUrl: response.data.profile_image_url || '',
         });
+        
+        // Debug: Log the profile image URL
+        if (response.data.profile_image_url) {
+          console.log('🖼️ Profile image URL from API:', response.data.profile_image_url);
+          console.log('🖼️ Full image URL:', getFullImageUrl(response.data.profile_image_url));
+        }
       } catch (error) {
         console.error('Error loading profile:', error);
         // Set fallback values
@@ -59,6 +84,7 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
           displayName: user?.displayName || '',
           email: user?.email || '',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          profileImageUrl: '',
         });
       } finally {
         setIsLoadingProfile(false);
@@ -74,12 +100,46 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     setIsLoading(true);
     setSaveStatus('idle');
     setErrorMessage('');
+    setImageError('');
     
     try {
-      const response = await api.put('/user/profile', {
+      let imageUrl = formData.profileImageUrl;
+      
+      // Upload image first if there's a selected file
+      if (selectedImageFile) {
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', selectedImageFile);
+        
+        const imageResponse = await api.post('/profile/image', formDataUpload, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        imageUrl = imageResponse.data.image_url;
+        console.log('Profile image uploaded successfully:', imageResponse.data);
+        console.log('🖼️ Image URL from upload:', imageUrl);
+        console.log('🖼️ Full image URL after upload:', getFullImageUrl(imageUrl));
+      }
+      
+      // Update profile with all data including the new image URL
+      const response = await api.put('/profile', {
         display_name: formData.displayName,
         timezone: formData.timezone,
+        profile_image_url: imageUrl,
       });
+      
+      // Update form data with the new image URL
+      setFormData(prev => ({
+        ...prev,
+        profileImageUrl: imageUrl
+      }));
+      
+      // Clear selected file since it's now saved
+      setSelectedImageFile(null);
+      
+      // Refresh the global profile data so the image appears in navigation
+      refreshProfile();
       
       setSaveStatus('success');
       console.log('Profile saved successfully:', response.data);
@@ -100,6 +160,20 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleImageSelect = (file: File | null) => {
+    setSelectedImageFile(file);
+    setImageError('');
+  };
+
+  const handleImageDelete = () => {
+    setSelectedImageFile(null);
+    setFormData(prev => ({
+      ...prev,
+      profileImageUrl: ''
+    }));
+    setImageError('');
   };
 
   const formatTimezone = (tz: string) => {
@@ -161,6 +235,21 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
+            {/* Profile Image Upload */}
+            <div className="space-y-3">
+              <Label className="text-gray-300 text-sm font-medium flex items-center">
+                <User size={16} className="mr-2 text-blue-400" />
+                Profile Image
+              </Label>
+              <ProfileImageUpload
+                currentImageUrl={getFullImageUrl(formData.profileImageUrl)}
+                onImageSelect={handleImageSelect}
+                onImageDelete={handleImageDelete}
+                isLoading={isLoading}
+                error={imageError}
+              />
+            </div>
+
             {/* Display Name */}
             <div className="space-y-3">
               <Label htmlFor="displayName" className="text-gray-300 text-sm font-medium flex items-center">
