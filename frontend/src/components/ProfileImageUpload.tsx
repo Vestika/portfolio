@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, X, User, AlertCircle, CheckCircle } from 'lucide-react';
+import { Camera, Upload, X, User, AlertCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -20,7 +20,6 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -63,7 +62,6 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
     // Create preview URL
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-    setSelectedFile(file);
 
     // Notify parent component about the selected file
     onImageSelect(file);
@@ -71,7 +69,6 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
 
   const handleRemoveImage = () => {
     setPreviewUrl(null);
-    setSelectedFile(null);
     onImageDelete();
   };
 
