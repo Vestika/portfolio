@@ -16,6 +16,7 @@ export interface AutocompleteSymbol {
   market: string;
   sector: string;
   search_terms?: string[];
+  display_symbol?: string; // For merged TASE symbols: "006 TEVA"
 }
 
 // Autocomplete data response interface  

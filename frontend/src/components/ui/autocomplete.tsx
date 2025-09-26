@@ -7,7 +7,9 @@ interface AutocompleteProps {
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  onSelection?: (value: string) => void; // Called specifically when a suggestion is selected
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
   className?: string;
   inputRef?: React.RefObject<HTMLInputElement>;
 }
@@ -16,7 +18,9 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   placeholder = "e.g., AAPL",
   value,
   onChange,
+  onSelection,
   onKeyDown,
+  onBlur,
   className}, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -51,12 +55,23 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     };
   }, [value, isOpen, fetchSuggestions, clearSuggestions]);
 
-  // Handle clicks outside to close dropdown (optimized to prevent forced reflows)
+  // Handle clicks outside to close dropdown (fixed to not interfere with suggestion clicks)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      
+      console.log(`🖱️ [AUTOCOMPLETE] Outside click detected, target:`, target.className);
+      
+      // Don't close if clicking on a suggestion item
+      if (target.closest('.autocomplete-dropdown')) {
+        console.log(`🖱️ [AUTOCOMPLETE] Click on suggestion detected, not closing`);
+        return;
+      }
+      
       // Use requestAnimationFrame to defer DOM operations and prevent forced reflow
       requestAnimationFrame(() => {
         if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+          console.log(`🖱️ [AUTOCOMPLETE] Outside click confirmed, closing dropdown`);
           setIsOpen(false);
           setHighlightedIndex(-1);
         }
@@ -64,11 +79,12 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside, { passive: true });
+      // Use mouseup instead of mousedown to allow click events to fire first
+      document.addEventListener('mouseup', handleClickOutside, { passive: true });
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mouseup', handleClickOutside);
     };
   }, [isOpen]);
 
@@ -80,20 +96,20 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    console.log(`🌀 [AUTOCOMPLETE] Input blur event fired, value: "${e.target.value}"`);
+    
     const trimmedValue = e.target.value.trim();
     if (trimmedValue && trimmedValue !== value) {
       // Normalize to uppercase when user finishes typing
       onChange(trimmedValue.toUpperCase());
     }
     
-    // Close dropdown after a small delay to allow for clicks on suggestions
-    // Use requestAnimationFrame to avoid forced reflow
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        setIsOpen(false);
-        setHighlightedIndex(-1);
-      }, 150);
-    });
+    // Close dropdown after a delay to allow for clicks on suggestions
+    setTimeout(() => {
+      console.log(`🌀 [AUTOCOMPLETE] Closing dropdown after blur delay`);
+      setIsOpen(false);
+      setHighlightedIndex(-1);
+    }, 200); // Increased delay to ensure click events fire first
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -130,8 +146,44 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
-    // Always normalize symbol to uppercase for consistency
-    onChange(suggestion.symbol.toUpperCase());
+    console.log(`🎯 [AUTOCOMPLETE] selectSuggestion called:`, { symbol: suggestion.symbol, name: suggestion.name });
+    
+    // Clean up the symbol before setting it
+    let cleanSymbol = suggestion.symbol;
+    
+    // For NYSE symbols, remove "NYSE:" prefix
+    if (cleanSymbol.toUpperCase().startsWith('NYSE:')) {
+      cleanSymbol = cleanSymbol.substring(5); // Remove "NYSE:" (5 chars)
+    }
+    
+    // For NASDAQ symbols, remove "NASDAQ:" prefix  
+    if (cleanSymbol.toUpperCase().startsWith('NASDAQ:')) {
+      cleanSymbol = cleanSymbol.substring(7); // Remove "NASDAQ:" (7 chars)
+    }
+    
+    // For TASE symbols, remove "TASE:" prefix first, then extract number part
+    if (cleanSymbol.toUpperCase().startsWith('TASE:')) {
+      cleanSymbol = cleanSymbol.substring(5); // Remove "TASE:" (5 chars)
+    }
+    
+    // For TASE symbols, extract only the number part
+    if (suggestion.symbol_type === 'tase' && cleanSymbol.includes('.')) {
+      const parts = cleanSymbol.split('.');
+      cleanSymbol = parts[0]; // Take only the number part before the dot
+    }
+    
+    // Always normalize to uppercase for consistency
+    const finalSymbol = cleanSymbol.toUpperCase();
+    console.log(`🎯 [AUTOCOMPLETE] Setting final symbol: "${finalSymbol}"`);
+    
+    onChange(finalSymbol);
+    
+    // Call onSelection callback if provided (specifically for autocomplete selections)
+    if (onSelection) {
+      console.log(`🎯 [AUTOCOMPLETE] Calling onSelection with: "${finalSymbol}"`);
+      onSelection(finalSymbol);
+    }
+    
     setIsOpen(false);
     setHighlightedIndex(-1);
   };
@@ -140,7 +192,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     // Use requestAnimationFrame to avoid forced reflow on focus
     requestAnimationFrame(() => {
       setIsOpen(true);
-      if (value.trim() && value.trim().length >= 2) {
+      if (value.trim()) {
         fetchSuggestions(value.trim());
       }
     });
@@ -176,6 +228,35 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     }
   };
 
+  // Clean symbol for display (remove prefixes, use display_symbol for merged TASE)
+  const getDisplaySymbol = (suggestion: SymbolSuggestion) => {
+    // For TASE symbols, use display_symbol if available (merged format like "006 TEVA")
+    if (suggestion.symbol_type === 'tase' && (suggestion as any).display_symbol) {
+      return (suggestion as any).display_symbol;
+    }
+    
+    let symbol = suggestion.symbol;
+    if (symbol.toUpperCase().startsWith('NYSE:')) {
+      return symbol.substring(5); // Remove "NYSE:"
+    }
+    if (symbol.toUpperCase().startsWith('NASDAQ:')) {
+      return symbol.substring(7); // Remove "NASDAQ:"
+    }
+    if (symbol.toUpperCase().startsWith('TASE:')) {
+      return symbol.substring(5); // Remove "TASE:"
+    }
+    return symbol;
+  };
+
+  // Check if we should show market info (avoid repetition with badges)
+  const shouldShowMarket = (symbolType: string, market: string) => {
+    // Don't show market for NYSE/NASDAQ/TASE since we have badges
+    if (symbolType === 'nyse' || symbolType === 'nasdaq' || symbolType === 'tase') {
+      return false;
+    }
+    return market && market.trim() !== '';
+  };
+
   return (
     <div ref={containerRef} className="relative w-full">
       <Input
@@ -185,7 +266,10 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
         onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
+        onBlur={(e) => {
+          handleInputBlur(e);
+          if (onBlur) onBlur(e);
+        }}
         className={className}
         autoComplete="off"
       />
@@ -216,12 +300,17 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                 "border-b border-border/50 last:border-b-0",
                 index === highlightedIndex && "bg-accent text-accent-foreground"
               )}
-              onClick={() => selectSuggestion(suggestion)}
+              onMouseDown={(e) => {
+                // Prevent blur event from firing when clicking suggestion
+                e.preventDefault();
+                console.log(`🖱️ [AUTOCOMPLETE] Suggestion mousedown:`, suggestion.symbol);
+                selectSuggestion(suggestion);
+              }}
             >
               <div className="flex items-center justify-between w-full">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium">{suggestion.symbol}</span>
+                    <span className="font-medium">{getDisplaySymbol(suggestion)}</span>
                     <span className={cn(
                       "text-xs px-2 py-0.5 rounded-full border",
                       getSymbolTypeColor(suggestion.symbol_type)
@@ -242,7 +331,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                   <div className="text-sm font-medium">
                     {suggestion.currency}
                   </div>
-                  {suggestion.market && (
+                  {shouldShowMarket(suggestion.symbol_type, suggestion.market) && (
                     <div className="text-xs text-muted-foreground">
                       {suggestion.market}
                     </div>
@@ -254,7 +343,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         </div>
       )}
       
-      {isLoading && value.trim().length >= 2 && !suggestions.length && (
+      {isLoading && value.trim().length >= 1 && !suggestions.length && (
         <div 
           className={cn(
             "absolute z-[9999] w-full mt-1 rounded-md border bg-popover p-4 text-popover-foreground shadow-lg"
