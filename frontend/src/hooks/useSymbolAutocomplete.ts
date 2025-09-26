@@ -44,117 +44,214 @@ export const useSymbolAutocomplete = () => {
     return distances[s1.length];
   }, []);
 
-  // Enhanced local search function with performance optimizations
+  // Enhanced local search function with better prioritization and performance
   const searchSymbolsLocally = useCallback((query: string): SymbolSuggestion[] => {
     const trimmedQuery = query.trim().toLowerCase();
     
     if (!trimmedQuery) {
       return [];
     }
-
-    // Reduced logging frequency to prevent console spam
-    if (trimmedQuery.length === 1) {
-      console.log(`🔍 [AUTOCOMPLETE] Starting search in ${autocompleteData.length} symbols`);
+    
+    if (autocompleteData.length === 0) {
+      return [];
     }
     
     const results: SymbolSuggestion[] = [];
     const isNumeric = /^\d+$/.test(trimmedQuery);
     
-    // Removed debug logging for cleaner console output
-    
     // Performance optimization: limit processing to prevent UI blocking
     let processedCount = 0;
-    const maxProcessingTime = 40; // Target under 50ms Chrome threshold
+    const maxProcessingTime = 80; // Increased from 40ms to ensure important symbols get processed
     const startTime = performance.now();
     
-    for (const symbol of autocompleteData) {
+    // Pre-sort autocomplete data to prioritize likely matches
+    const sortedData = [...autocompleteData].sort((a, b) => {
+      const aBaseSymbol = a.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
+      const bBaseSymbol = b.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
+      
+      // For numeric queries, prioritize TASE symbols
+      if (isNumeric) {
+        if (a.symbol_type === 'tase' && b.symbol_type !== 'tase') return -1;
+        if (a.symbol_type !== 'tase' && b.symbol_type === 'tase') return 1;
+      }
+      
+      // HIGHEST PRIORITY: Exact matches and symbols starting with query
+      const aExactMatch = aBaseSymbol.toLowerCase() === trimmedQuery || a.symbol.toLowerCase() === trimmedQuery;
+      const bExactMatch = bBaseSymbol.toLowerCase() === trimmedQuery || b.symbol.toLowerCase() === trimmedQuery;
+      const aStartsWithQuery = aBaseSymbol.toLowerCase().startsWith(trimmedQuery);
+      const bStartsWithQuery = bBaseSymbol.toLowerCase().startsWith(trimmedQuery);
+      
+      if (aExactMatch && !bExactMatch) return -1;
+      if (!aExactMatch && bExactMatch) return 1;
+      if (aStartsWithQuery && !bStartsWithQuery) return -1;
+      if (!aStartsWithQuery && bStartsWithQuery) return 1;
+      
+      // If both start with query or both don't, sort by length (shorter first)
+      if ((aStartsWithQuery && bStartsWithQuery) || (!aStartsWithQuery && !bStartsWithQuery)) {
+        return aBaseSymbol.length - bBaseSymbol.length;
+      }
+      
+      return 0;
+    });
+    
+    for (const symbol of sortedData) {
       // Check if we've exceeded processing time budget
       if (processedCount % 1000 === 0 && processedCount > 0) {
         if (performance.now() - startTime > maxProcessingTime) {
-          console.warn(`⚠️ [AUTOCOMPLETE] Search time budget exceeded, processed ${processedCount}/${autocompleteData.length} symbols`);
+          // Keep timeout warning for performance monitoring
+          console.warn(`⚠️ [AUTOCOMPLETE] Search timeout after ${processedCount} symbols`);
           break;
         }
       }
       processedCount++;
+      
       const symbolLower = symbol.symbol.toLowerCase();
       const nameLower = symbol.name.toLowerCase();
       const shortNameLower = (symbol.short_name || '').toLowerCase();
-      const displaySymbolLower = (symbol.display_symbol || '').toLowerCase(); // For merged TASE symbols
+      const displaySymbolLower = (symbol.display_symbol || '').toLowerCase();
       
       // Extract base symbol for comparison (remove prefixes/suffixes)
       const baseSymbol = symbolLower.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
       
-      // Clean search logic without debug clutter
-      
       let matches = false;
       let score = 0;
+      let matchReason = '';
+      
+      // === HIGHEST PRIORITY MATCHES (1000+) ===
       
       // 1. Exact symbol match (highest priority)
-      if (symbolLower === trimmedQuery || baseSymbol === trimmedQuery || 
-          (displaySymbolLower && displaySymbolLower === trimmedQuery)) {
+      if (symbolLower === trimmedQuery || baseSymbol === trimmedQuery) {
         matches = true;
-        score = 1000;
+        score = 2000;
+        matchReason = 'exact_symbol';
       }
-      // 2. Symbol starts with query (including TASE string parts)
-      else if (symbolLower.startsWith(trimmedQuery) || baseSymbol.startsWith(trimmedQuery) ||
-               (displaySymbolLower && displaySymbolLower.startsWith(trimmedQuery)) ||
-               // For TASE: check if query matches the string part of display_symbol
-               (symbol.symbol_type === 'tase' && displaySymbolLower && 
-                displaySymbolLower.split(' ').some(part => part.startsWith(trimmedQuery)))) {
+      // 2. Exact display symbol match (for TASE)
+      else if (displaySymbolLower && displaySymbolLower === trimmedQuery) {
         matches = true;
-        score = 900;
+        score = 1900;
+        matchReason = 'exact_display';
       }
-      // 3. Name starts with query
+      
+      // === HIGH PRIORITY MATCHES (1500-1800) ===
+      
+      // 3. Symbol starts with query - MUCH higher priority for short queries
+      else if (baseSymbol.startsWith(trimmedQuery)) {
+        matches = true;
+        // Give massive boost for short queries to ensure TSLA shows up for "T", "TS"
+        if (trimmedQuery.length <= 2) {
+          score = 1800 - (baseSymbol.length - trimmedQuery.length); // Prefer shorter symbols
+        } else {
+          score = 1700 - (baseSymbol.length - trimmedQuery.length);
+        }
+        matchReason = 'symbol_starts';
+      }
+      // 4. Full symbol starts with query (with prefixes)
+      else if (symbolLower.startsWith(trimmedQuery)) {
+        matches = true;
+        score = 1600;
+        matchReason = 'full_symbol_starts';
+      }
+      
+      // === NUMERIC TASE PRIORITY (1400-1500) ===
+      
+      // 5. TASE numeric ID exact match
+      else if (isNumeric && symbol.symbol_type === 'tase') {
+        // Check if the base symbol (number part) matches
+        const taseNumericPart = baseSymbol.replace(/\.ta$/, '');
+        if (taseNumericPart === trimmedQuery || 
+            (symbol.search_terms && symbol.search_terms.some(term => term === trimmedQuery))) {
+          matches = true;
+          score = 1500;
+          matchReason = 'tase_numeric_exact';
+        }
+        // Check if numeric part starts with query
+        else if (taseNumericPart.startsWith(trimmedQuery)) {
+          matches = true;
+          score = 1400 - (taseNumericPart.length - trimmedQuery.length);
+          matchReason = 'tase_numeric_starts';
+        }
+      }
+      
+      // === MEDIUM-HIGH PRIORITY (1000-1300) ===
+      
+      // 6. Name starts with query
       else if (nameLower.startsWith(trimmedQuery) || shortNameLower.startsWith(trimmedQuery)) {
         matches = true;
-        score = 800;
+        score = 1200;
+        matchReason = 'name_starts';
       }
-      // 4. Display symbol contains query (for TASE merged symbols like "006 TEVA") 
-      else if (displaySymbolLower && displaySymbolLower.includes(trimmedQuery)) {
+      // 7. Display symbol starts with query (TASE)
+      else if (displaySymbolLower && displaySymbolLower.startsWith(trimmedQuery)) {
         matches = true;
-        score = 750; // High priority for display symbol matches
+        score = 1100;
+        matchReason = 'display_starts';
       }
-      // 5. TASE string symbol search enhancement (search individual parts)
-      else if (symbol.symbol_type === 'tase' && displaySymbolLower) {
-        const displayParts = displaySymbolLower.split(' ');
-        if (displayParts.some(part => part.includes(trimmedQuery))) {
-          matches = true;
-          score = 740; // Good priority for partial TASE matches
-        }
+      // 8. TASE display symbol word starts (e.g., "629014 TEVA" matching "T")
+      else if (symbol.symbol_type === 'tase' && displaySymbolLower && 
+               displaySymbolLower.split(' ').some(part => part.startsWith(trimmedQuery))) {
+        matches = true;
+        score = 1000;
+        matchReason = 'tase_word_starts';
       }
-      // 6. Symbol contains query
-      else if (symbolLower.includes(trimmedQuery) || baseSymbol.includes(trimmedQuery)) {
+      
+      // === MEDIUM PRIORITY (600-900) ===
+      
+      // 9. Symbol contains query (be more selective here)
+      else if (baseSymbol.includes(trimmedQuery) && trimmedQuery.length >= 2) {
+        matches = true;
+        score = 800;
+        matchReason = 'symbol_contains';
+      }
+      // 10. Name contains query
+      else if ((nameLower.includes(trimmedQuery) || shortNameLower.includes(trimmedQuery)) && 
+               trimmedQuery.length >= 2) {
         matches = true;
         score = 700;
+        matchReason = 'name_contains';
       }
-      // 7. Name contains query
-      else if (nameLower.includes(trimmedQuery) || shortNameLower.includes(trimmedQuery)) {
-        matches = true;
-        score = 600;
-      }
-      // 8. Search terms match
-      else if (symbol.search_terms?.some(term => 
-        term.toLowerCase().includes(trimmedQuery) || trimmedQuery.includes(term.toLowerCase())
-      )) {
-        matches = true;
-        score = 500;
-      }
-      // 9. Fuzzy match on symbol (up to 2 edits for short symbols) - expensive operation, limit usage
-      else if (trimmedQuery.length >= 3 && results.length < 15) { // Only do fuzzy matching if we need more results
-        const editDistanceSymbol = editDistance(trimmedQuery, baseSymbol);
-        const editDistanceFull = editDistance(trimmedQuery, symbolLower);
-        const minEditDistance = Math.min(editDistanceSymbol, editDistanceFull);
+      // 11. Search terms match (improved)
+      else if (symbol.search_terms && trimmedQuery.length >= 2) {
+        const exactTermMatch = symbol.search_terms.some(term => term.toLowerCase() === trimmedQuery);
+        const startsTermMatch = symbol.search_terms.some(term => term.toLowerCase().startsWith(trimmedQuery));
+        const containsTermMatch = symbol.search_terms.some(term => term.toLowerCase().includes(trimmedQuery));
         
-        if (minEditDistance <= 2 && minEditDistance < trimmedQuery.length / 2) {
+        if (exactTermMatch) {
           matches = true;
-          score = 400 - (minEditDistance * 50); // Lower score for more edits
+          score = 900;
+          matchReason = 'search_term_exact';
+        } else if (startsTermMatch) {
+          matches = true;
+          score = 750;
+          matchReason = 'search_term_starts';
+        } else if (containsTermMatch) {
+          matches = true;
+          score = 650;
+          matchReason = 'search_term_contains';
         }
       }
-      // 10. Numeric match for Israeli securities
-      if (isNumeric && (symbol.symbol.includes(trimmedQuery) || 
-          (symbol as any).tase_id === trimmedQuery)) {
-        matches = true;
-        score = Math.max(score, 850); // High priority for numeric matches
+      
+      // === LOW PRIORITY - FUZZY MATCHING (200-400) ===
+      // Only do fuzzy matching for longer queries and if we don't have enough results
+      else if (trimmedQuery.length >= 3 && results.length < 10) {
+        const editDistanceSymbol = editDistance(trimmedQuery, baseSymbol);
+        
+        // Much more restrictive fuzzy matching
+        const maxEdits = trimmedQuery.length >= 5 ? 2 : 1;
+        if (editDistanceSymbol <= maxEdits && editDistanceSymbol < trimmedQuery.length * 0.4) {
+          matches = true;
+          score = 400 - (editDistanceSymbol * 100);
+          matchReason = 'fuzzy_match';
+        }
+      }
+      
+      // Special boost for numeric queries matching TASE symbols
+      if (isNumeric && symbol.symbol_type === 'tase' && matches) {
+        score += 300; // Boost TASE symbols for numeric queries
+      }
+      
+      // Special penalty for very long symbols when query is short
+      if (trimmedQuery.length <= 2 && baseSymbol.length > 6) {
+        score -= 100;
       }
       
       if (matches) {
@@ -166,9 +263,10 @@ export const useSymbolAutocomplete = () => {
           short_name: symbol.short_name,
           market: symbol.market,
           sector: symbol.sector,
-          display_symbol: symbol.display_symbol, // Preserve merged TASE display format
-          score
-        } as SymbolSuggestion & { score: number });
+          display_symbol: symbol.display_symbol,
+          score,
+          matchReason
+        } as SymbolSuggestion & { score: number; matchReason: string });
         
         // Early exit if we have enough high-quality results
         if (results.length >= 50) {
@@ -177,11 +275,17 @@ export const useSymbolAutocomplete = () => {
       }
     }
 
-    // Sort by score (descending) then by symbol name
+    // Sort by score (descending) then by symbol length (shorter first), then by symbol name
     results.sort((a, b) => {
       const aScore = (a as any).score;
       const bScore = (b as any).score;
       if (aScore !== bScore) return bScore - aScore;
+      
+      // For same scores, prefer shorter symbols
+      const aBaseLen = a.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '').length;
+      const bBaseLen = b.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '').length;
+      if (aBaseLen !== bBaseLen) return aBaseLen - bBaseLen;
+      
       return a.symbol.localeCompare(b.symbol);
     });
 
@@ -227,19 +331,12 @@ export const useSymbolAutocomplete = () => {
       }
     }
 
-    // Remove score property and limit results
+    // Remove score and matchReason properties and limit results
     const finalResults = deduplicatedResults.slice(0, 20).map((item: any) => {
-      const { score, ...rest } = item;
+      const { score, matchReason, ...rest } = item;
       return rest;
     });
     
-    const duplicatesRemoved = results.length - deduplicatedResults.length;
-    const searchTime = performance.now() - startTime;
-    
-    // Only log if there are results or duplicates were removed
-    if (finalResults.length > 0 || duplicatesRemoved > 0) {
-      console.log(`✅ [AUTOCOMPLETE] Found ${finalResults.length} matches in ${searchTime.toFixed(1)}ms${duplicatesRemoved > 0 ? ` (removed ${duplicatesRemoved} duplicates)` : ''}`);
-    }
     return finalResults;
   }, [autocompleteData, editDistance]);
 
