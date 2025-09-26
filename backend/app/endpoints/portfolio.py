@@ -462,13 +462,110 @@ async def collect_autocomplete_data() -> list[dict]:
         raw_data = await cursor.to_list(None)
         print(f"📊 [COLLECT AUTOCOMPLETE] Raw data fetched: {len(raw_data)} symbols")
         
-        # Deduplicate based on symbol + symbol_type + currency combination
+        # Deduplicate and merge TASE symbols
         seen_keys = set()
         deduplicated_data = []
+        tase_symbols_map = {}  # For merging TASE numeric and string versions
         
+        # First pass: collect TASE symbols for merging
         for item in raw_data:
-            # Create a unique key for deduplication
-            key = f"{item.get('symbol', '')}-{item.get('symbol_type', '')}-{item.get('currency', '')}"
+            if item.get('symbol_type') == 'tase':
+                symbol = item.get('symbol', '')
+                if '.' in symbol:
+                    base_symbol = symbol.split('.')[0]  # Get part before .TA
+                    if base_symbol.isdigit():
+                        # This is a numeric TASE symbol (e.g., "006.TA")
+                        if base_symbol not in tase_symbols_map:
+                            tase_symbols_map[base_symbol] = {'numeric': item, 'string': None}
+                        else:
+                            tase_symbols_map[base_symbol]['numeric'] = item
+                    else:
+                        # This is a string TASE symbol (e.g., "TEVA.TA")
+                        # Try to find corresponding numeric symbol with better matching logic
+                        found_numeric = False
+                        for num_key in tase_symbols_map:
+                            if tase_symbols_map[num_key]['numeric']:
+                                numeric_name = tase_symbols_map[num_key]['numeric'].get('name', '').upper()
+                                string_symbol = base_symbol.upper()
+                                
+                                # Multiple matching strategies
+                                if (numeric_name.startswith(string_symbol) or 
+                                    string_symbol in numeric_name or
+                                    # Try matching first 4 characters both ways
+                                    (len(string_symbol) >= 4 and numeric_name.startswith(string_symbol[:4])) or
+                                    (len(numeric_name) >= 4 and string_symbol.startswith(numeric_name[:4]))):
+                                    # Found potential match, add string version
+                                    tase_symbols_map[num_key]['string'] = item
+                                    found_numeric = True
+                                    break
+                        
+                        if not found_numeric:
+                            # No numeric match found, create new entry for string-only symbol
+                            if base_symbol not in tase_symbols_map:
+                                tase_symbols_map[base_symbol] = {'numeric': None, 'string': item}
+        
+        # Second pass: process all symbols, merging TASE symbols
+        for item in raw_data:
+            symbol_type = item.get('symbol_type', '')
+            symbol = item.get('symbol', '')
+            
+            if symbol_type == 'tase' and '.' in symbol:
+                base_symbol = symbol.split('.')[0]
+                
+                # Skip if this is part of a TASE pair that should be merged
+                if base_symbol in tase_symbols_map:
+                    tase_pair = tase_symbols_map[base_symbol]
+                    
+                    # Process numeric symbol as primary (create merged entry)
+                    if base_symbol.isdigit() and item == tase_pair['numeric']:
+                        # Create merged entry
+                        merged_item = dict(item)  # Start with numeric symbol data
+                        
+                        if tase_pair['string']:
+                            # Enhance display with string symbol
+                            string_base = tase_pair['string']['symbol'].split('.')[0]
+                            merged_item['display_symbol'] = f"{base_symbol} {string_base}"
+                            # Use the more descriptive name if available
+                            if len(tase_pair['string']['name']) > len(item['name']):
+                                merged_item['name'] = tase_pair['string']['name']
+                            
+                            # Enhance search terms to include both numeric and string identifiers
+                            existing_terms = set(merged_item.get('search_terms', []))
+                            existing_terms.add(base_symbol)  # Add numeric part
+                            existing_terms.add(string_base.lower())  # Add string part
+                            existing_terms.add(string_base.upper())  # Add uppercase string part
+                            # Add string symbol's search terms if available
+                            if tase_pair['string'].get('search_terms'):
+                                existing_terms.update(tase_pair['string']['search_terms'])
+                            merged_item['search_terms'] = list(existing_terms)
+                        else:
+                            merged_item['display_symbol'] = base_symbol
+                        
+                        # Create unique key for merged TASE symbol
+                        key = f"{merged_item.get('symbol', '')}-{symbol_type}-{merged_item.get('currency', '')}"
+                        
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            deduplicated_data.append(merged_item)
+                    
+                    # Process string-only TASE symbols that don't have numeric pairs
+                    elif not base_symbol.isdigit() and item == tase_pair['string'] and not tase_pair['numeric']:
+                        # This is a string-only TASE symbol with no numeric counterpart
+                        string_item = dict(item)
+                        string_item['display_symbol'] = base_symbol  # Just use the string part
+                        
+                        # Create unique key for string-only TASE symbol
+                        key = f"{string_item.get('symbol', '')}-{symbol_type}-{string_item.get('currency', '')}"
+                        
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            deduplicated_data.append(string_item)
+                    
+                    # Skip processed TASE symbols
+                    continue
+            
+            # Regular deduplication for non-TASE symbols
+            key = f"{symbol}-{symbol_type}-{item.get('currency', '')}"
             
             if key not in seen_keys:
                 seen_keys.add(key)
@@ -477,7 +574,17 @@ async def collect_autocomplete_data() -> list[dict]:
         autocomplete_data = deduplicated_data
         duplicates_removed = len(raw_data) - len(deduplicated_data)
         
+        # Debug TASE symbol merging
+        tase_count = len([s for s in autocomplete_data if s.get('symbol_type') == 'tase'])
+        merged_tase_count = len([s for s in autocomplete_data if s.get('symbol_type') == 'tase' and s.get('display_symbol')])
+        
         print(f"✅ [COLLECT AUTOCOMPLETE] Deduplicated: {len(autocomplete_data)} symbols (removed {duplicates_removed} duplicates)")
+        print(f"📊 [COLLECT AUTOCOMPLETE] TASE symbols: {tase_count} total, {merged_tase_count} merged")
+        
+        # Sample a few TASE symbols for debugging
+        tase_samples = [s for s in autocomplete_data if s.get('symbol_type') == 'tase'][:3]
+        for sample in tase_samples:
+            print(f"🔍 [COLLECT AUTOCOMPLETE] TASE sample: {sample.get('symbol')} -> display: {sample.get('display_symbol', 'none')} -> terms: {sample.get('search_terms', [])[:3]}")
         
     except Exception as e:
         print(f"❌ [COLLECT AUTOCOMPLETE] Error collecting autocomplete data: {e}")

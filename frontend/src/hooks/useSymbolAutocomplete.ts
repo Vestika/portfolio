@@ -9,6 +9,7 @@ export interface SymbolSuggestion {
   short_name: string;
   market: string;
   sector: string;
+  display_symbol?: string; // For merged TASE symbols: "006 TEVA"
 }
 
 export const useSymbolAutocomplete = () => {
@@ -47,17 +48,19 @@ export const useSymbolAutocomplete = () => {
   const searchSymbolsLocally = useCallback((query: string): SymbolSuggestion[] => {
     const trimmedQuery = query.trim().toLowerCase();
     
-    if (!trimmedQuery || trimmedQuery.length < 2) {
+    if (!trimmedQuery) {
       return [];
     }
 
     // Reduced logging frequency to prevent console spam
-    if (trimmedQuery.length === 2) {
+    if (trimmedQuery.length === 1) {
       console.log(`🔍 [AUTOCOMPLETE] Starting search in ${autocompleteData.length} symbols`);
     }
     
     const results: SymbolSuggestion[] = [];
     const isNumeric = /^\d+$/.test(trimmedQuery);
+    
+    // Removed debug logging for cleaner console output
     
     // Performance optimization: limit processing to prevent UI blocking
     let processedCount = 0;
@@ -76,20 +79,28 @@ export const useSymbolAutocomplete = () => {
       const symbolLower = symbol.symbol.toLowerCase();
       const nameLower = symbol.name.toLowerCase();
       const shortNameLower = (symbol.short_name || '').toLowerCase();
+      const displaySymbolLower = (symbol.display_symbol || '').toLowerCase(); // For merged TASE symbols
       
       // Extract base symbol for comparison (remove prefixes/suffixes)
-      const baseSymbol = symbolLower.replace(/^(nyse:|nasdaq:)/, '').replace(/\.ta$/, '');
+      const baseSymbol = symbolLower.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
+      
+      // Clean search logic without debug clutter
       
       let matches = false;
       let score = 0;
       
       // 1. Exact symbol match (highest priority)
-      if (symbolLower === trimmedQuery || baseSymbol === trimmedQuery) {
+      if (symbolLower === trimmedQuery || baseSymbol === trimmedQuery || 
+          (displaySymbolLower && displaySymbolLower === trimmedQuery)) {
         matches = true;
         score = 1000;
       }
-      // 2. Symbol starts with query
-      else if (symbolLower.startsWith(trimmedQuery) || baseSymbol.startsWith(trimmedQuery)) {
+      // 2. Symbol starts with query (including TASE string parts)
+      else if (symbolLower.startsWith(trimmedQuery) || baseSymbol.startsWith(trimmedQuery) ||
+               (displaySymbolLower && displaySymbolLower.startsWith(trimmedQuery)) ||
+               // For TASE: check if query matches the string part of display_symbol
+               (symbol.symbol_type === 'tase' && displaySymbolLower && 
+                displaySymbolLower.split(' ').some(part => part.startsWith(trimmedQuery)))) {
         matches = true;
         score = 900;
       }
@@ -98,24 +109,37 @@ export const useSymbolAutocomplete = () => {
         matches = true;
         score = 800;
       }
-      // 4. Symbol contains query
+      // 4. Display symbol contains query (for TASE merged symbols like "006 TEVA") 
+      else if (displaySymbolLower && displaySymbolLower.includes(trimmedQuery)) {
+        matches = true;
+        score = 750; // High priority for display symbol matches
+      }
+      // 5. TASE string symbol search enhancement (search individual parts)
+      else if (symbol.symbol_type === 'tase' && displaySymbolLower) {
+        const displayParts = displaySymbolLower.split(' ');
+        if (displayParts.some(part => part.includes(trimmedQuery))) {
+          matches = true;
+          score = 740; // Good priority for partial TASE matches
+        }
+      }
+      // 6. Symbol contains query
       else if (symbolLower.includes(trimmedQuery) || baseSymbol.includes(trimmedQuery)) {
         matches = true;
         score = 700;
       }
-      // 5. Name contains query
+      // 7. Name contains query
       else if (nameLower.includes(trimmedQuery) || shortNameLower.includes(trimmedQuery)) {
         matches = true;
         score = 600;
       }
-      // 6. Search terms match
+      // 8. Search terms match
       else if (symbol.search_terms?.some(term => 
         term.toLowerCase().includes(trimmedQuery) || trimmedQuery.includes(term.toLowerCase())
       )) {
         matches = true;
         score = 500;
       }
-      // 7. Fuzzy match on symbol (up to 2 edits for short symbols) - expensive operation, limit usage
+      // 9. Fuzzy match on symbol (up to 2 edits for short symbols) - expensive operation, limit usage
       else if (trimmedQuery.length >= 3 && results.length < 15) { // Only do fuzzy matching if we need more results
         const editDistanceSymbol = editDistance(trimmedQuery, baseSymbol);
         const editDistanceFull = editDistance(trimmedQuery, symbolLower);
@@ -126,10 +150,9 @@ export const useSymbolAutocomplete = () => {
           score = 400 - (minEditDistance * 50); // Lower score for more edits
         }
       }
-      // 8. Numeric match for Israeli securities
+      // 10. Numeric match for Israeli securities
       if (isNumeric && (symbol.symbol.includes(trimmedQuery) || 
-          (symbol as any).tase_id === trimmedQuery || 
-          (symbol as any).numeric_id === trimmedQuery)) {
+          (symbol as any).tase_id === trimmedQuery)) {
         matches = true;
         score = Math.max(score, 850); // High priority for numeric matches
       }
@@ -143,6 +166,7 @@ export const useSymbolAutocomplete = () => {
           short_name: symbol.short_name,
           market: symbol.market,
           sector: symbol.sector,
+          display_symbol: symbol.display_symbol, // Preserve merged TASE display format
           score
         } as SymbolSuggestion & { score: number });
         
@@ -161,11 +185,41 @@ export const useSymbolAutocomplete = () => {
       return a.symbol.localeCompare(b.symbol);
     });
 
-    // Deduplicate results based on symbol + symbol_type + currency combination
+    // Enhanced deduplication for TASE symbols - prefer merged symbols over string-only
     const deduplicatedResults = [];
     const seenKeys = new Set<string>();
+    const taseCompanyMap = new Map<string, any>(); // Track TASE symbols by company name
     
+    // First pass: identify TASE symbols and group by company name
     for (const result of results) {
+      if (result.symbol_type === 'tase') {
+        const companyName = result.name.toLowerCase();
+        if (!taseCompanyMap.has(companyName)) {
+          taseCompanyMap.set(companyName, []);
+        }
+        taseCompanyMap.get(companyName)!.push(result);
+      }
+    }
+    
+    // Second pass: deduplicate, preferring merged TASE symbols
+    for (const result of results) {
+      if (result.symbol_type === 'tase') {
+        const companyName = result.name.toLowerCase();
+        const companySymbols = taseCompanyMap.get(companyName) || [];
+        
+        // If there are multiple TASE symbols for same company, prefer the merged one
+        if (companySymbols.length > 1) {
+          const mergedSymbol = companySymbols.find((s: any) => s.display_symbol && s.display_symbol.includes(' '));
+          const stringOnlySymbol = companySymbols.find((s: any) => !s.display_symbol && !s.symbol.split('.')[0].match(/^\d+$/));
+          
+          // Skip string-only symbol if we have a merged version
+          if (mergedSymbol && stringOnlySymbol && result === stringOnlySymbol) {
+            continue;
+          }
+        }
+      }
+      
+      // Regular deduplication
       const key = `${result.symbol}-${result.symbol_type}-${result.currency}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
@@ -192,8 +246,8 @@ export const useSymbolAutocomplete = () => {
   const fetchSuggestions = useCallback((query: string) => {
     const trimmedQuery = query.trim().toLowerCase();
     
-    // Clear suggestions if query is too short
-    if (!trimmedQuery || trimmedQuery.length < 2) {
+    // Clear suggestions if query is empty
+    if (!trimmedQuery) {
       setSuggestions([]);
       setIsLoading(false);
       return;

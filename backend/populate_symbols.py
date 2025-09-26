@@ -165,9 +165,20 @@ async def is_symbols_data_stale(max_age_days: int = 30) -> bool:
 async def clear_symbol_type(symbol_type: str) -> int:
     """Clear all symbols of a specific type"""
     collection = db_manager.get_collection("symbols")
-    result = await collection.delete_many({"symbol_type": symbol_type})
-    logger.info(f"Cleared {result.deleted_count} existing {symbol_type} symbols")
-    return result.deleted_count
+    
+    # Simple, consistent clearing by symbol_type
+    if symbol_type == "US":
+        # Clear NYSE and NASDAQ (stored as separate types)
+        nyse_result = await collection.delete_many({"symbol_type": "nyse"})
+        nasdaq_result = await collection.delete_many({"symbol_type": "nasdaq"})
+        total_deleted = nyse_result.deleted_count + nasdaq_result.deleted_count
+    else:
+        # Use lowercase symbol_type for consistency
+        result = await collection.delete_many({"symbol_type": symbol_type.lower()})
+        total_deleted = result.deleted_count
+    
+    logger.info(f"Cleared {total_deleted} existing {symbol_type} symbols")
+    return total_deleted
 
 async def fetch_us_securities() -> List[Dict[str, Any]]:
     """Fetch US securities (NYSE and NASDAQ) from Finnhub API."""
@@ -229,7 +240,9 @@ async def fetch_tase_securities() -> List[Dict[str, Any]]:
         all_securities = maya.get_all_securities()
         logger.info(f"Found {len(all_securities)} securities from PyMaya")
         
-        tase_securities = []
+        # Use dictionaries to track securities and handle both short/long ID variations
+        securities_by_id = {}
+        securities_by_name_type = {}  # To catch same stock with different IDs
         
         for security in all_securities:
             # Extract relevant information from PyMaya response
@@ -246,40 +259,101 @@ async def fetch_tase_securities() -> List[Dict[str, Any]]:
             if security_type not in [1, 2, 3, 4, 5, 6]:
                 continue
             
-            # Create symbol in TASE format
-            if symbol and not symbol.endswith('.TA'):
-                formatted_symbol = f"{symbol}.TA"
-            else:
-                formatted_symbol = f"{security_id}.TA"
+            # Normalize security_id to remove leading zeros for consistency
+            normalized_security_id = str(int(security_id)) if str(security_id).isdigit() else str(security_id)
+            
+            # Create a key for detecting same stock with different representations
+            # Use just the name to catch all variations of the same stock
+            stock_key = name.strip().upper()
+            
+            # Determine the canonical ID - prefer longer numeric IDs 
+            canonical_id = normalized_security_id
+            
+            # Check if we already have this stock with a different ID representation
+            existing_stock = None
+            if stock_key in securities_by_name_type:
+                existing_stock = securities_by_name_type[stock_key]
+                existing_id = existing_stock["security_id"]
                 
-            # Extract numeric ID for search purposes
-            numeric_id = str(security_id) if security_id else ""
+                # Always prefer the longer numeric ID for better specificity
+                if existing_id.isdigit() and normalized_security_id.isdigit():
+                    if len(normalized_security_id) > len(existing_id):
+                        canonical_id = normalized_security_id
+                        # Remove old entry and use new canonical ID
+                        if existing_id in securities_by_id:
+                            del securities_by_id[existing_id]
+                    else:
+                        canonical_id = existing_id
+                        continue  # Skip this entry, use the existing longer ID
+                else:
+                    # If one is numeric and the other isn't, prefer numeric
+                    if normalized_security_id.isdigit() and not existing_id.isdigit():
+                        canonical_id = normalized_security_id
+                        if existing_id in securities_by_id:
+                            del securities_by_id[existing_id]
+                    else:
+                        canonical_id = existing_id
+                        continue  # Skip this entry, already processed
             
-            # Create search terms including numeric ID, name, and symbol variations
-            search_terms = [
-                name.lower(),
-                numeric_id,
-                formatted_symbol.lower(),
-                formatted_symbol.replace('.TA', '').lower(),
-                symbol.lower() if symbol else "",
-                security_id.lower() if security_id else ""
-            ]
+            # Always prefer the numeric ID format for the symbol
+            formatted_symbol = f"{canonical_id}.TA"
+                
+            # Create comprehensive search terms
+            search_terms = []
             
-            # Remove empty search terms and duplicates
-            search_terms = list(set([term for term in search_terms if term]))
+            # Add name variations
+            if name:
+                search_terms.extend([name.lower(), name.upper()])
             
-            tase_securities.append({
-                "security_id": security_id,
-                "symbol": formatted_symbol,
+            # Add the canonical security ID
+            search_terms.append(canonical_id)
+            
+            # Add symbol variations 
+            search_terms.append(formatted_symbol.lower())
+            search_terms.append(canonical_id)
+            
+            # Add original symbol if different from canonical ID and not just leading zeros
+            if symbol:
+                # Remove leading zeros from symbol for comparison
+                symbol_normalized = str(int(symbol)) if symbol.isdigit() else symbol
+                if symbol_normalized != canonical_id:
+                    # Only add the normalized version without leading zeros
+                    search_terms.append(symbol_normalized.lower())
+                    search_terms.append(f"{symbol_normalized}.TA".lower())
+            
+            # Remove empty terms, duplicates, and overly short numeric prefixes (less than 4 chars)
+            # Also filter out terms that are just leading zero versions of the canonical ID
+            canonical_id_int = int(canonical_id) if canonical_id.isdigit() else None
+            search_terms = list(set([
+                term for term in search_terms 
+                if term and (
+                    not term.replace('.ta', '').isdigit() or 
+                    len(term.replace('.ta', '')) >= 4
+                ) and (
+                    # Filter out leading zero versions of the canonical ID
+                    canonical_id_int is None or 
+                    not term.replace('.ta', '').isdigit() or
+                    int(term.replace('.ta', '')) != canonical_id_int or
+                    term.replace('.ta', '') == canonical_id
+                )
+            ]))
+            
+            # Store the canonical entry
+            securities_by_id[canonical_id] = {
+                "security_id": canonical_id,  
+                "symbol": formatted_symbol,  # Always use numeric format
                 "name": name,
-                "numeric_id": numeric_id,
                 "search_terms": search_terms,
                 "original_symbol": symbol,
                 "security_type": security_type,
                 "subtype_desc": security.get('SubTypeDesc', '')
-            })
+            }
+            
+            # Track by name+type for deduplication
+            securities_by_name_type[stock_key] = securities_by_id[canonical_id]
         
-        logger.info(f"Processed {len(tase_securities)} TASE securities")
+        tase_securities = list(securities_by_id.values())
+        logger.info(f"Processed {len(tase_securities)} unique TASE securities (removed duplicates)")
         return tase_securities
         
     except Exception as e:
@@ -302,22 +376,55 @@ async def load_tase_from_json() -> List[Dict[str, Any]]:
         
         logger.info(f"Loaded {len(tase_data)} TASE securities from JSON fallback")
         
-        # Convert to the format expected by populate_symbols
-        converted_securities = []
+        # Convert to the format expected by populate_symbols with same logic as API fetch
+        securities_by_id = {}
+        
         for tase_symbol in tase_data:
-            converted_securities.append({
-                "security_id": tase_symbol["tase_id"],
-                "symbol": tase_symbol["symbol"],
-                "name": tase_symbol["short_name"],
-                "numeric_id": tase_symbol["tase_id"],
-                "search_terms": [
-                    tase_symbol["short_name"].lower(),
-                    tase_symbol["tase_id"],
-                    tase_symbol["symbol"].lower(),
-                    tase_symbol["symbol"].replace(".TA", "").lower()
-                ]
-            })
+            tase_id = tase_symbol["tase_id"]
             
+            # Normalize security_id to remove leading zeros 
+            normalized_security_id = str(int(tase_id)) if str(tase_id).isdigit() else str(tase_id)
+            
+            # Always use numeric format for consistency
+            formatted_symbol = f"{normalized_security_id}.TA"
+            name = tase_symbol["short_name"]
+            original_symbol = tase_symbol["symbol"].replace(".TA", "")
+            
+            # Create comprehensive search terms
+            search_terms = []
+            
+            # Add name variations
+            if name:
+                search_terms.extend([name.lower(), name.upper()])
+            
+            # Add the normalized security ID
+            search_terms.append(normalized_security_id)
+            
+            # Add symbol variations
+            search_terms.append(formatted_symbol.lower())
+            search_terms.append(normalized_security_id)
+            
+            # Add original symbol if different from numeric
+            if original_symbol and original_symbol != normalized_security_id:
+                search_terms.append(original_symbol.lower())
+                search_terms.append(f"{original_symbol}.TA".lower())
+            
+            # Remove empty terms, duplicates, and overly short numeric prefixes
+            search_terms = list(set([
+                term for term in search_terms 
+                if term and len(term) >= 3  # Filter out short prefixes like "629"
+            ]))
+            
+            securities_by_id[normalized_security_id] = {
+                "security_id": normalized_security_id,
+                "symbol": formatted_symbol,  # Always use numeric format
+                "name": name,
+                "search_terms": search_terms,
+                "original_symbol": original_symbol,
+            }
+            
+        converted_securities = list(securities_by_id.values())
+        logger.info(f"Processed {len(converted_securities)} unique TASE securities from JSON (removed duplicates)")
         return converted_securities
         
     except Exception as e:
@@ -396,8 +503,7 @@ async def populate_symbol_type(symbol_type: str, force: bool = False) -> Dict[st
                     "symbol_type": SymbolType.TASE.value,
                     "currency": "ILS",
                     "search_terms": tase_symbol["search_terms"],
-                    "tase_id": tase_symbol["security_id"],
-                    "numeric_id": tase_symbol["numeric_id"],
+                    "tase_id": tase_symbol["security_id"],  # Keep only tase_id, removed numeric_id
                     "short_name": tase_symbol["name"],
                     "market": "TASE",
                     "is_active": True
@@ -437,6 +543,68 @@ async def populate_symbol_type(symbol_type: str, force: bool = False) -> Dict[st
         logger.error(f"Error populating {symbol_type} symbols: {e}")
         result["error"] = str(e)
         return result
+
+async def cleanup_duplicate_symbols() -> Dict[str, int]:
+    """
+    Comprehensive cleanup of duplicate symbols in the database.
+    Use this to fix data quality issues caused by incomplete clearing.
+    """
+    logger.info("Starting comprehensive symbol cleanup...")
+    collection = db_manager.get_collection("symbols")
+    
+    cleanup_stats = {
+        "total_before": 0,
+        "duplicates_removed": 0,
+        "final_count": 0
+    }
+    
+    try:
+        # Count total symbols before cleanup
+        cleanup_stats["total_before"] = await collection.count_documents({})
+        
+        # Remove symbols with empty or invalid data
+        invalid_result = await collection.delete_many({
+            "$or": [
+                {"symbol": {"$in": ["", None]}},
+                {"name": {"$in": ["", None]}},
+                {"symbol_type": {"$in": ["", None]}},
+                {"is_active": {"$ne": True}}
+            ]
+        })
+        logger.info(f"Removed {invalid_result.deleted_count} invalid symbols")
+        
+        # Remove duplicate TASE symbols - keep only one per symbol+name combination
+        pipeline = [
+            {"$match": {"symbol_type": {"$in": ["TASE", "tase"]}}},
+            {"$group": {
+                "_id": {"symbol": "$symbol", "name": "$name"},
+                "docs": {"$push": "$$ROOT"},
+                "count": {"$sum": 1}
+            }},
+            {"$match": {"count": {"$gt": 1}}}
+        ]
+        
+        duplicates_cursor = collection.aggregate(pipeline)
+        duplicates_removed = 0
+        
+        async for duplicate_group in duplicates_cursor:
+            docs = duplicate_group["docs"]
+            # Keep the first document, remove the rest
+            for doc_to_remove in docs[1:]:
+                await collection.delete_one({"_id": doc_to_remove["_id"]})
+                duplicates_removed += 1
+        
+        cleanup_stats["duplicates_removed"] = duplicates_removed + invalid_result.deleted_count
+        cleanup_stats["final_count"] = await collection.count_documents({})
+        
+        logger.info(f"Cleanup completed: {cleanup_stats['total_before']} → {cleanup_stats['final_count']} symbols (removed {cleanup_stats['duplicates_removed']} duplicates)")
+        
+        return cleanup_stats
+        
+    except Exception as e:
+        logger.error(f"Error during symbol cleanup: {e}")
+        raise
+
 
 async def ensure_indexes():
     """Ensure all necessary indexes exist"""

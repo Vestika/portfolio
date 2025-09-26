@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
+import { usePortfolioData } from './contexts/PortfolioDataContext';
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +78,121 @@ interface AccountSelectorProps {
   onSignOutClick: () => Promise<void>;
   globalPrices: Record<string, any>;
 }
+
+// Enhanced Symbol Display Component (matches autocomplete styling)
+const EnhancedSymbolDisplay: React.FC<{
+  symbol: string;
+  onClick: () => void;
+  className?: string;
+}> = ({ symbol, onClick, className }) => {
+  const { getAutocompleteData } = usePortfolioData();
+
+  // Helper functions (matching autocomplete component)
+  const getSymbolTypeColor = (type: string) => {
+    switch (type) {
+      case 'nyse':
+        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800';
+      case 'nasdaq':
+        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:border-blue-800';
+      case 'tase':
+        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-300 dark:border-green-800';
+      case 'currency':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-800';
+      case 'crypto':
+        return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900 dark:text-purple-300 dark:border-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800';
+    }
+  };
+
+  const getSymbolTypeLabel = (type: string) => {
+    switch (type) {
+      case 'nyse': return 'NYSE';
+      case 'nasdaq': return 'NASDAQ';
+      case 'tase': return 'TASE';
+      case 'currency': return 'Currency';
+      case 'crypto': return 'Crypto';
+      default: return type.toUpperCase();
+    }
+  };
+
+  const getDisplaySymbol = (symbolData: any) => {
+    // For TASE symbols, use display_symbol if available (merged format like "006 TEVA")
+    if (symbolData.symbol_type === 'tase' && symbolData.display_symbol) {
+      return symbolData.display_symbol;
+    }
+    
+    let displaySymbol = symbolData.symbol;
+    if (displaySymbol.toUpperCase().startsWith('NYSE:')) {
+      return displaySymbol.substring(5); // Remove "NYSE:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('NASDAQ:')) {
+      return displaySymbol.substring(7); // Remove "NASDAQ:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('TASE:')) {
+      return displaySymbol.substring(5); // Remove "TASE:"
+    }
+    return displaySymbol;
+  };
+
+  // Find symbol metadata from autocomplete data
+  const autocompleteData = getAutocompleteData();
+  const symbolData = autocompleteData.find(s => {
+    const cleanSymbol = s.symbol.replace(/^(NYSE:|NASDAQ:|TASE:)/, '').replace(/\.TA$/, '');
+    return cleanSymbol.toUpperCase() === symbol.toUpperCase() || 
+           s.symbol.toUpperCase() === symbol.toUpperCase();
+  });
+
+  if (!symbol || symbol.trim() === '') {
+    // Empty symbol - show "Add Symbol" prompt
+    return (
+      <div 
+        className={cn("cursor-pointer hover:bg-muted/30 px-3 py-2 text-muted-foreground", className)}
+        onClick={onClick}
+      >
+        <span className="text-sm">Click to add symbol...</span>
+      </div>
+    );
+  }
+
+  if (!symbolData) {
+    // Fallback: simple display for unknown symbols
+    return (
+      <div 
+        className={cn("cursor-pointer hover:bg-muted/30 px-3 py-2", className)}
+        onClick={onClick}
+      >
+        <span className="font-medium">{symbol}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={cn(
+        "cursor-pointer hover:bg-muted/30 px-3 py-2",
+        "flex items-center w-full",
+        className
+      )}
+      onClick={onClick}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-medium text-sm">{getDisplaySymbol(symbolData)}</span>
+          <span className={cn(
+            "text-xs px-2 py-0.5 rounded-full border",
+            getSymbolTypeColor(symbolData.symbol_type)
+          )}>
+            {getSymbolTypeLabel(symbolData.symbol_type)}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground truncate">
+          {symbolData.name}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AccountSelector: React.FC<AccountSelectorProps> = ({
   portfolioMetadata,
@@ -165,6 +282,32 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [showEditIbkrHelp, setShowEditIbkrHelp] = useState<boolean>(false);
   const [suppressIbkrHover, setSuppressIbkrHover] = useState<boolean>(false);
   const [suppressEditIbkrHover, setSuppressEditIbkrHover] = useState<boolean>(false);
+  
+  // Symbol editing state for enhanced display
+  const [editingSymbolIndex, setEditingSymbolIndex] = useState<number | null>(null);
+  const [editEditingSymbolIndex, setEditEditingSymbolIndex] = useState<number | null>(null);
+  
+  // Removed unused autocomplete tracking state
+
+  // Handle clicks outside to exit symbol edit mode
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if click is outside any autocomplete component
+      const target = event.target as Element;
+      if (!target.closest('.symbol-autocomplete-container')) {
+        setEditingSymbolIndex(null);
+        setEditEditingSymbolIndex(null);
+      }
+    };
+
+    if (editingSymbolIndex !== null || editEditingSymbolIndex !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [editingSymbolIndex, editEditingSymbolIndex]);
 
   useEffect(() => {
     console.log('🔄 [ACCOUNT SELECTOR] Syncing accounts with portfolio metadata:', portfolioMetadata.accounts.map(a => ({ name: a.account_name, isSelected: a.isSelected })));
@@ -229,27 +372,27 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const updateHolding = (index: number, field: 'symbol' | 'units', value: string) => {
     // Normalize symbol to uppercase for consistency
     const normalizedValue = field === 'symbol' ? value.toUpperCase() : value;
+    console.log(`📝 [HOLDINGS] updateHolding: index=${index}, field=${field}, value="${value}" -> normalized="${normalizedValue}"`);
+    
     const updatedHoldings = newAccount.holdings.map((holding, i) => 
       i === index ? { ...holding, [field]: normalizedValue } : holding
     );
     
-    // Auto-add new row if this is the last row and either field has content
-    if (index === updatedHoldings.length - 1 && value.trim()) {
-      updatedHoldings.push({ symbol: '', units: '' });
-    }
+    console.log(`📝 [HOLDINGS] Updated holdings:`, updatedHoldings.map((h, i) => `${i}: ${h.symbol}`));
     
     // Auto-remove empty rows (except if it would leave us with no rows)
-    const filteredHoldings = updatedHoldings.filter((holding, i) => {
+    const filteredHoldings = updatedHoldings.filter((holding) => {
       // Keep the row if it has content in either field
       if (holding.symbol.trim() || holding.units.trim()) return true;
       // Keep at least one empty row
       const nonEmptyCount = updatedHoldings.filter(h => h.symbol.trim() || h.units.trim()).length;
-      return nonEmptyCount === 0 || i === updatedHoldings.length - 1;
+      return nonEmptyCount === 0;
     });
     
     // Ensure we always have at least one row
     const finalHoldings = filteredHoldings.length > 0 ? filteredHoldings : [{ symbol: '', units: '' }];
     
+    console.log(`📝 [HOLDINGS] Setting new account with final holdings:`, finalHoldings.map((h, i) => `${i}: ${h.symbol}`));
     setNewAccount({
       ...newAccount,
       holdings: finalHoldings
@@ -322,6 +465,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
       setShowAddAccountModal(false);
+      setEditingSymbolIndex(null); // Reset symbol editing state
       setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] } );
       holdingRefs.current = {}; // Clear refs
       
@@ -372,8 +516,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       // Ensure there's always at least one empty row available for typing
       const hasEmptyRow = mappedHoldings.some(h => !h.symbol.trim() && !h.units.trim());
+      let emptyRowIndex = -1;
       if (!hasEmptyRow) {
         mappedHoldings.push({ symbol: '', units: '' });
+        emptyRowIndex = mappedHoldings.length - 1;
+      } else {
+        emptyRowIndex = mappedHoldings.findIndex(h => !h.symbol.trim() && !h.units.trim());
       }
       
       setEditAccount({
@@ -390,6 +538,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       setEditCollapsedRSUPlans(new Set((account.rsu_plans || []).map(plan => plan.id)));
       setEditCollapsedESPPPlans(new Set((account.espp_plans || []).map(plan => plan.id)));
       
+      // Set empty row to edit mode
+      if (emptyRowIndex >= 0) {
+        setTimeout(() => setEditEditingSymbolIndex(emptyRowIndex), 100);
+      }
+      
       setShowEditAccountModal(true);
       setHoveredAccount(null);
     }
@@ -404,35 +557,50 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     }
   };
 
+  // Helper function to add new row when symbol is selected (not typed)
+  const addNewRowIfNeeded = (holdings: any[], index: number, isEditModal: boolean = false) => {
+    if (index === holdings.length - 1) {
+      const newHoldings = [...holdings, { symbol: '', units: '' }];
+      if (isEditModal) {
+        setEditAccount({ ...editAccount, holdings: newHoldings });
+        setTimeout(() => setEditEditingSymbolIndex(newHoldings.length - 1), 50);
+      } else {
+        setNewAccount({ ...newAccount, holdings: newHoldings });
+        setTimeout(() => setEditingSymbolIndex(newHoldings.length - 1), 50);
+      }
+    }
+  };
+
   const updateEditHolding = (index: number, field: 'symbol' | 'units', value: string) => {
     // Normalize symbol to uppercase for consistency
     const normalizedValue = field === 'symbol' ? value.toUpperCase() : value;
+    console.log(`📝 [EDIT HOLDINGS] updateEditHolding: index=${index}, field=${field}, value="${value}" -> normalized="${normalizedValue}"`);
+    
     const updatedHoldings = editAccount.holdings.map((holding, i) => 
       i === index ? { ...holding, [field]: normalizedValue } : holding
     );
     
-    // Auto-add new row if this is the last row and either field has content
-    if (index === updatedHoldings.length - 1 && value.trim()) {
-      updatedHoldings.push({ symbol: '', units: '' });
-    }
+    console.log(`📝 [EDIT HOLDINGS] Updated holdings:`, updatedHoldings.map((h, i) => `${i}: ${h.symbol}`));
     
     // Auto-remove empty rows (except if it would leave us with no rows)
-    const filteredHoldings = updatedHoldings.filter((holding, i) => {
+    const filteredHoldings = updatedHoldings.filter((holding) => {
       // Keep the row if it has content in either field
       if (holding.symbol.trim() || holding.units.trim()) return true;
-      // Keep at least one empty row
-      const nonEmptyCount = updatedHoldings.filter(h => h.symbol.trim() || h.units.trim()).length;
-      return nonEmptyCount === 0 || i === updatedHoldings.length - 1;
+      // Keep at least one empty row for new input
+      const emptyRowCount = updatedHoldings.filter(h => !h.symbol.trim() && !h.units.trim()).length;
+      return emptyRowCount === 1;
     });
     
     // Ensure we always have at least one row
-    const finalHoldings = filteredHoldings.length > 0 ? filteredHoldings : [{ symbol: '', units: '' }];
+    if (filteredHoldings.length === 0) {
+      filteredHoldings.push({ symbol: '', units: '' });
+    }
     
-    setEditAccount({
-      ...editAccount,
-      holdings: finalHoldings
-    });
+    console.log(`📝 [EDIT HOLDINGS] Setting edit account with final holdings:`, filteredHoldings.map((h, i) => `${i}: ${h.symbol}`));
+    setEditAccount({ ...editAccount, holdings: filteredHoldings });
   };
+
+  // Removed duplicate updateHolding function
 
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number, field: 'symbol' | 'units') => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
@@ -500,6 +668,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       await api.put(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, accountData);
 
       setShowEditAccountModal(false);
+      setEditEditingSymbolIndex(null); // Reset symbol editing state
       setAccountToEdit('');
       setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] });
       editHoldingRefs.current = {}; // Clear refs
@@ -1194,16 +1363,62 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         {newAccount.holdings.map((holding, index) => (
                           <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                             <div className="flex-1 p-0">
-                              <SymbolAutocomplete
-                                placeholder="e.g., AAPL"
-                                value={holding.symbol}
-                                onChange={(value) => {
-                                  updateHolding(index, 'symbol', value);
-                                }}
-                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                                onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
-                                ref={(el) => holdingRefs.current[`${index}-symbol`] = el}
-                              />
+                              {editingSymbolIndex === index ? (
+                                <div className="symbol-autocomplete-container">
+                                  <SymbolAutocomplete
+                                    placeholder="e.g., AAPL"
+                                    value={holding.symbol}
+                                    onChange={(value) => {
+                                      console.log(`📝 [HOLDINGS] onChange called: index=${index}, value="${value}"`);
+                                      updateHolding(index, 'symbol', value);
+                                      // Don't auto-add rows on onChange - let user finish typing
+                                    }}
+                                    className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Escape') {
+                                        setEditingSymbolIndex(null);
+                                      } else if (e.key === 'Tab' || e.key === 'Enter') {
+                                        // Add new row when Tab/Enter is pressed on a valid symbol
+                                        if (holding.symbol.trim() && index === newAccount.holdings.length - 1) {
+                                          setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index, false), 10);
+                                        }
+                                        setEditingSymbolIndex(null); // Exit edit mode on Tab/Enter
+                                        handleKeyDown(e, index, 'symbol');
+                                      } else {
+                                        handleKeyDown(e, index, 'symbol');
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      // Add new row when user finishes typing and tabs/clicks away
+                                      const value = e.target.value.trim();
+                                      if (value && index === newAccount.holdings.length - 1) {
+                                        setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index, false), 10);
+                                      }
+                                      setEditingSymbolIndex(null); // Exit edit mode on blur
+                                    }}
+                                    ref={(el) => {
+                                      holdingRefs.current[`${index}-symbol`] = el;
+                                      // Auto-focus when entering edit mode
+                                      if (el) setTimeout(() => el.focus(), 10);
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <EnhancedSymbolDisplay
+                                  symbol={holding.symbol}
+                                  onClick={() => {
+                                    setEditingSymbolIndex(index);
+                                    // For empty symbols, immediately show autocomplete
+                                    if (!holding.symbol.trim()) {
+                                      setTimeout(() => {
+                                        const input = holdingRefs.current[`${index}-symbol`];
+                                        if (input) input.focus();
+                                      }, 50);
+                                    }
+                                  }}
+                                  className="border-0 rounded-none shadow-none bg-transparent min-h-[48px] flex items-center"
+                                />
+                              )}
                             </div>
                             <div className="w-28 p-0">
                               <Input
@@ -1246,7 +1461,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddAccountModal(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowAddAccountModal(false);
+              setEditingSymbolIndex(null);
+            }}>
               Cancel
             </Button>
             <Button 
@@ -1719,16 +1937,62 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         {editAccount.holdings.map((holding, index) => (
                           <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
                             <div className="flex-1 p-0">
-                              <SymbolAutocomplete
-                                placeholder="e.g., AAPL"
-                                value={holding.symbol}
-                                onChange={(value) => {
-                                  updateEditHolding(index, 'symbol', value);
-                                }}
-                                className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                                onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
-                                ref={(el) => editHoldingRefs.current[`edit-${index}-symbol`] = el}
-                              />
+                              {editEditingSymbolIndex === index ? (
+                                <div className="symbol-autocomplete-container">
+                                  <SymbolAutocomplete
+                                    placeholder="e.g., AAPL"
+                                    value={holding.symbol}
+                                    onChange={(value) => {
+                                      console.log(`📝 [EDIT HOLDINGS] onChange called: index=${index}, value="${value}"`);
+                                      updateEditHolding(index, 'symbol', value);
+                                      // Don't auto-add rows on onChange - let user finish typing
+                                    }}
+                                    className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Escape') {
+                                        setEditEditingSymbolIndex(null);
+                                      } else if (e.key === 'Tab' || e.key === 'Enter') {
+                                        // Add new row when Tab/Enter is pressed on a valid symbol
+                                        if (holding.symbol.trim() && index === editAccount.holdings.length - 1) {
+                                          setTimeout(() => addNewRowIfNeeded(editAccount.holdings, index, true), 10);
+                                        }
+                                        setEditEditingSymbolIndex(null); // Exit edit mode on Tab/Enter
+                                        handleEditKeyDown(e, index, 'symbol');
+                                      } else {
+                                        handleEditKeyDown(e, index, 'symbol');
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      // Add new row when user finishes typing and tabs/clicks away
+                                      const value = e.target.value.trim();
+                                      if (value && index === editAccount.holdings.length - 1) {
+                                        setTimeout(() => addNewRowIfNeeded(editAccount.holdings, index, true), 10);
+                                      }
+                                      setEditEditingSymbolIndex(null); // Exit edit mode on blur
+                                    }}
+                                    ref={(el) => {
+                                      editHoldingRefs.current[`edit-${index}-symbol`] = el;
+                                      // Auto-focus when entering edit mode
+                                      if (el) setTimeout(() => el.focus(), 10);
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <EnhancedSymbolDisplay
+                                  symbol={holding.symbol}
+                                  onClick={() => {
+                                    setEditEditingSymbolIndex(index);
+                                    // For empty symbols, immediately show autocomplete
+                                    if (!holding.symbol.trim()) {
+                                      setTimeout(() => {
+                                        const input = editHoldingRefs.current[`edit-${index}-symbol`];
+                                        if (input) input.focus();
+                                      }, 50);
+                                    }
+                                  }}
+                                  className="border-0 rounded-none shadow-none bg-transparent min-h-[48px] flex items-center"
+                                />
+                              )}
                             </div>
                             <div className="w-28 p-0">
                               <Input
@@ -1771,7 +2035,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditAccountModal(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowEditAccountModal(false);
+              setEditEditingSymbolIndex(null);
+            }}>
               Cancel
             </Button>
             <Button 

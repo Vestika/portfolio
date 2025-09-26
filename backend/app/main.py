@@ -81,6 +81,15 @@ async def startup_event():
                 
                 if await is_symbols_data_stale(max_age_days=30):
                     logger.info("Symbols data is stale, starting population...")
+                    
+                    # First run cleanup to remove any existing duplicates
+                    try:
+                        from populate_symbols import cleanup_duplicate_symbols
+                        cleanup_result = await cleanup_duplicate_symbols()
+                        logger.info(f"Pre-population cleanup: removed {cleanup_result['duplicates_removed']} duplicates")
+                    except Exception as cleanup_err:
+                        logger.warning(f"Pre-population cleanup failed: {cleanup_err}")
+                    
                     result = await populate_symbols(force=False)  # Only update if needed
                     logger.info(f"Symbol population completed: {result['total_symbols']} total symbols")
                     if result['updated_types']:

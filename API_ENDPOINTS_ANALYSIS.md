@@ -4,13 +4,13 @@ Analysis of all backend API endpoints and their usage in the frontend code.
 
 ## Summary ✅ CLEANUP COMPLETED
 - **Original Total Endpoints**: 48
-- **Removed Unused Endpoints**: 12
-- **Current Active Endpoints**: 35
+- **Removed Unused Endpoints**: 13
+- **Current Active Endpoints**: 34
 - **Cleanup Success Rate**: 100% (all planned removals completed)
 
 ---
 
-## 📊 USED ENDPOINTS (31)
+## 📊 USED ENDPOINTS (30)
 
 ### Portfolio Management
 | Endpoint | Method | Usage Location | Purpose |
@@ -38,7 +38,6 @@ Analysis of all backend API endpoints and their usage in the frontend code.
 | Endpoint | Method | Usage Location | Purpose |
 |----------|---------|----------------|---------|
 | `/market-status` | GET | `PortfolioSummary.tsx` | Get US/TASE market open/closed status |
-| `/symbols/autocomplete` | GET | `useSymbolAutocomplete.ts` | Symbol search autocomplete |
 
 ### Interactive Brokers
 | Endpoint | Method | Usage Location | Purpose |
@@ -178,7 +177,7 @@ These should be kept for now but monitored:
 
 ## ✅ CLEANUP COMPLETED
 
-All 12 unused endpoints have been successfully removed from the backend:
+All 13 unused endpoints have been successfully removed from the backend:
 
 ### Removed Endpoints ✅
 1. **Legacy Portfolio Endpoints** (5): ✅ ALL REMOVED
@@ -203,10 +202,13 @@ All 12 unused endpoints have been successfully removed from the backend:
    - `POST /portfolio/{id}/accounts/{account}/options-exercise`
    - `GET /portfolio/{id}/accounts/{account}/options-vesting`
 
+6. **Market Data** (1): ✅ REMOVED
+   - `GET /symbols/autocomplete` - Was incorrectly marked as used, but frontend uses local search with `/autocomplete` data instead
+
 **Note**: The `/api/news/seen` endpoint was already commented out in the original code, so no additional removal was needed.
 
 ### Results
-- **Code Reduction**: ~830 lines of unused code removed
+- **Code Reduction**: ~1,000 lines of unused code removed
 - **Maintenance**: Reduced complexity and maintenance overhead
 - **API Surface**: Cleaner, more focused API with only actively used endpoints
 
