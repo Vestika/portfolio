@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useUserProfile } from '../../contexts/UserProfileContext';
 
 interface HamburgerMenuProps {
   accounts: AccountInfo[];
@@ -31,6 +32,7 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
   onSettingsClick,
   onSignOutClick
 }) => {
+  const { profileImageUrl } = useUserProfile();
   return (
     <div className="md:hidden">
       <DropdownMenu>
@@ -85,7 +87,21 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
                 onClick={onProfileClick}
                 className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
-                <User size={16} className="mr-3 text-gray-400" />
+                {profileImageUrl ? (
+                  <div className="w-4 h-4 rounded-full overflow-hidden mr-3 flex-shrink-0">
+                    <img
+                      src={profileImageUrl}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback to User icon if image fails to load
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement?.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                  </div>
+                ) : null}
+                <User size={16} className={`mr-3 text-gray-400 ${profileImageUrl ? 'hidden' : ''}`} />
                 <span className="font-medium">Profile</span>
               </DropdownMenuItem>
               <DropdownMenuItem 

@@ -7,6 +7,7 @@ import {
   ESPPPlan,
   OptionsPlan
 } from './types';
+import { useUserProfile } from './contexts/UserProfileContext';
 import {
   Eye,
   EyeOff,
@@ -93,6 +94,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onSignOutClick,
   globalPrices
 }) => {
+  const { profileImageUrl } = useUserProfile();
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
       ...account,
@@ -717,8 +719,20 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           {/* Person Icon Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-                <User size={20} />
+              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-9 h-9' : 'p-2'}`}>
+                {profileImageUrl ? (
+                  <img
+                    src={profileImageUrl}
+                    alt="Profile"
+                    className="w-full h-full rounded-full object-cover"
+                    onError={(e) => {
+                      // Fallback to User icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <User size={20} className={profileImageUrl ? 'hidden' : ''} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent 

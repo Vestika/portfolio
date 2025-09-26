@@ -4,6 +4,7 @@ Main FastAPI application with endpoints organized in separate modules
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from core import feature_generator
 from core.database import db_manager
@@ -16,6 +17,8 @@ from .endpoints.portfolio import router as portfolio_router
 from .endpoints.tags import router as tags_router
 from .endpoints.ai_chat import router as ai_chat_router
 from .endpoints.user import router as user_router
+from .endpoints.profile import router as profile_router
+from .endpoints.settings import router as settings_router
 from .endpoints.market import router as market_router
 from .endpoints.news import router as news_router
 from .endpoints.ibkr import router as ibkr_router
@@ -120,11 +123,18 @@ app.include_router(portfolio_router)
 app.include_router(tags_router)
 app.include_router(ai_chat_router)
 app.include_router(user_router)
+app.include_router(profile_router)
+app.include_router(settings_router)
 app.include_router(market_router)
 app.include_router(news_router)
 app.include_router(ibkr_router)
 app.include_router(files_router)
 app.include_router(notifications_router)
+
+# Mount static files for uploaded profile images
+import os
+if os.path.exists("uploads"):
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Predefined charts with their aggregation keys - keep this here as it's used by portfolio endpoints
 from utils import filter_security
