@@ -42,9 +42,11 @@ const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
   // If it's already a full URL, return as is
   if (imageUrl.startsWith('http')) return imageUrl;
   
-  // If it's a relative path, prepend the API base URL
-  const apiUrl = import.meta.env.VITE_API_URL;
-  return `${apiUrl}${imageUrl}`;
+  // If it's a relative path, prepend the API base URL from the centralized api instance
+  const apiUrl = api.defaults.baseURL;
+  const fullUrl = `${apiUrl}${imageUrl}`;
+  console.log('🖼️ Full Image URL:', fullUrl);
+  return fullUrl;
 };
 
 export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
