@@ -14,7 +14,7 @@ export default function LoadingScreen() {
             />
           ))}
         </div>
-        <p className="text-gray-400 text-lg font-medium">Loading portfolio...</p>
+        <p className="text-gray-400 text-lg font-medium">Loading Vestika...</p>
       </div>
     </div>
   );

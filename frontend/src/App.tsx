@@ -11,6 +11,7 @@ import {
   NewsViewSkeleton
 } from './components/PortfolioSkeleton';
 import Login from './components/Login';
+import OnboardingFlow from './components/OnboardingFlow';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
 import { ExploreView } from './components/ExploreView';
@@ -57,6 +58,7 @@ const App: React.FC = () => {
   // Local state for UI and navigation
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [hasCheckedPortfolios, setHasCheckedPortfolios] = useState(false);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
@@ -119,9 +121,11 @@ const App: React.FC = () => {
       console.log('🚀 [APP] Initializing app with ALL portfolios data flow');
       await loadAllPortfoliosData();
       setIsInitialized(true);
+      setHasCheckedPortfolios(true);
       console.log('✅ [APP] App initialization completed');
     } catch (err) {
       console.error('❌ [APP] Failed to initialize app:', err);
+      setHasCheckedPortfolios(true); // Still mark as checked even on error
       // Error handling is now managed by the context
     }
   }, [loadAllPortfoliosData]);
@@ -319,8 +323,24 @@ const App: React.FC = () => {
     );
   }
   
+  // Show generic loading screen during initial portfolio check
+  if (isLoading && !hasCheckedPortfolios && !portfolioError) {
+    return <LoadingScreen />;
+  }
+  
   // Handle empty state when no portfolios exist
-  const showEmptyState = availablePortfolios.length === 0;
+  // Only show onboarding if data has loaded AND confirmed no portfolios exist
+  const showEmptyState = !isLoading && !portfolioError && allPortfoliosData && availablePortfolios.length === 0;
+  
+  // Show onboarding flow for new users with no portfolios
+  if (showEmptyState) {
+    return (
+      <OnboardingFlow 
+        user={user} 
+        onPortfolioCreated={handlePortfolioCreated}
+      />
+    );
+  }
   
   // Create mock metadata for empty state to keep UI working
   const mockMetadata: PortfolioMetadata = {
@@ -370,7 +390,7 @@ const App: React.FC = () => {
           className="sticky z-30 bg-gray-900"
           style={{ top: '37px', height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
         >
-          {isLoading || !displayMetadata ? (
+          {(!displayMetadata || (isLoading && hasCheckedPortfolios)) ? (
             <PortfolioHeaderSkeleton />
           ) : (
             <>
@@ -423,9 +443,11 @@ const App: React.FC = () => {
             {/* Main views only show when no subView is active */}
             {!subView && activeView === 'portfolios' && (
               (() => {
-                const shouldShowSkeleton = isLoading || !portfolioMetadata || !portfolioData;
+                // Show skeleton if we have portfolios but data is still loading
+                const shouldShowSkeleton = !portfolioMetadata || !portfolioData || (isLoading && hasCheckedPortfolios);
                 console.log('🎯 [APP] Main content loading decision:', {
                   isLoading,
+                  hasCheckedPortfolios,
                   hasPortfolioMetadata: !!portfolioMetadata,
                   hasPortfolioData: !!portfolioData,
                   shouldShowSkeleton,
@@ -448,19 +470,19 @@ const App: React.FC = () => {
               )
             )}
             {!subView && activeView === 'explore' && (
-              isLoading ? <ViewTransitionSkeleton /> : <ExploreView />
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ExploreView />
             )}
             {!subView && activeView === 'news' && (
-              isLoading ? <NewsViewSkeleton /> : <NewsView />
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <NewsViewSkeleton /> : <NewsView />
             )}
             {!subView && activeView === 'analyst' && (
-              isLoading ? <AIChatViewSkeleton /> : <AIChatView />
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <AIChatViewSkeleton /> : <AIChatView />
             )}
             {!subView && activeView === 'tags' && (
-              isLoading ? <ManageTagsViewSkeleton /> : <ManageTagsView />
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ManageTagsViewSkeleton /> : <ManageTagsView />
             )}
             {!subView && activeView === 'tools' && (
-              isLoading ? <ViewTransitionSkeleton /> : <ToolsView />
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ToolsView />
             )}
           </main>
         </div>
