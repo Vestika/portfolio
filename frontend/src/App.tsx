@@ -410,12 +410,13 @@ const App: React.FC = () => {
           <main className="flex-1">
             {/* Profile and Settings take precedence over main views */}
             {subView === 'profile' && (
-              <ProfileView />
+              <ProfileView onBackToPortfolio={() => setSubView(null)} />
             )}
             {subView === 'settings' && (
               <SettingsView 
                 onToggleVisibility={handleToggleVisibility}
                 isValueVisible={isValueVisible}
+                onBackToPortfolio={() => setSubView(null)}
               />
             )}
             

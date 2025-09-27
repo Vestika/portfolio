@@ -32,7 +32,7 @@ const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
   if (imageUrl.startsWith('http')) return imageUrl;
   
   // If it's a relative path, prepend the API base URL
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const apiUrl = import.meta.env.VITE_API_URL;
   return `${apiUrl}${imageUrl}`;
 };
 
