@@ -22,22 +22,16 @@ import {
   CheckCircle, 
   TrendingUp, 
   Building2, 
-  PiggyBank,
   Target,
   Wallet,
-  CreditCard,
   GraduationCap,
-  Briefcase,
   ChevronRight,
-  Plus,
   X,
-  Info,
-  Upload
+  Info
 } from 'lucide-react';
 import api from '../utils/api';
 import logo from '../assets/logo.png';
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
-import { usePortfolioData } from '../contexts/PortfolioDataContext';
 
 interface OnboardingFlowProps {
   user: User;
@@ -79,7 +73,6 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
   const [ibkrTesting, setIbkrTesting] = useState<boolean>(false);
   const [saveIbkrCredentials, setSaveIbkrCredentials] = useState<boolean>(false);
   const [showIbkrHelp, setShowIbkrHelp] = useState<boolean>(false);
-  const [suppressIbkrHover, setSuppressIbkrHover] = useState<boolean>(false);
 
   const accountTypes: AccountType[] = [
     {
@@ -148,7 +141,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
           units: parseFloat(holding.units)
         }));
 
-      const accountData = {
+      const accountData: any = {
         ...newAccount,
         holdings: validHoldings
       };
@@ -573,7 +566,6 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                       <span>Import holdings automatically</span>
                       <div
                         className="relative group inline-block ml-2"
-                        onMouseLeave={() => setSuppressIbkrHover(false)}
                       >
                         <button
                           type="button"
