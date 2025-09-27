@@ -1300,6 +1300,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                       updateHolding(index, 'symbol', value);
                                       // Don't auto-add rows on onChange - let user finish typing
                                     }}
+                                    onSelection={(value) => {
+                                      console.log(`🎯 [HOLDINGS] onSelection called: index=${index}, value="${value}"`);
+                                      updateHolding(index, 'symbol', value);
+                                      // Add new row when user selects from autocomplete dropdown
+                                      if (index === newAccount.holdings.length - 1) {
+                                        setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index, false), 10);
+                                      }
+                                      setEditingSymbolIndex(null); // Exit edit mode after selection
+                                    }}
                                     className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                                     onKeyDown={(e) => {
                                       if (e.key === 'Escape') {
@@ -1873,6 +1882,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                       console.log(`📝 [EDIT HOLDINGS] onChange called: index=${index}, value="${value}"`);
                                       updateEditHolding(index, 'symbol', value);
                                       // Don't auto-add rows on onChange - let user finish typing
+                                    }}
+                                    onSelection={(value) => {
+                                      console.log(`🎯 [EDIT HOLDINGS] onSelection called: index=${index}, value="${value}"`);
+                                      updateEditHolding(index, 'symbol', value);
+                                      // Add new row when user selects from autocomplete dropdown
+                                      if (index === editAccount.holdings.length - 1) {
+                                        setTimeout(() => addNewRowIfNeeded(editAccount.holdings, index, true), 10);
+                                      }
+                                      setEditEditingSymbolIndex(null); // Exit edit mode after selection
                                     }}
                                     className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                                     onKeyDown={(e) => {
