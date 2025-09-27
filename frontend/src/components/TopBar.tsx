@@ -6,21 +6,37 @@ import {
   Bot,
   Menu,
   X,
-  Newspaper
+  Newspaper,
+  User,
+  Settings,
+  LogOut
 } from 'lucide-react'
 import { useState } from 'react'
 import { AboutModal } from './AboutModal'
+import { NotificationBell } from './NotificationBell'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 export type NavigationView = 'portfolios' | 'explore' | 'news' | 'analyst' | 'tags' | 'tools'
 
 interface TopBarProps {
   activeView: NavigationView
   onViewChange: (view: NavigationView) => void
+  onProfileClick?: () => void
+  onSettingsClick?: () => void
+  onSignOutClick?: () => void
 }
 
-export function TopBar({ activeView, onViewChange }: TopBarProps) {
+export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick }: TopBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
+  const { profileImageUrl } = useUserProfile()
   
   const navigationItems = [
     {
@@ -97,19 +113,129 @@ export function TopBar({ activeView, onViewChange }: TopBarProps) {
           ))}
         </nav>
 
-        {/* Mobile Menu Button */}
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="md:hidden p-1 text-gray-400 hover:text-white transition-colors focus:outline-none focus:ring-0 active:outline-none"
-          aria-label="Toggle mobile menu"
-          style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
-        >
-          {isMobileMenuOpen ? (
-            <X className="h-4 w-4" />
-          ) : (
-            <Menu className="h-4 w-4" />
-          )}
-        </button>
+        {/* Right side - Profile and Notifications */}
+        <div className="flex items-center gap-2">
+          {/* Notification Bell */}
+          <NotificationBell />
+          
+          {/* Profile Icon Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-8 h-8' : 'p-1.5'}`}>
+                {profileImageUrl ? (
+                  <img
+                    src={profileImageUrl}
+                    alt="Profile"
+                    className="w-full h-full rounded-full object-cover"
+                    onError={(e) => {
+                      // Fallback to User icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <User size={18} className={profileImageUrl ? 'hidden' : ''} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
+              sideOffset={8}
+            >
+              <DropdownMenuItem 
+                onClick={onProfileClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
+              >
+                <User size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={onSettingsClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
+              >
+                <Settings size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-700" />
+              <DropdownMenuItem 
+                onClick={onSignOutClick}
+                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
+              >
+                <LogOut size={16} className="mr-3" />
+                <span className="font-medium">Sign Out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Mobile Menu Button and Icons */}
+        <div className="md:hidden flex items-center gap-2">
+          {/* Notification Bell for mobile */}
+          <NotificationBell />
+          
+          {/* Profile Icon for mobile */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-7 h-7' : 'p-1'}`}>
+                {profileImageUrl ? (
+                  <img
+                    src={profileImageUrl}
+                    alt="Profile"
+                    className="w-full h-full rounded-full object-cover"
+                    onError={(e) => {
+                      // Fallback to User icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <User size={16} className={profileImageUrl ? 'hidden' : ''} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
+              sideOffset={8}
+            >
+              <DropdownMenuItem 
+                onClick={onProfileClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
+              >
+                <User size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={onSettingsClick}
+                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
+              >
+                <Settings size={16} className="mr-3 text-gray-400" />
+                <span className="font-medium">Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-700" />
+              <DropdownMenuItem 
+                onClick={onSignOutClick}
+                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
+              >
+                <LogOut size={16} className="mr-3" />
+                <span className="font-medium">Sign Out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-1 text-gray-400 hover:text-white transition-colors focus:outline-none focus:ring-0 active:outline-none"
+            aria-label="Toggle mobile menu"
+            style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
+          >
+            {isMobileMenuOpen ? (
+              <X className="h-4 w-4" />
+            ) : (
+              <Menu className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Navigation Menu */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX, CheckCircle, AlertCircle } from 'lucide-react';
+import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +11,10 @@ import api from '../utils/api';
 interface SettingsViewProps {
   onToggleVisibility: () => void;
   isValueVisible: boolean;
+  onBackToPortfolio: () => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValueVisible }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValueVisible, onBackToPortfolio }) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
@@ -119,16 +120,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
         <div className="absolute inset-0 bg-gradient-to-r from-green-600/20 via-blue-600/20 to-purple-600/20"></div>
         <div className="relative border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-xl">
           <div className="max-w-4xl mx-auto px-6 py-8">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 rounded-full bg-gradient-to-r from-green-500 to-blue-600 shadow-lg">
-                <Settings size={28} className="text-white" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-full bg-gradient-to-r from-green-500 to-blue-600 shadow-lg">
+                  <Settings size={28} className="text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                    Settings
+                  </h1>
+                  <p className="text-gray-400 mt-1">Customize your experience</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                  Settings
-                </h1>
-                <p className="text-gray-400 mt-1">Customize your experience</p>
-              </div>
+              
+              {/* Modern Back to Portfolio Button */}
+              <Button
+                onClick={onBackToPortfolio}
+                variant="outline"
+                className="group flex items-center space-x-2 bg-gray-800/50 border-gray-600/50 text-gray-300 hover:bg-gray-700/70 hover:border-gray-500/70 hover:text-white transition-all duration-200 px-4 py-2 rounded-lg backdrop-blur-sm"
+              >
+                <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform duration-200" />
+                <span className="font-medium">Back to Portfolio</span>
+              </Button>
             </div>
           </div>
         </div>

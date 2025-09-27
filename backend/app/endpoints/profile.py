@@ -13,6 +13,27 @@ from core.database import db_manager
 # Create router for this module
 router = APIRouter(prefix="/profile", tags=["profile"])
 
+# Helper function to clean up all image files for a user
+async def cleanup_user_images(user_id: str, upload_dir: Path, exclude_path: Path = None) -> list[str]:
+    """
+    Clean up all image files for a user, excluding the specified path if provided.
+    Returns a list of deleted file paths.
+    """
+    deleted_files = []
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg']
+    
+    for ext in image_extensions:
+        file_path = upload_dir / f"{user_id}{ext}"
+        if file_path.exists() and (exclude_path is None or file_path != exclude_path):
+            file_path.unlink()
+            deleted_files.append(str(file_path))
+            print(f"🗑️ [PROFILE IMAGE] Deleted old image: {file_path}")
+    
+    if deleted_files:
+        print(f"🗑️ [PROFILE IMAGE] Cleaned up {len(deleted_files)} old image(s) for user {user_id}")
+    
+    return deleted_files
+
 # Request/Response models
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
@@ -118,9 +139,16 @@ async def upload_profile_image(
     Upload a profile image for the user.
     """
     try:
-        # Validate file type
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
+        # Validate file type - support common image formats
+        allowed_types = [
+            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 
+            'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml'
+        ]
+        if not file.content_type or file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File must be an image. Supported formats: JPEG, PNG, GIF, WebP, BMP, TIFF, SVG. Got: {file.content_type}"
+            )
         
         # Validate file size (5MB limit)
         file_size = 0
@@ -139,13 +167,8 @@ async def upload_profile_image(
         filename = f"{user.id}{file_extension}"
         file_path = upload_dir / filename
         
-        # Check if user already has an image and delete it
-        for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-            old_file_path = upload_dir / f"{user.id}{ext}"
-            if old_file_path.exists() and old_file_path != file_path:
-                old_file_path.unlink()
-                print(f"🗑️ [PROFILE IMAGE] Deleted old image: {old_file_path}")
-                break
+        # Check if user already has an image and delete ALL old formats
+        await cleanup_user_images(user.id, upload_dir, file_path)
         
         # Save file
         async with aiofiles.open(file_path, 'wb') as f:
@@ -189,14 +212,11 @@ async def delete_profile_image(user=Depends(get_current_user)) -> dict[str, str]
             raise HTTPException(status_code=404, detail="No profile image found")
         
         # Delete file from filesystem using user ID
-        # Since we know the filename format, we can construct it directly
-        # Try common image extensions
         upload_dir = Path("uploads/profile_images")
-        for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-            file_path = upload_dir / f"{user.id}{ext}"
-            if file_path.exists():
-                file_path.unlink()
-                break
+        deleted_files = await cleanup_user_images(user.id, upload_dir)
+        
+        if not deleted_files:
+            print(f"⚠️ [PROFILE IMAGE] No image files found to delete for user {user.id}")
         
         # Remove image URL from profile
         await collection.update_one(

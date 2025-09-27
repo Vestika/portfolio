@@ -2,6 +2,16 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from './AuthContext';
 import api from '../utils/api';
 
+/**
+ * UserProfileContext provides user profile data with authentication safeguards.
+ * 
+ * Authentication Flow:
+ * 1. Waits for AuthContext to finish loading
+ * 2. Verifies user is authenticated and has valid UID
+ * 3. Only then makes API calls to /profile/ endpoint
+ * 4. Handles authentication errors gracefully
+ */
+
 interface UserProfile {
   user_id: string;
   display_name?: string;
@@ -20,6 +30,7 @@ interface UserProfileContextType {
   refreshProfile: () => Promise<void>;
   profileImageUrl: string | undefined;
   displayName: string;
+  isAuthenticated: boolean;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -32,18 +43,34 @@ const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
   if (imageUrl.startsWith('http')) return imageUrl;
   
   // If it's a relative path, prepend the API base URL
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const apiUrl = import.meta.env.VITE_API_URL;
   return `${apiUrl}${imageUrl}`;
 };
 
 export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadProfile = async () => {
+    // Wait for auth to finish loading before making any decisions
+    if (authLoading) {
+      console.log('🔄 [UserProfileContext] Auth still loading, waiting...');
+      return;
+    }
+
+    // Check if user is authenticated
     if (!user) {
+      console.log('🔄 [UserProfileContext] No authenticated user, skipping profile load');
+      setProfile(null);
+      setIsLoading(false);
+      return;
+    }
+
+    // Additional check to ensure user has valid authentication
+    if (!user.uid) {
+      console.warn('🔄 [UserProfileContext] User exists but has no UID, skipping profile load');
       setProfile(null);
       setIsLoading(false);
       return;
@@ -52,12 +79,25 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     try {
       setIsLoading(true);
       setError(null);
-      const response = await api.get('/profile');
+      console.log('🔄 [UserProfileContext] Loading profile for authenticated user:', user.uid);
+      
+      const response = await api.get('/profile/');
       setProfile(response.data);
-      console.log('🔄 [UserProfileContext] Profile loaded:', response.data);
+      console.log('🔄 [UserProfileContext] Profile loaded successfully:', response.data);
     } catch (err: any) {
       console.error('Error loading user profile:', err);
-      setError(err.response?.data?.detail || 'Failed to load profile');
+      
+      // Handle specific error cases
+      if (err.response?.status === 401) {
+        setError('Authentication required. Please log in again.');
+        console.warn('🔄 [UserProfileContext] Unauthorized access - user may need to re-authenticate');
+      } else if (err.response?.status === 403) {
+        setError('Access denied. You do not have permission to view this profile.');
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again later.');
+      } else {
+        setError(err.response?.data?.detail || 'Failed to load profile');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -72,20 +112,46 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
   };
 
   const refreshProfile = async () => {
-    console.log('🔄 [UserProfileContext] Refreshing profile...');
+    // Wait for auth to finish loading
+    if (authLoading) {
+      console.log('🔄 [UserProfileContext] Cannot refresh profile - auth still loading');
+      setError('Authentication still loading');
+      return;
+    }
+
+    // Check authentication before attempting to refresh
+    if (!user || !user.uid) {
+      console.log('🔄 [UserProfileContext] Cannot refresh profile - user not authenticated');
+      setError('Authentication required to refresh profile');
+      return;
+    }
+    
+    console.log('🔄 [UserProfileContext] Refreshing profile for authenticated user...');
     await loadProfile();
   };
 
   useEffect(() => {
     loadProfile();
-  }, [user]);
+  }, [user, authLoading]);
 
   const profileImageUrl = getFullImageUrl(profile?.profile_image_url);
+  
+  // Check if user is properly authenticated
+  const isAuthenticated = !!(user && user.uid);
   
   // Debug: Log when profileImageUrl changes
   useEffect(() => {
     console.log('🔄 [UserProfileContext] profileImageUrl updated:', profileImageUrl);
   }, [profileImageUrl]);
+
+  // Debug: Log authentication status
+  useEffect(() => {
+    console.log('🔄 [UserProfileContext] Authentication status:', { 
+      isAuthenticated, 
+      hasUser: !!user, 
+      hasUid: !!(user?.uid) 
+    });
+  }, [isAuthenticated, user]);
 
   const value: UserProfileContextType = {
     profile,
@@ -94,7 +160,8 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     updateProfile,
     refreshProfile,
     profileImageUrl,
-    displayName: profile?.display_name || user?.displayName || 'User'
+    displayName: profile?.display_name || user?.displayName || 'User',
+    isAuthenticated
   };
 
   return (

@@ -358,7 +358,10 @@ const App: React.FC = () => {
         {/* Top Bar Navigation */}
         <TopBar 
           activeView={activeView} 
-          onViewChange={handleViewChange} 
+          onViewChange={handleViewChange}
+          onProfileClick={handleProfileClick}
+          onSettingsClick={handleSettingsClick}
+          onSignOutClick={handleSignOutClick}
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
@@ -383,9 +386,6 @@ const App: React.FC = () => {
                 onPortfolioDeleted={handlePortfolioDeleted}
                 onAccountDeleted={handleAccountDeleted}
                 onDefaultPortfolioSet={handleDefaultPortfolioSet}
-                onProfileClick={handleProfileClick}
-                onSettingsClick={handleSettingsClick}
-                onSignOutClick={handleSignOutClick}
                 globalPrices={allPortfoliosData?.global_current_prices || {}}
               />
               <PortfolioSummary
@@ -410,12 +410,13 @@ const App: React.FC = () => {
           <main className="flex-1">
             {/* Profile and Settings take precedence over main views */}
             {subView === 'profile' && (
-              <ProfileView />
+              <ProfileView onBackToPortfolio={() => setSubView(null)} />
             )}
             {subView === 'settings' && (
               <SettingsView 
                 onToggleVisibility={handleToggleVisibility}
                 isValueVisible={isValueVisible}
+                onBackToPortfolio={() => setSubView(null)}
               />
             )}
             

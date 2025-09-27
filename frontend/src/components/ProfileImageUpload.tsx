@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, X, User, AlertCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,25 +49,44 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
   };
 
   const handleFile = (file: File) => {
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
+    // Validate file type - support common image formats
+    const allowedTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 
+      'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml'
+    ];
+    
+    if (!allowedTypes.includes(file.type)) {
+      console.error('❌ [PROFILE IMAGE] Invalid file type:', file.type);
       return;
     }
 
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
+      console.error('❌ [PROFILE IMAGE] File too large:', file.size, 'bytes');
       return;
     }
 
-    // Create preview URL
+    // Clean up previous preview URL to prevent memory leaks
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      console.log('🧹 [PROFILE IMAGE] Cleaned up previous preview URL');
+    }
+
+    // Create new preview URL
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
+    console.log('🖼️ [PROFILE IMAGE] Created new preview URL for:', file.name);
 
     // Notify parent component about the selected file
     onImageSelect(file);
   };
 
   const handleRemoveImage = () => {
+    // Clean up preview URL to prevent memory leaks
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      console.log('🧹 [PROFILE IMAGE] Cleaned up preview URL on remove');
+    }
     setPreviewUrl(null);
     onImageDelete();
   };
@@ -75,6 +94,16 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
   const handleClick = () => {
     fileInputRef.current?.click();
   };
+
+  // Cleanup effect to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        console.log('🧹 [PROFILE IMAGE] Cleaned up preview URL on unmount');
+      }
+    };
+  }, [previewUrl]);
 
   const displayImage = previewUrl || currentImageUrl;
 
@@ -129,7 +158,7 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp,image/tiff,image/svg+xml"
               onChange={handleFileInput}
               className="hidden"
             />
@@ -148,7 +177,7 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
                   {dragActive ? 'Drop your image here' : 'Drag & drop an image here, or click to select'}
                 </p>
                 <p className="text-gray-500 text-xs mt-1">
-                  PNG, JPG, GIF up to 5MB
+                  JPEG, PNG, GIF, WebP, BMP, TIFF, SVG up to 5MB
                 </p>
               </div>
               

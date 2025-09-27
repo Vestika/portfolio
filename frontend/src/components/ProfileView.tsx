@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Globe, Save, Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Globe, Save, Mail, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,10 +22,10 @@ const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
 };
 
 interface ProfileViewProps {
-  // No props needed since we removed the back button
+  onBackToPortfolio: () => void;
 }
 
-const ProfileView: React.FC<ProfileViewProps> = () => {
+const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
   const { user } = useAuth();
   const { refreshProfile } = useUserProfile();
   const [isLoading, setIsLoading] = useState(false);
@@ -64,7 +64,7 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     const loadProfile = async () => {
       try {
         setIsLoadingProfile(true);
-        const response = await api.get('/profile');
+        const response = await api.get('/profile/');
         setFormData({
           displayName: response.data.display_name || '',
           email: response.data.email || user?.email || '',
@@ -167,13 +167,30 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
     setImageError('');
   };
 
-  const handleImageDelete = () => {
-    setSelectedImageFile(null);
-    setFormData(prev => ({
-      ...prev,
-      profileImageUrl: ''
-    }));
-    setImageError('');
+  const handleImageDelete = async () => {
+    try {
+      // If there's a current image, delete it from the server
+      if (formData.profileImageUrl) {
+        await api.delete('/profile/image');
+        console.log('🗑️ [PROFILE IMAGE] Deleted image from server');
+      }
+      
+      // Clear local state
+      setSelectedImageFile(null);
+      setFormData(prev => ({
+        ...prev,
+        profileImageUrl: ''
+      }));
+      setImageError('');
+      
+      // Refresh the global profile data
+      refreshProfile();
+      
+      console.log('🧹 [PROFILE IMAGE] Cleared local image state');
+    } catch (error: any) {
+      console.error('Error deleting profile image:', error);
+      setImageError(error.response?.data?.detail || 'Failed to delete image');
+    }
   };
 
   const formatTimezone = (tz: string) => {
@@ -197,16 +214,28 @@ const ProfileView: React.FC<ProfileViewProps> = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-blue-600/20"></div>
         <div className="relative border-b border-gray-700/50 bg-gray-900/80 backdrop-blur-xl">
           <div className="max-w-4xl mx-auto px-6 py-8">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg">
-                <User size={28} className="text-white" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg">
+                  <User size={28} className="text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                    Profile Settings
+                  </h1>
+                  <p className="text-gray-400 mt-1">Manage your personal information</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                  Profile Settings
-                </h1>
-                <p className="text-gray-400 mt-1">Manage your personal information</p>
-              </div>
+              
+              {/* Modern Back to Portfolio Button */}
+              <Button
+                onClick={onBackToPortfolio}
+                variant="outline"
+                className="group flex items-center space-x-2 bg-gray-800/50 border-gray-600/50 text-gray-300 hover:bg-gray-700/70 hover:border-gray-500/70 hover:text-white transition-all duration-200 px-4 py-2 rounded-lg backdrop-blur-sm"
+              >
+                <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform duration-200" />
+                <span className="font-medium">Back to Portfolio</span>
+              </Button>
             </div>
           </div>
         </div>
