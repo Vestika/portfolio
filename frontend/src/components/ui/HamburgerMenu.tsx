@@ -1,15 +1,13 @@
 import React from 'react';
-import { Menu, CheckCircle2, Circle, Plus, Eye, EyeOff, User, Settings, LogOut } from 'lucide-react';
+import { Menu, CheckCircle2, Circle, Plus, Eye, EyeOff } from 'lucide-react';
 import { AccountInfo } from '@/types';
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUserProfile } from '../../contexts/UserProfileContext';
 
 interface HamburgerMenuProps {
   accounts: AccountInfo[];
@@ -17,9 +15,6 @@ interface HamburgerMenuProps {
   isValueVisible: boolean;
   toggleValueVisibility: () => void;
   setShowAddAccountModal: (show: boolean) => void;
-  onProfileClick: () => void;
-  onSettingsClick: () => void;
-  onSignOutClick: () => Promise<void>;
 }
 
 const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
@@ -27,12 +22,8 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
   toggleAccountSelection,
   isValueVisible,
   toggleValueVisibility,
-  setShowAddAccountModal,
-  onProfileClick,
-  onSettingsClick,
-  onSignOutClick
+  setShowAddAccountModal
 }) => {
-  const { profileImageUrl } = useUserProfile();
   return (
     <div className="md:hidden">
       <DropdownMenu>
@@ -80,45 +71,6 @@ const HamburgerMenu: React.FC<HamburgerMenuProps> = ({
               </Button>
             </div>
             
-            <DropdownMenuSeparator className="bg-gray-700 my-3" />
-            
-            <div className="space-y-1">
-              <DropdownMenuItem 
-                onClick={onProfileClick}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                {profileImageUrl ? (
-                  <div className="w-4 h-4 rounded-full overflow-hidden mr-3 flex-shrink-0">
-                    <img
-                      src={profileImageUrl}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Fallback to User icon if image fails to load
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.parentElement?.nextElementSibling?.classList.remove('hidden');
-                      }}
-                    />
-                  </div>
-                ) : null}
-                <User size={16} className={`mr-3 text-gray-400 ${profileImageUrl ? 'hidden' : ''}`} />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={onSettingsClick}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </div>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>

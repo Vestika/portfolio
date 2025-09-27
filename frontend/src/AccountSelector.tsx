@@ -7,7 +7,6 @@ import {
   ESPPPlan,
   OptionsPlan
 } from './types';
-import { useUserProfile } from './contexts/UserProfileContext';
 import {
   Eye,
   EyeOff,
@@ -17,14 +16,9 @@ import {
   Trash2,
   X,
   Edit,
-  User,
-  
-  Settings,
-  LogOut,
   Info
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
-import { NotificationBell } from './components/NotificationBell';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,13 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+;
 import HamburgerMenu from "@/components/ui/HamburgerMenu";
 
 
@@ -73,9 +61,6 @@ interface AccountSelectorProps {
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onAccountDeleted: () => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
-  onProfileClick: () => void;
-  onSettingsClick: () => void;
-  onSignOutClick: () => Promise<void>;
   globalPrices: Record<string, any>;
 }
 
@@ -206,12 +191,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onPortfolioDeleted,
   onAccountDeleted,
   onDefaultPortfolioSet,
-  onProfileClick,
-  onSettingsClick,
-  onSignOutClick,
   globalPrices
 }) => {
-  const { profileImageUrl } = useUserProfile();
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
       ...account,
@@ -778,9 +759,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             isValueVisible={isValueVisible}
             toggleValueVisibility={toggleValueVisibility}
             setShowAddAccountModal={setShowAddAccountModal}
-            onProfileClick={onProfileClick}
-            onSettingsClick={onSettingsClick}
-            onSignOutClick={onSignOutClick}
           />
         </div>
 
@@ -882,57 +860,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
 
-          {/* Notification Bell */}
-          <NotificationBell />
-
-          {/* Person Icon Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-9 h-9' : 'p-2'}`}>
-                {profileImageUrl ? (
-                  <img
-                    src={profileImageUrl}
-                    alt="Profile"
-                    className="w-full h-full rounded-full object-cover"
-                    onError={(e) => {
-                      // Fallback to User icon if image fails to load
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                ) : null}
-                <User size={20} className={profileImageUrl ? 'hidden' : ''} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
-              sideOffset={8}
-            >
-              <DropdownMenuItem 
-                onClick={onProfileClick}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <User size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={onSettingsClick}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem 
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
       

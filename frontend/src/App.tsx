@@ -358,7 +358,10 @@ const App: React.FC = () => {
         {/* Top Bar Navigation */}
         <TopBar 
           activeView={activeView} 
-          onViewChange={handleViewChange} 
+          onViewChange={handleViewChange}
+          onProfileClick={handleProfileClick}
+          onSettingsClick={handleSettingsClick}
+          onSignOutClick={handleSignOutClick}
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
@@ -383,9 +386,6 @@ const App: React.FC = () => {
                 onPortfolioDeleted={handlePortfolioDeleted}
                 onAccountDeleted={handleAccountDeleted}
                 onDefaultPortfolioSet={handleDefaultPortfolioSet}
-                onProfileClick={handleProfileClick}
-                onSettingsClick={handleSettingsClick}
-                onSignOutClick={handleSignOutClick}
                 globalPrices={allPortfoliosData?.global_current_prices || {}}
               />
               <PortfolioSummary
