@@ -66,7 +66,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
     const loadProfile = async () => {
       try {
         setIsLoadingProfile(true);
-        const response = await api.get('/profile');
+        const response = await api.get('/profile/');
         setFormData({
           displayName: response.data.display_name || '',
           email: response.data.email || user?.email || '',
