@@ -113,8 +113,8 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
           ))}
         </nav>
 
-        {/* Right side - Profile and Notifications */}
-        <div className="flex items-center gap-2">
+        {/* Right side - Profile and Notifications (Desktop only) */}
+        <div className="hidden md:flex items-center gap-2">
           {/* Notification Bell */}
           <NotificationBell />
           
