@@ -31,3 +31,7 @@ Inputs: portfolio selection, scope (whole portfolio or selected accounts), years
 - frontend/src/components/ToolsView.tsx - Integrates the tool in the Tools section ✅
 
 
+
+
+
+

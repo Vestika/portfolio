@@ -20,6 +20,7 @@ from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
 from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
+from services.closing_price.price_manager import PriceManager
 
 logger = logging.getLogger(__name__)
 
@@ -1089,6 +1090,145 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         raise
     except Exception as e:
         print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# NEW: Minimal raw portfolios endpoint for frontend-side calculation
+@router.get("/portfolios/raw")
+async def get_raw_portfolios(user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return raw portfolio documents for the authenticated user with minimal shaping:
+    - portfolios: Record[portfolio_id, { portfolio_metadata, accounts }]
+    - global_securities: flattened securities with minimal fields
+    This avoids prices/historical/logos to let the frontend calculate.
+    """
+    try:
+        collection = db_manager.get_collection("portfolios")
+        docs = await collection.find({"user_id": user.id}).to_list(None)
+
+        portfolios: dict[str, Any] = {}
+        global_securities: dict[str, Any] = {}
+
+        for doc in docs or []:
+            pid = str(doc.get("_id"))
+            portfolio_name = doc.get("portfolio_name") or doc.get("config", {}).get("user_name", pid)
+            base_currency = (doc.get("config", {}).get("base_currency") or "USD")
+            user_name = doc.get("config", {}).get("user_name") or "User"
+
+            # Accounts: pass through holdings minimally
+            accounts = []
+            for acc in (doc.get("accounts") or []):
+                acc_name = acc.get("name") or acc.get("account_name") or ""
+                props = acc.get("properties") or acc.get("account_properties") or {}
+                owners = props.get("owners") or ["me"]
+                acc_type = props.get("type") or "bank-account"
+                holdings = [
+                    {
+                        "symbol": h.get("symbol"),
+                        "units": h.get("units", 0),
+                        "original_currency": None,
+                        "security_type": None,
+                        "security_name": h.get("symbol"),
+                    }
+                    for h in (acc.get("holdings") or [])
+                    if h.get("symbol")
+                ]
+
+                accounts.append({
+                    "account_name": acc_name,
+                    "account_type": acc_type,
+                    "owners": owners,
+                    "holdings": holdings,
+                    "rsu_plans": acc.get("rsu_plans", []),
+                    "espp_plans": acc.get("espp_plans", []),
+                    "options_plans": acc.get("options_plans", []),
+                    "rsu_vesting_data": [],
+                    "account_cash": {},
+                    "account_properties": props,
+                })
+
+            # securities
+            for sym, sec in (doc.get("securities") or {}).items():
+                global_securities[sym] = {
+                    "symbol": sym,
+                    "name": sec.get("name", sym),
+                    "security_type": (sec.get("type") or sec.get("security_type") or "stock"),
+                    "currency": sec.get("currency", base_currency),
+                }
+
+            portfolios[pid] = {
+                "portfolio_metadata": {
+                    "portfolio_id": pid,
+                    "portfolio_name": portfolio_name,
+                    "base_currency": base_currency,
+                    "user_name": user_name,
+                },
+                "accounts": accounts,
+                "computation_timestamp": datetime.utcnow().isoformat(),
+            }
+
+        # default portfolio id
+        default_portfolio_id = None
+        try:
+            user_prefs_collection = db_manager.get_collection("user_preferences")
+            user_prefs_doc = await user_prefs_collection.find_one({"user_id": user.id})
+            default_portfolio_id = user_prefs_doc.get("default_portfolio_id") if user_prefs_doc else None
+        except Exception:
+            default_portfolio_id = None
+
+        return {
+            "portfolios": portfolios,
+            "global_securities": global_securities,
+            "user_preferences": {
+                "preferred_currency": "USD",
+                "default_portfolio_id": default_portfolio_id,
+            },
+            "computation_timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# NEW: Minimal batch prices endpoint to support frontend calculation
+class BatchPricesRequest(BaseModel):
+    symbols: list[str]
+    base_currency: Optional[str] = "USD"
+    fresh: Optional[bool] = False
+
+
+@router.post("/prices/batch")
+async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return latest prices for a list of symbols. Also attempts to include original
+    currency if known from `symbols` collection; falls back to USD.
+    Response shape: { prices: { [symbol]: { price, currency } } }
+    """
+    try:
+        symbols = [s.upper() for s in (req.symbols or []) if isinstance(s, str) and s]
+        manager = PriceManager()
+        results = await manager.get_prices(symbols, fresh=bool(req.fresh))
+
+        # Resolve currencies from symbols collection where possible
+        currency_by_symbol: dict[str, str] = {}
+        try:
+            sym_col = db_manager.get_collection("symbols")
+            cursor = sym_col.find({"symbol": {"$in": symbols}}, {"symbol": 1, "currency": 1})
+            async for row in cursor:
+                currency_by_symbol[row.get("symbol")] = row.get("currency") or "USD"
+        except Exception:
+            pass
+
+        prices: dict[str, Any] = {}
+        for pr in results:
+            sym = pr.symbol
+            prices[sym] = {
+                "price": pr.price,
+                "currency": currency_by_symbol.get(sym, pr.currency or "USD"),
+                "last_updated": (pr.fetched_at.isoformat() if hasattr(pr, "fetched_at") and pr.fetched_at else datetime.utcnow().isoformat())
+            }
+
+        return {"prices": prices, "base_currency": req.base_currency or "USD", "count": len(prices)}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/autocomplete")
