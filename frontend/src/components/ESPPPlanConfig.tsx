@@ -62,9 +62,9 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
               {plan.symbol || 'New ESPP Plan'}
             </Label>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {plan.units > 0 ? `${plan.units} units` : 'No units'}
-          </div>
+            <div className="text-xs text-muted-foreground">
+              {plan.base_salary > 0 ? `${plan.base_salary.toLocaleString()} ILS` : 'No salary set'}
+            </div>
         </div>
       )}
 
@@ -82,15 +82,15 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="units">Units</Label>
+            <Label htmlFor="base-salary">Base Salary (ILS)</Label>
             <Input
-              id="units"
+              id="base-salary"
               type="number"
               min="0"
-              step="1"
-              value={plan.units}
-              onChange={(e) => updatePlan({ units: parseInt(e.target.value) || 0 })}
-              placeholder="e.g., 1000"
+              step="1000"
+              value={plan.base_salary}
+              onChange={(e) => updatePlan({ base_salary: parseFloat(e.target.value) || 0 })}
+              placeholder="e.g., 35000"
             />
           </div>
 
@@ -123,7 +123,7 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="base-stock-price">Base Stock Price</Label>
+            <Label htmlFor="base-stock-price">Base Stock Price (USD)</Label>
             <Input
               id="base-stock-price"
               type="number"
@@ -131,7 +131,33 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
               step="0.01"
               value={plan.base_stock_price}
               onChange={(e) => updatePlan({ base_stock_price: parseFloat(e.target.value) || 0 })}
-              placeholder="e.g., 100.00"
+              placeholder="e.g., 180.00"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="current-stock-price">Current Stock Price (USD)</Label>
+            <Input
+              id="current-stock-price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={plan.current_stock_price || ''}
+              onChange={(e) => updatePlan({ current_stock_price: parseFloat(e.target.value) || undefined })}
+              placeholder="e.g., 200.00"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="exchange-rate">USD to ILS Exchange Rate</Label>
+            <Input
+              id="exchange-rate"
+              type="number"
+              min="0"
+              step="0.01"
+              value={plan.exchange_rate || ''}
+              onChange={(e) => updatePlan({ exchange_rate: parseFloat(e.target.value) || undefined })}
+              placeholder="e.g., 3.65"
             />
           </div>
 
