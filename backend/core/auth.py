@@ -4,11 +4,7 @@ Authentication functionality using Firebase and MongoDB
 from fastapi import Depends, HTTPException, Request
 from pymongo.asynchronous.database import AsyncDatabase
 from models.user_model import User
-from core.database import db_manager
-
-async def get_db() -> AsyncDatabase:
-    """Get database instance"""
-    return db_manager.database
+from core.database import get_db
 
 async def get_current_user(
     request: Request,

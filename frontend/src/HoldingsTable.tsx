@@ -192,7 +192,8 @@ const MiniChart: React.FC<{
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+        // For forex symbols (FX:) and legacy USD, show base currency
+        const displayCurrency = symbol === 'USD' || symbol.startsWith('FX:') ? baseCurrency : currency;
         const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
         const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
 
@@ -298,7 +299,8 @@ const MiniChart: React.FC<{
         
         if (point) {
           const date = new Date(point.date);
-          const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+          // For forex symbols (FX:) and legacy USD, show base currency
+          const displayCurrency = symbol === 'USD' || symbol.startsWith('FX:') ? baseCurrency : currency;
           
           // Calculate daily change if not the first point
           let dailyChange = 0;
@@ -448,6 +450,32 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     key: keyof SecurityHolding | 'percent_change';
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
+
+  // Clean symbol display function (same logic as AccountSelector)
+  const getDisplaySymbol = (symbol: string) => {
+    let displaySymbol = symbol;
+    
+    // Remove exchange prefixes for clean display
+    if (displaySymbol.toUpperCase().startsWith('NYSE:')) {
+      return displaySymbol.substring(5); // Remove "NYSE:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('NASDAQ:')) {
+      return displaySymbol.substring(7); // Remove "NASDAQ:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('TASE:')) {
+      return displaySymbol.substring(5); // Remove "TASE:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('FX:')) {
+      return displaySymbol.substring(3); // Remove "FX:" for clean currency display
+    }
+    
+    // For crypto symbols, remove -USD suffix for cleaner display
+    if (displaySymbol.endsWith('-USD')) {
+      return displaySymbol.replace('-USD', '');
+    }
+    
+    return displaySymbol;
+  };
 
   // Get real earnings data from context
   const { getEarningsBySymbol, getPercentChange } = usePortfolioData();
@@ -1028,7 +1056,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           }
                           return null;
                         })()}
-                        <span>{holding.symbol}</span>
+                        <span>{getDisplaySymbol(holding.symbol)}</span>
                         {holding.account_breakdown && holding.account_breakdown.length > 1 && (
                           <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
                             {holding.account_breakdown.length}
@@ -1042,7 +1070,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
-                      <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                      <span className="text-xs text-gray-400 ml-1">
+                        {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
+                      </span>
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
                       {(() => {
@@ -1176,18 +1206,27 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       )}
                     </td>
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {/* Show 7-day trend for non-base currency holdings, and USD/ILS exchange rate trend for USD holdings */}
-                      {(holding.symbol !== dataWithRealEarnings.base_currency || 
-                        (holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS')) ? (
-                        <MiniChart 
-                          data={holding.historical_prices} 
-                          symbol={holding.symbol} 
-                          currency={holding.original_currency} 
-                          baseCurrency={dataWithRealEarnings.base_currency}
-                          onTooltipShow={setChartTooltipData}
-                          onTooltipHide={() => setChartTooltipData(null)}
-                        />
-                      ) : null}
+                      {/* Show 7-day trend for currencies, crypto, and non-base currency holdings */}
+                      {(() => {
+                        const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                        const isCurrency = holding.symbol.startsWith('FX:');
+                        const isCrypto = holding.symbol.endsWith('-USD');
+                        const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                        
+                        // Show chart for: currencies, crypto, non-base currencies, or legacy USD
+                        const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;
+                        
+                        return shouldShowChart ? (
+                          <MiniChart 
+                            data={holding.historical_prices} 
+                            symbol={holding.symbol} 
+                            currency={holding.original_currency} 
+                            baseCurrency={dataWithRealEarnings.base_currency}
+                            onTooltipShow={setChartTooltipData}
+                            onTooltipHide={() => setChartTooltipData(null)}
+                          />
+                        ) : null;
+                      })()}
                     </td>
                   </tr>
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (

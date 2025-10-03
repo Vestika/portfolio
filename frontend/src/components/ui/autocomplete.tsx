@@ -146,35 +146,44 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
-    console.log(`🎯 [AUTOCOMPLETE] selectSuggestion called:`, { symbol: suggestion.symbol, name: suggestion.name });
+    console.log(`🎯 [AUTOCOMPLETE] selectSuggestion called:`, { symbol: suggestion.symbol, name: suggestion.name, type: suggestion.symbol_type });
     
-    // Clean up the symbol before setting it
-    let cleanSymbol = suggestion.symbol;
+    // Clean up the symbol based on type - preserve full format for currencies and crypto
+    let finalSymbol = suggestion.symbol;
     
-    // For NYSE symbols, remove "NYSE:" prefix
-    if (cleanSymbol.toUpperCase().startsWith('NYSE:')) {
-      cleanSymbol = cleanSymbol.substring(5); // Remove "NYSE:" (5 chars)
+    // For currencies and crypto, keep the full symbol to avoid conflicts
+    if (suggestion.symbol_type === 'currency' || suggestion.symbol_type === 'crypto') {
+      // Keep FX:USD and BTC-USD as-is to avoid conflicts
+      finalSymbol = suggestion.symbol.toUpperCase();
+    }
+    // For stock symbols, remove exchange prefixes as before
+    else {
+      // For NYSE symbols, remove "NYSE:" prefix
+      if (finalSymbol.toUpperCase().startsWith('NYSE:')) {
+        finalSymbol = finalSymbol.substring(5); // Remove "NYSE:" (5 chars)
+      }
+      
+      // For NASDAQ symbols, remove "NASDAQ:" prefix  
+      if (finalSymbol.toUpperCase().startsWith('NASDAQ:')) {
+        finalSymbol = finalSymbol.substring(7); // Remove "NASDAQ:" (7 chars)
+      }
+      
+      // For TASE symbols, remove "TASE:" prefix first, then extract number part
+      if (finalSymbol.toUpperCase().startsWith('TASE:')) {
+        finalSymbol = finalSymbol.substring(5); // Remove "TASE:" (5 chars)
+      }
+      
+      // For TASE symbols, extract only the number part
+      if (suggestion.symbol_type === 'tase' && finalSymbol.includes('.')) {
+        const parts = finalSymbol.split('.');
+        finalSymbol = parts[0]; // Take only the number part before the dot
+      }
+      
+      // Always normalize to uppercase for consistency
+      finalSymbol = finalSymbol.toUpperCase();
     }
     
-    // For NASDAQ symbols, remove "NASDAQ:" prefix  
-    if (cleanSymbol.toUpperCase().startsWith('NASDAQ:')) {
-      cleanSymbol = cleanSymbol.substring(7); // Remove "NASDAQ:" (7 chars)
-    }
-    
-    // For TASE symbols, remove "TASE:" prefix first, then extract number part
-    if (cleanSymbol.toUpperCase().startsWith('TASE:')) {
-      cleanSymbol = cleanSymbol.substring(5); // Remove "TASE:" (5 chars)
-    }
-    
-    // For TASE symbols, extract only the number part
-    if (suggestion.symbol_type === 'tase' && cleanSymbol.includes('.')) {
-      const parts = cleanSymbol.split('.');
-      cleanSymbol = parts[0]; // Take only the number part before the dot
-    }
-    
-    // Always normalize to uppercase for consistency
-    const finalSymbol = cleanSymbol.toUpperCase();
-    console.log(`🎯 [AUTOCOMPLETE] Setting final symbol: "${finalSymbol}"`);
+    console.log(`🎯 [AUTOCOMPLETE] Setting final symbol: "${finalSymbol}" (type: ${suggestion.symbol_type})`);
     
     onChange(finalSymbol);
     
@@ -236,6 +245,8 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     }
     
     let symbol = suggestion.symbol;
+    
+    // Remove exchange prefixes
     if (symbol.toUpperCase().startsWith('NYSE:')) {
       return symbol.substring(5); // Remove "NYSE:"
     }
@@ -245,6 +256,15 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     if (symbol.toUpperCase().startsWith('TASE:')) {
       return symbol.substring(5); // Remove "TASE:"
     }
+    if (symbol.toUpperCase().startsWith('FX:')) {
+      return symbol.substring(3); // Remove "FX:" for clean currency display
+    }
+    
+    // For crypto symbols, remove -USD suffix for cleaner display
+    if (suggestion.symbol_type === 'crypto' && symbol.endsWith('-USD')) {
+      return symbol.replace('-USD', '');
+    }
+    
     return symbol;
   };
 

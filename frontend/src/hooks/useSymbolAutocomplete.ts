@@ -66,8 +66,14 @@ export const useSymbolAutocomplete = () => {
     
     // Pre-sort autocomplete data to prioritize likely matches
     const sortedData = [...autocompleteData].sort((a, b) => {
-      const aBaseSymbol = a.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
-      const bBaseSymbol = b.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
+      const aBaseSymbol = a.symbol.toLowerCase()
+        .replace(/^(nyse:|nasdaq:|tase:|fx:)/, '')
+        .replace(/\.ta$/, '')
+        .replace(/-usd$/, '');
+      const bBaseSymbol = b.symbol.toLowerCase()
+        .replace(/^(nyse:|nasdaq:|tase:|fx:)/, '')
+        .replace(/\.ta$/, '')
+        .replace(/-usd$/, '');
       
       // For numeric queries, prioritize TASE symbols
       if (isNumeric) {
@@ -110,8 +116,11 @@ export const useSymbolAutocomplete = () => {
       const shortNameLower = (symbol.short_name || '').toLowerCase();
       const displaySymbolLower = (symbol.display_symbol || '').toLowerCase();
       
-      // Extract base symbol for comparison (remove prefixes/suffixes)
-      const baseSymbol = symbolLower.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '');
+      // Extract base symbol for comparison (remove prefixes/suffixes including crypto -USD)
+      const baseSymbol = symbolLower
+        .replace(/^(nyse:|nasdaq:|tase:|fx:)/, '')  // Remove exchange prefixes
+        .replace(/\.ta$/, '')                       // Remove TASE suffix  
+        .replace(/-usd$/, '');                      // Remove crypto suffix
       
       let matches = false;
       let score = 0;
@@ -281,9 +290,15 @@ export const useSymbolAutocomplete = () => {
       const bScore = (b as any).score;
       if (aScore !== bScore) return bScore - aScore;
       
-      // For same scores, prefer shorter symbols
-      const aBaseLen = a.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '').length;
-      const bBaseLen = b.symbol.replace(/^(nyse:|nasdaq:|tase:)/, '').replace(/\.ta$/, '').length;
+      // For same scores, prefer shorter symbols (with proper prefix stripping)
+      const aBaseLen = a.symbol.toLowerCase()
+        .replace(/^(nyse:|nasdaq:|tase:|fx:)/, '')
+        .replace(/\.ta$/, '')
+        .replace(/-usd$/, '').length;
+      const bBaseLen = b.symbol.toLowerCase()
+        .replace(/^(nyse:|nasdaq:|tase:|fx:)/, '')
+        .replace(/\.ta$/, '')
+        .replace(/-usd$/, '').length;
       if (aBaseLen !== bBaseLen) return aBaseLen - bBaseLen;
       
       return a.symbol.localeCompare(b.symbol);

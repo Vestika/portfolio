@@ -111,6 +111,9 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
       const currentPrice = quote && typeof quote.current_price === 'number'
         ? quote.current_price.toFixed(2)
         : 'N/A';
+      
+      // For forex symbols (FX:), display price in base currency instead of USD
+      const displayCurrency = holding.symbol.startsWith('FX:') ? data.base_currency : holding.original_currency;
 
       return {
         id: holding.symbol,
@@ -123,7 +126,8 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
           performance: percentChange + '%',
           totalValue: holding.total_value,
           totalUnits: holding.total_units,
-          currentPrice: currentPrice
+          currentPrice: currentPrice,
+          currency: displayCurrency
         }
       };
     });
@@ -226,7 +230,7 @@ const HoldingsHeatmap: React.FC<HoldingsHeatmapProps> = ({ data, isValueVisible 
             '<b>Total Value:</b> ' + data.base_currency + ' {point.value:,.0f}<br/>' :
             ''
           ) +
-          '<b>Current Price:</b> $ {point.custom.currentPrice}'
+          '<b>Current Price:</b> {point.custom.currentPrice} {point.custom.currency}'
       },
 
       legend: {
