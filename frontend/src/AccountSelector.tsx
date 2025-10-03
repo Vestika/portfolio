@@ -108,6 +108,8 @@ const EnhancedSymbolDisplay: React.FC<{
     }
     
     let displaySymbol = symbolData.symbol;
+    
+    // Remove exchange prefixes
     if (displaySymbol.toUpperCase().startsWith('NYSE:')) {
       return displaySymbol.substring(5); // Remove "NYSE:"
     }
@@ -117,15 +119,51 @@ const EnhancedSymbolDisplay: React.FC<{
     if (displaySymbol.toUpperCase().startsWith('TASE:')) {
       return displaySymbol.substring(5); // Remove "TASE:"
     }
+    if (displaySymbol.toUpperCase().startsWith('FX:')) {
+      return displaySymbol.substring(3); // Remove "FX:" for clean currency display
+    }
+    
+    // For crypto symbols, remove -USD suffix for cleaner display
+    if (symbolData.symbol_type === 'crypto' && displaySymbol.endsWith('-USD')) {
+      return displaySymbol.replace('-USD', '');
+    }
+    
     return displaySymbol;
   };
 
-  // Find symbol metadata from autocomplete data
+  // Find symbol metadata from autocomplete data with improved matching logic
   const autocompleteData = getAutocompleteData();
   const symbolData = autocompleteData.find(s => {
-    const cleanSymbol = s.symbol.replace(/^(NYSE:|NASDAQ:|TASE:)/, '').replace(/\.TA$/, '');
-    return cleanSymbol.toUpperCase() === symbol.toUpperCase() || 
-           s.symbol.toUpperCase() === symbol.toUpperCase();
+    // 1. First try exact match (highest priority) - handles FX:USD vs NYSE:USD correctly
+    if (s.symbol.toUpperCase() === symbol.toUpperCase()) {
+      return true;
+    }
+    
+    // 2. Then try prefix-stripped matching as fallback for backwards compatibility
+    // IMPORTANT: Don't strip FX: for currency or -USD for crypto to avoid matching wrong symbols
+    const isCurrency = s.symbol_type === 'currency' || symbol.startsWith('FX:');
+    const isCrypto = s.symbol_type === 'crypto' || symbol.endsWith('-USD');
+    
+    let cleanSymbol = s.symbol;
+    let cleanInputSymbol = symbol;
+    
+    // For currencies, only strip NYSE/NASDAQ/TASE prefixes, keep FX: prefix
+    if (isCurrency) {
+      cleanSymbol = s.symbol.replace(/^(NYSE:|NASDAQ:|TASE:)/, '').replace(/\.TA$/, '');
+      cleanInputSymbol = symbol.replace(/^(NYSE:|NASDAQ:|TASE:)/, '').replace(/\.TA$/, '');
+    }
+    // For crypto, only strip exchange prefixes, keep -USD suffix
+    else if (isCrypto) {
+      cleanSymbol = s.symbol.replace(/^(NYSE:|NASDAQ:|TASE:|FX:)/, '').replace(/\.TA$/, '');
+      cleanInputSymbol = symbol.replace(/^(NYSE:|NASDAQ:|TASE:|FX:)/, '').replace(/\.TA$/, '');
+    }
+    // For regular stocks, strip all prefixes and -USD suffix
+    else {
+      cleanSymbol = s.symbol.replace(/^(NYSE:|NASDAQ:|TASE:|FX:)/, '').replace(/\.TA$/, '').replace(/-USD$/, '');
+      cleanInputSymbol = symbol.replace(/^(NYSE:|NASDAQ:|TASE:|FX:)/, '').replace(/\.TA$/, '').replace(/-USD$/, '');
+    }
+    
+    return cleanSymbol.toUpperCase() === cleanInputSymbol.toUpperCase();
   });
 
   if (!symbol || symbol.trim() === '') {

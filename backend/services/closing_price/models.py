@@ -28,7 +28,7 @@ class StockPrice(BaseModel):
     symbol: str
     price: float
     currency: str
-    market: Literal["US", "TASE"]
+    market: Literal["US", "TASE", "CURRENCY", "CRYPTO"]
     fetched_at: datetime
     date: str  # Trading date in YYYY-MM-DD format
     change_percent: float | None = None
@@ -54,7 +54,7 @@ class TrackedSymbol(BaseModel):
     
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     symbol: str
-    market: Literal["US", "TASE"]
+    market: Literal["US", "TASE", "CURRENCY", "CRYPTO"]
     added_at: datetime
     last_queried_at: datetime
     
