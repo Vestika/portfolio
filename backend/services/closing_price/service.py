@@ -192,42 +192,61 @@ class ClosingPriceService:
             # Check if there's already a running event loop
             try:
                 loop = asyncio.get_running_loop()
+                logger.debug(f"🔄 [ASYNC WRAPPER] Running loop detected, using ThreadPoolExecutor")
                 # If we're already in an event loop, run in a thread pool with its own event loop
                 def run_in_new_loop():
                     # Create a new event loop for this thread
                     new_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(new_loop)
                     try:
-                        # Reset initialization state for this new loop
-                        self._initialized = False
+                        logger.debug(f"🔄 [ASYNC WRAPPER] Running coroutine in new loop")
                         result = new_loop.run_until_complete(coro)
+                        logger.debug(f"✅ [ASYNC WRAPPER] Coroutine completed with result: {result}")
                         return result
+                    except Exception as inner_e:
+                        logger.error(f"❌ [ASYNC WRAPPER] Error in coroutine execution: {inner_e}")
+                        raise
                     finally:
-                        # Clean up connections before closing loop
+                        # Properly cleanup async resources before closing loop
                         try:
-                            new_loop.run_until_complete(self.cleanup())
+                            # Cancel any pending tasks
+                            pending = asyncio.all_tasks(new_loop)
+                            for task in pending:
+                                task.cancel()
+                            # Wait for cancellations to complete
+                            if pending:
+                                new_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                         except Exception as e:
-                            logger.warning(f"Error during cleanup in thread: {e}")
-                        new_loop.close()
+                            logger.warning(f"⚠️ [ASYNC WRAPPER] Error cancelling tasks: {e}")
+                        finally:
+                            new_loop.close()
                 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(run_in_new_loop)
+                    logger.debug(f"⏳ [ASYNC WRAPPER] Waiting for result (timeout=30s)")
                     return future.result(timeout=30)
                     
             except RuntimeError:
                 # No running event loop, we can create our own
+                logger.debug(f"🔄 [ASYNC WRAPPER] No running loop, creating new one")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     result = loop.run_until_complete(coro)
+                    logger.debug(f"✅ [ASYNC WRAPPER] Coroutine completed: {result}")
                     return result
                 finally:
-                    # Clean up connections before closing loop
+                    # Cleanup pending tasks before closing loop
                     try:
-                        loop.run_until_complete(self.cleanup())
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                     except Exception as e:
-                        logger.warning(f"Error during cleanup: {e}")
-                    loop.close()
+                        logger.warning(f"⚠️ [ASYNC WRAPPER] Error cancelling tasks: {e}")
+                    finally:
+                        loop.close()
                     
         except Exception as e:
             logger.error(f"Error in async operation: {e}")
@@ -240,7 +259,14 @@ class ClosingPriceService:
     
     def get_exchange_rate_sync(self, from_currency: str, to_currency: str) -> Optional[float]:
         """Synchronous wrapper for get_exchange_rate"""
-        return self._run_async_operation(self.get_exchange_rate(from_currency, to_currency))
+        logger.info(f"🔄 [SYNC WRAPPER] Calling async get_exchange_rate for {from_currency}/{to_currency}")
+        try:
+            result = self._run_async_operation(self.get_exchange_rate(from_currency, to_currency))
+            logger.info(f"✅ [SYNC WRAPPER] Got result for {from_currency}/{to_currency}: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"❌ [SYNC WRAPPER] Exception in get_exchange_rate_sync for {from_currency}/{to_currency}: {e}")
+            return None
     
     def get_exchange_rate_info_sync(self, from_currency: str, to_currency: str) -> Optional[Dict[str, Any]]:
         """Synchronous wrapper for get_exchange_rate_info"""

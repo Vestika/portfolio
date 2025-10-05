@@ -50,6 +50,7 @@ class CurrencyService:
     async def _fetch_rate_primary(self, from_currency: str, to_currency: str) -> Optional[float]:
         """Fetch from exchangerate-api.com (primary API)"""
         try:
+            logger.info(f"🌐 [CURRENCY API] Requesting {from_currency}/{to_currency} from {self.base_url}/{from_currency.upper()}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/{from_currency.upper()}",
@@ -60,19 +61,21 @@ class CurrencyService:
                 data = response.json()
                 rates = data.get("rates", {})
                 
+                logger.info(f"📊 [CURRENCY API] Got {len(rates)} rates from API, looking for {to_currency.upper()}")
+                
                 if to_currency.upper() in rates:
                     rate = float(rates[to_currency.upper()])
-                    logger.info(f"Successfully fetched {from_currency}/{to_currency} rate: {rate}")
+                    logger.info(f"✅ [CURRENCY API] Successfully fetched {from_currency}/{to_currency} rate: {rate}")
                     return rate
                 else:
-                    logger.warning(f"Currency {to_currency} not found in rates from primary API")
+                    logger.error(f"❌ [CURRENCY API] Currency {to_currency} not found in rates. Available: {list(rates.keys())[:10]}")
                     return None
                     
         except httpx.HTTPError as e:
-            logger.warning(f"HTTP error from primary currency API: {e}")
+            logger.error(f"❌ [CURRENCY API] HTTP error from primary API for {from_currency}/{to_currency}: {e}")
             return None
         except Exception as e:
-            logger.warning(f"Error from primary currency API: {e}")
+            logger.error(f"❌ [CURRENCY API] Error from primary API for {from_currency}/{to_currency}: {e}")
             return None
     
     async def _fetch_rate_backup(self, from_currency: str, to_currency: str) -> Optional[float]:

@@ -64,35 +64,35 @@ class PortfolioCalculator:
         cache_key = f"{from_currency}_{to_currency}"
         if cache_key in self._exchange_rate_cache:
             cached_rate = self._exchange_rate_cache[cache_key]
-            logger.debug(f"Using cached exchange rate for {from_currency}/{to_currency}: {cached_rate}")
+            logger.info(f"💾 [EXCHANGE RATE] Using cached rate for {from_currency}/{to_currency}: {cached_rate:.6f}")
             return cached_rate
         
         # Try real-time rates if enabled
         if self.use_real_time_rates:
             try:
-                logger.debug(f"Fetching real-time rate for {from_currency}/{to_currency}")
+                logger.info(f"🌐 [EXCHANGE RATE] Fetching real-time rate for {from_currency}/{to_currency} from Finnhub")
                 real_time_rate = self.closing_price_service.get_exchange_rate_sync(
                     from_currency.value, to_currency.value
                 )
                 if real_time_rate is not None:
-                    logger.info(f"Using real-time exchange rate {from_currency}/{to_currency}: {real_time_rate}")
+                    logger.info(f"✅ [EXCHANGE RATE] Got real-time rate {from_currency}/{to_currency}: {real_time_rate:.6f}")
                     self._exchange_rate_cache[cache_key] = real_time_rate
                     return real_time_rate
                 else:
-                    logger.warning(f"Real-time rate not available for {from_currency}/{to_currency}, using static rate")
+                    logger.warning(f"⚠️ [EXCHANGE RATE] Real-time rate not available for {from_currency}/{to_currency}, checking static rates")
             except Exception as e:
-                logger.warning(f"Failed to fetch real-time rate for {from_currency}/{to_currency}: {e}")
+                logger.warning(f"❌ [EXCHANGE RATE] Failed to fetch real-time rate for {from_currency}/{to_currency}: {e}")
         
         # Fallback to static rates
-        logger.debug(f"Checking static rates for {from_currency}: {list(self.static_exchange_rates.keys())}")
+        logger.info(f"📚 [EXCHANGE RATE] Checking static rates for {from_currency}, available: {list(self.static_exchange_rates.keys())}")
         if from_currency in self.static_exchange_rates:
             static_rate = self.static_exchange_rates[from_currency]
-            logger.info(f"Using static exchange rate {from_currency}/{to_currency}: {static_rate}")
+            logger.info(f"📖 [EXCHANGE RATE] Using static rate {from_currency}/{to_currency}: {static_rate:.6f}")
             self._exchange_rate_cache[cache_key] = static_rate
             return static_rate
         
         # If no rate found, log error and return 1 (no conversion)
-        logger.error(f"No exchange rate available for {from_currency} to {to_currency}")
+        logger.error(f"❌ [EXCHANGE RATE] No rate available for {from_currency} to {to_currency} - returning 1.0 (NO CONVERSION)")
         return 1.0
 
     def calc_holding_value(self, security: Security, units: float) -> dict[str, Any]:
@@ -120,8 +120,44 @@ class PortfolioCalculator:
         price_source = "predefined"  # Default
         unit_price = None
         
+        # Handle FX: forex symbols specially - use Finnhub via closing_price_service
+        if security.symbol.startswith('FX:'):
+            # For FX: symbols, the "price" is the exchange rate to base currency
+            # Use closing_price_service (Finnhub) for current prices
+            currency_code = security.symbol[3:]  # Remove FX: prefix
+            logger.debug(f"FX symbol {security.symbol}: fetching exchange rate {currency_code} -> {self.base_currency} via closing_price_service")
+            
+            # Special case: currency matches base currency
+            if currency_code == self.base_currency.value:
+                unit_price = 1.0
+                price_source = "fx_same_currency"
+                logger.debug(f"FX symbol {security.symbol}: same as base currency = 1.0")
+            else:
+                # For ILS-based portfolio with non-USD currencies: fetch through USD
+                if self.base_currency.value == 'ILS' and currency_code != 'USD':
+                    # Get XXX→USD rate from Finnhub
+                    logger.info(f"🔄 [CALC FX] Step 1: Fetching {security.currency} → USD rate from Finnhub")
+                    xxxusd_rate = self.get_exchange_rate(security.currency, Currency.USD)
+                    logger.info(f"📊 [CALC FX] Step 1 result: {security.currency} → USD = {xxxusd_rate:.6f}")
+                    
+                    # Get USD→ILS rate from Finnhub
+                    logger.info(f"🔄 [CALC FX] Step 2: Fetching USD → {self.base_currency} rate from Finnhub")
+                    usdils_rate = self.get_exchange_rate(Currency.USD, self.base_currency)
+                    logger.info(f"📊 [CALC FX] Step 2 result: USD → {self.base_currency} = {usdils_rate:.6f}")
+                    
+                    # Multiply to get XXX→ILS
+                    unit_price = xxxusd_rate * usdils_rate
+                    price_source = "finnhub_fx_via_usd"
+                    logger.info(f"✅ [CALC FX] FX {security.symbol}: {currency_code}→USD ({xxxusd_rate:.4f}) × USD→ILS ({usdils_rate:.4f}) = {unit_price:.4f} ILS")
+                else:
+                    # Direct exchange rate from Finnhub
+                    logger.info(f"🔄 [CALC FX] Fetching direct rate for {security.symbol} from Finnhub")
+                    unit_price = self.get_exchange_rate(security.currency, self.base_currency)
+                    price_source = "finnhub_fx"
+                    logger.info(f"✅ [CALC FX] FX {security.symbol}: exchange rate from Finnhub = {unit_price:.4f} {self.base_currency}")
+        
         # Handle cash securities specially - they always have unit price of 1.0 in their own currency
-        if security.security_type == SecurityType.CASH:
+        elif security.security_type == SecurityType.CASH:
             unit_price = 1.0
             price_source = "cash"
             logger.debug(f"Cash security {security.symbol}: unit price = 1.0 {security.currency}")
@@ -147,6 +183,20 @@ class PortfolioCalculator:
                 else:
                     logger.error(f"No price available for {security.symbol}")
                     unit_price = 0.0
+        
+        # Check if we got a valid price
+        if unit_price is None:
+            logger.error(f"❌ [CALC] Failed to get price for {security.symbol} - returning zero value")
+            return {
+                "unit_price": 0.0,
+                "value": 0.0,
+                "total": 0.0,
+                "units": units,
+                "currency": security.currency,
+                "base_currency": self.base_currency,
+                "exchange_rate": 0.0,
+                "price_source": "error",
+            }
         
         # Convert to base currency if needed
         # Special case: FX: symbols are already priced in base currency (no conversion needed)

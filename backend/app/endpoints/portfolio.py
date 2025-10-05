@@ -34,6 +34,10 @@ closing_price_service = get_global_service()
 calculator_cache = {}
 maya = Maya()
 
+# Global semaphore to prevent yfinance global state pollution
+# yfinance has internal global state that gets corrupted with parallel calls
+yfinance_semaphore = asyncio.Semaphore(1)  # Only allow 1 yfinance call at a time
+
 
 def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
     """Create a PortfolioCalculator with the global closing price service"""
@@ -273,6 +277,8 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
     # Date range for 7-day historical data
     today = date.today()
     seven_days_ago = today - timedelta(days=7)
+    
+    print(f"📅 [COLLECT PRICES] Date range: {seven_days_ago} to {today} (7 days)")
     
     # Get the first available portfolio to use its calculator and securities
     first_portfolio = None
@@ -787,11 +793,13 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
         def fetch_batch_sync():
             return yf.download(symbols, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
         
-        loop = asyncio.get_event_loop()
-        data = await asyncio.wait_for(
-            loop.run_in_executor(None, fetch_batch_sync),
-            timeout=5.0  # 5 second timeout for batch call
-        )
+        # Use semaphore to prevent yfinance global state pollution
+        async with yfinance_semaphore:
+            loop = asyncio.get_event_loop()
+            data = await asyncio.wait_for(
+                loop.run_in_executor(None, fetch_batch_sync),
+                timeout=5.0  # 5 second timeout for batch call
+            )
         
         if not data.empty:
             # Handle both single symbol and multi-symbol data structures
@@ -821,43 +829,22 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
                                     "price": float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
                                 })
                     else:
-                        print(f"⚠️ [YFINANCE BATCH] No data for symbol: {symbol}")
-                        # Create fallback data using current price
-                        fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
+                        print(f"❌ [YFINANCE BATCH] No data for symbol: {symbol} - returning empty data")
+                        # NO FALLBACK: Leave symbol out or return empty
                         historical_data[symbol] = []
-                        for i in range(7, 0, -1):
-                            day = today - timedelta(days=i)
-                            historical_data[symbol].append({
-                                "date": day.strftime("%Y-%m-%d"),
-                                "price": fallback_price
-                            })
         
         print(f"✅ [YFINANCE BATCH] Completed batch fetch for {len(symbols)} symbols")
         
     except asyncio.TimeoutError:
-        print(f"⏰ [YFINANCE BATCH] Timeout after 5s - using fallback data for all {len(symbols)} symbols")
-        # Create fallback data for all symbols using current prices
+        print(f"⏰ [YFINANCE BATCH] Timeout after 5s - returning empty data for all {len(symbols)} symbols")
+        # NO FALLBACK: Return empty data
         for symbol in symbols:
-            fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
             historical_data[symbol] = []
-            for i in range(7, 0, -1):
-                day = today - timedelta(days=i)
-                historical_data[symbol].append({
-                    "date": day.strftime("%Y-%m-%d"),
-                    "price": fallback_price
-                })
     except Exception as e:
-        print(f"❌ [YFINANCE BATCH] Error in batch fetch: {e}")
-        # Create fallback data for all symbols using current prices
+        print(f"❌ [YFINANCE BATCH] Error in batch fetch: {e} - returning empty data")
+        # NO FALLBACK: Return empty data
         for symbol in symbols:
-            fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
             historical_data[symbol] = []
-            for i in range(7, 0, -1):
-                day = today - timedelta(days=i)
-                historical_data[symbol].append({
-                    "date": day.strftime("%Y-%m-%d"),
-                    "price": fallback_price
-                })
     
     return historical_data
 
@@ -879,24 +866,44 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             # Handle USD currency holdings - fetch actual USD/ILS exchange rate history
             # This shows how USD strength changes relative to ILS over time
             logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d USD/ILS exchange rate trend for {symbol}")
+            logger.info(f"📅 [FETCH HISTORICAL] Requesting yfinance data: symbol=USDILS=X, start={seven_days_ago}, end={today + timedelta(days=1)}")
             
             def fetch_usd_ils_sync():
                 """Synchronous USD/ILS FX fetching to run in thread pool for true parallelism"""
                 return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
             
-            # Run the blocking yfinance call in a separate thread with timeout
-            loop = asyncio.get_event_loop()
-            try:
-                data = await asyncio.wait_for(
-                    loop.run_in_executor(None, fetch_usd_ils_sync),
-                    timeout=5.0  # 5 second timeout for FX calls
-                )
-            except asyncio.TimeoutError:
-                logger.warning(f"⏰ [FETCH HISTORICAL] USD/ILS FX timeout after 5s - using fallback")
-                data = None
+            # Use semaphore to prevent yfinance global state pollution
+            logger.debug(f"🔒 [FETCH HISTORICAL] Acquiring yfinance semaphore for {symbol}")
+            async with yfinance_semaphore:
+                logger.debug(f"✅ [FETCH HISTORICAL] Got yfinance semaphore for {symbol}, fetching...")
+                # Run the blocking yfinance call in a separate thread with timeout
+                loop = asyncio.get_event_loop()
+                try:
+                    data = await asyncio.wait_for(
+                        loop.run_in_executor(None, fetch_usd_ils_sync),
+                        timeout=5.0  # 5 second timeout for FX calls
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"⏰ [FETCH HISTORICAL] USD/ILS FX timeout after 5s - returning empty data")
+                    data = None
+            logger.debug(f"🔓 [FETCH HISTORICAL] Released yfinance semaphore for {symbol}")
             
             if not data.empty:
-                prices = data["Close"].dropna().round(4)  # More precision for exchange rates
+                # Handle both single-column and multi-column DataFrames from yfinance
+                if isinstance(data.columns, pd.MultiIndex):
+                    # MultiIndex DataFrame (multiple symbols fetched together)
+                    logger.info(f"📊 [FETCH HISTORICAL] MultiIndex DataFrame detected for USD, columns: {list(data.columns)}")
+                    if ('Close', 'USDILS=X') in data.columns:
+                        prices = data[('Close', 'USDILS=X')].dropna().round(4)
+                    else:
+                        logger.error(f"❌ [FETCH HISTORICAL] USDILS=X not found in MultiIndex columns: {list(data.columns)}")
+                        prices = pd.Series()
+                else:
+                    # Simple DataFrame (single symbol fetched)
+                    prices = data["Close"].dropna().round(4)
+                
+                logger.info(f"📊 [FETCH HISTORICAL] USD yfinance prices extracted: {len(prices)} points, sample values={list(prices[:3])}")
+                
                 # Handle yfinance DataFrame properly for FX data
                 for dt in prices.index:
                     price = prices.loc[dt]
@@ -906,15 +913,10 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         "price": price_value
                     })
                 logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} USD/ILS exchange rate points for {symbol}")
+                logger.info(f"📈 [FETCH HISTORICAL] USD price series: {[f'{p['date']}: {p['price']:.4f}' for p in historical_prices[-3:]]}")
             else:
-                logger.warning(f"⚠️ [FETCH HISTORICAL] No USD/ILS FX data available - using fallback")
-                # Fallback to static rate if no historical data
-                for i in range(7, 0, -1):
-                    day = today - timedelta(days=i)
-                    historical_prices.append({
-                        "date": day.strftime("%Y-%m-%d"),
-                        "price": original_price  # Use the current exchange rate as fallback
-                    })
+                logger.error(f"❌ [FETCH HISTORICAL] No USD/ILS FX data available from yfinance - returning empty data")
+                # NO FALLBACK: Return empty list to show no data in UI
             
         elif symbol.startswith('FX:'):
             # Handle new FX: currency symbols with dynamic yfinance symbol lookup
@@ -958,19 +960,33 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         """Synchronous FX fetching for new FX: symbols"""
                         return yf.download(yfinance_symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                     
-                    loop = asyncio.get_event_loop()
-                    try:
-                        data = await asyncio.wait_for(
-                            loop.run_in_executor(None, fetch_fx_sync),
-                            timeout=5.0  # 5 second timeout for FX calls
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {yfinance_symbol} - using fallback")
-                        data = None
+                    # Use semaphore to prevent yfinance global state pollution
+                    async with yfinance_semaphore:
+                        loop = asyncio.get_event_loop()
+                        try:
+                            data = await asyncio.wait_for(
+                                loop.run_in_executor(None, fetch_fx_sync),
+                                timeout=5.0  # 5 second timeout for FX calls
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {yfinance_symbol} - returning empty data")
+                            data = None
                         
                     if data is not None and not data.empty:
-                        prices = data["Close"].dropna().round(6)  # High precision for exchange rates
-                        logger.info(f"📈 [FETCH HISTORICAL] Raw yfinance data shape: {data.shape}, Close prices: {len(prices)}")
+                        # Handle both single-column and multi-column DataFrames from yfinance
+                        if isinstance(data.columns, pd.MultiIndex):
+                            # MultiIndex DataFrame (multiple symbols fetched together)
+                            logger.info(f"📊 [FETCH HISTORICAL] MultiIndex DataFrame detected for {symbol}, columns: {list(data.columns)}")
+                            if ('Close', yfinance_symbol) in data.columns:
+                                prices = data[('Close', yfinance_symbol)].dropna().round(6)
+                            else:
+                                logger.error(f"❌ [FETCH HISTORICAL] {yfinance_symbol} not found in MultiIndex columns: {list(data.columns)}")
+                                prices = pd.Series()
+                        else:
+                            # Simple DataFrame (single symbol fetched)
+                            prices = data["Close"].dropna().round(6)
+                        
+                        logger.info(f"📈 [FETCH HISTORICAL] Extracted {len(prices)} prices for {yfinance_symbol}, sample values={list(prices[:3])}")
                         
                         # For ILS-based portfolios with non-USD currencies, multiply by USD→ILS rate
                         if base_currency == 'ILS' and currency_code != 'USD':
@@ -979,33 +995,48 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                             def fetch_usdils_sync():
                                 return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                             
+                            # Use semaphore to prevent yfinance global state pollution
                             try:
-                                usdils_data = await asyncio.wait_for(
-                                    loop.run_in_executor(None, fetch_usdils_sync),
-                                    timeout=5.0
-                                )
-                                
-                                if usdils_data is not None and not usdils_data.empty:
-                                    usdils_prices = usdils_data["Close"].dropna().round(6)
-                                    logger.info(f"✅ [FETCH HISTORICAL] Got USDILS rates: {len(usdils_prices)} points")
-                                    
-                                    # Multiply XXX→USD by USD→ILS to get XXX→ILS
-                                    for dt in prices.index:
-                                        if dt in usdils_prices.index:
-                                            xxxusd_price = prices.loc[dt]
-                                            usdils_price = usdils_prices.loc[dt]
-                                            xxxusd_rate = float(xxxusd_price.iloc[0]) if hasattr(xxxusd_price, 'iloc') else float(xxxusd_price)
-                                            usdils_rate = float(usdils_price.iloc[0]) if hasattr(usdils_price, 'iloc') else float(usdils_price)
-                                            xxxils_rate = xxxusd_rate * usdils_rate
-                                            historical_prices.append({
-                                                "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                                                "price": round(xxxils_rate, 4)
-                                            })
-                                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} {currency_code}→ILS price points (via USD)")
+                                async with yfinance_semaphore:
+                                    usdils_data = await asyncio.wait_for(
+                                        loop.run_in_executor(None, fetch_usdils_sync),
+                                        timeout=5.0
+                                    )
+                            except asyncio.TimeoutError:
+                                logger.error(f"⏰ [FETCH HISTORICAL] USDILS timeout - returning empty data")
+                                usdils_data = None
+                            
+                            if usdils_data is not None and not usdils_data.empty:
+                                # Handle MultiIndex for USDILS as well
+                                if isinstance(usdils_data.columns, pd.MultiIndex):
+                                    if ('Close', 'USDILS=X') in usdils_data.columns:
+                                        usdils_prices = usdils_data[('Close', 'USDILS=X')].dropna().round(6)
+                                    else:
+                                        logger.error(f"❌ [FETCH HISTORICAL] USDILS=X not found in MultiIndex")
+                                        usdils_prices = pd.Series()
                                 else:
-                                    logger.error(f"❌ [FETCH HISTORICAL] Could not fetch USDILS=X for conversion")
-                            except Exception as usdils_error:
-                                logger.error(f"❌ [FETCH HISTORICAL] Error fetching USDILS=X: {usdils_error}")
+                                    usdils_prices = usdils_data["Close"].dropna().round(6)
+                                
+                                logger.info(f"✅ [FETCH HISTORICAL] Got USDILS rates: {len(usdils_prices)} points, sample values={list(usdils_prices[:3])}")
+                                
+                                # Multiply XXX→USD by USD→ILS to get XXX→ILS
+                                for dt in prices.index:
+                                    if dt in usdils_prices.index:
+                                        xxxusd_price = prices.loc[dt]
+                                        usdils_price = usdils_prices.loc[dt]
+                                        xxxusd_rate = float(xxxusd_price.iloc[0]) if hasattr(xxxusd_price, 'iloc') else float(xxxusd_price)
+                                        usdils_rate = float(usdils_price.iloc[0]) if hasattr(usdils_price, 'iloc') else float(usdils_price)
+                                        xxxils_rate = xxxusd_rate * usdils_rate
+                                        historical_prices.append({
+                                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                            "price": round(xxxils_rate, 4)
+                                        })
+                                        logger.info(f"📊 [FETCH HISTORICAL] {dt}: {currency_code}USD={xxxusd_rate:.4f}, USDILS={usdils_rate:.4f}, {currency_code}ILS={xxxils_rate:.4f}")
+                                logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} {currency_code}→ILS price points (via USD)")
+                                # Log the full price series for debugging
+                                logger.info(f"📈 [FETCH HISTORICAL] {symbol} price series: {[f'{p['date']}: {p['price']:.4f}' for p in historical_prices[-3:]]}")
+                            else:
+                                logger.error(f"❌ [FETCH HISTORICAL] Could not fetch USDILS=X for conversion - returning empty data")
                         else:
                             # Direct rate (USD-based portfolio or USD→ILS direct)
                             for dt in prices.index:
@@ -1045,19 +1076,34 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                     """Synchronous FX fetching to run in thread pool for true parallelism"""
                     return yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                 
-                # Run the blocking yfinance call in a separate thread with timeout
-                loop = asyncio.get_event_loop()
-                try:
-                    data = await asyncio.wait_for(
-                        loop.run_in_executor(None, fetch_fx_sync),
-                        timeout=5.0  # 5 second timeout for FX calls
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {ticker} - using fallback")
-                    data = None
+                # Use semaphore to prevent yfinance global state pollution
+                async with yfinance_semaphore:
+                    # Run the blocking yfinance call in a separate thread with timeout
+                    loop = asyncio.get_event_loop()
+                    try:
+                        data = await asyncio.wait_for(
+                            loop.run_in_executor(None, fetch_fx_sync),
+                            timeout=5.0  # 5 second timeout for FX calls
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {ticker} - returning empty data")
+                        data = None
                 
                 if not data.empty:
-                    prices = data["Close"].dropna().round(6)
+                    # Handle both single-column and multi-column DataFrames from yfinance
+                    if isinstance(data.columns, pd.MultiIndex):
+                        # MultiIndex DataFrame (multiple symbols fetched together)
+                        if ('Close', ticker) in data.columns:
+                            prices = data[('Close', ticker)].dropna().round(6)
+                        else:
+                            logger.error(f"❌ [FETCH HISTORICAL] {ticker} not found in MultiIndex columns")
+                            prices = pd.Series()
+                    else:
+                        # Simple DataFrame (single symbol fetched)
+                        prices = data["Close"].dropna().round(6)
+                    
+                    logger.info(f"📊 [FETCH HISTORICAL] Extracted {len(prices)} prices for {ticker}")
+                    
                     # Handle yfinance DataFrame properly
                     for dt in prices.index:
                         price = prices.loc[dt]
@@ -1095,10 +1141,27 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             # Handle regular stock symbols using yfinance
             logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for stock symbol: {symbol} using yfinance")
             try:
-                data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                # Use semaphore to prevent yfinance global state pollution
+                async with yfinance_semaphore:
+                    def fetch_stock_sync():
+                        return yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                    
+                    loop = asyncio.get_event_loop()
+                    data = await loop.run_in_executor(None, fetch_stock_sync)
                 
                 if not data.empty:
-                    prices = data["Close"].dropna().round(2)
+                    # Handle both single-column and multi-column DataFrames from yfinance
+                    if isinstance(data.columns, pd.MultiIndex):
+                        # MultiIndex DataFrame (multiple symbols fetched together - shouldn't happen for individual stocks)
+                        logger.warning(f"⚠️ [FETCH HISTORICAL] Unexpected MultiIndex for individual stock {symbol}")
+                        if ('Close', symbol) in data.columns:
+                            prices = data[('Close', symbol)].dropna().round(2)
+                        else:
+                            prices = pd.Series()
+                    else:
+                        # Simple DataFrame (single symbol fetched)
+                        prices = data["Close"].dropna().round(2)
+                    
                     # Handle yfinance DataFrame properly for stock data
                     for dt in prices.index:
                         price = prices.loc[dt]
@@ -1114,19 +1177,14 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                 logger.warning(f"⚠️ [FETCH HISTORICAL] Error fetching stock data for {symbol}: {e}")
                 
     except Exception as e:
-        logger.warning(f"❌ [FETCH HISTORICAL] Failed to fetch real historical prices for {symbol}: {e}")
+        logger.error(f"❌ [FETCH HISTORICAL] Failed to fetch real historical prices for {symbol}: {e}")
     
-    # Add fallback mock data only if no historical prices were fetched
+    # NO FALLBACK: If no data was fetched, return empty list
     if not historical_prices:
-        logger.info(f"📊 [FETCH HISTORICAL] Using fallback mock data for {symbol}")
-        for i in range(7, 0, -1):
-            day = today - timedelta(days=i)
-            historical_prices.append({
-                "date": day.strftime("%Y-%m-%d"),
-                "price": original_price
-            })
+        logger.error(f"❌ [FETCH HISTORICAL] No historical data available for {symbol} - returning empty data")
+    else:
+        logger.info(f"✅ [FETCH HISTORICAL] Returning {len(historical_prices)} historical price points for {symbol}")
     
-    logger.info(f"✅ [FETCH HISTORICAL] Returning {len(historical_prices)} historical price points for {symbol}")
     return historical_prices
 
 
