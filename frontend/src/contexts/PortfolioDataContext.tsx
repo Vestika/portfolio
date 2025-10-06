@@ -169,6 +169,7 @@ interface PortfolioDataContextType {
   // Actions
   loadAllPortfoliosData: () => Promise<void>;
   refreshAllPortfoliosData: () => Promise<void>;
+  refreshTagsOnly: () => Promise<void>;
   
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
@@ -493,6 +494,55 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     console.log('🔄 [PORTFOLIO CONTEXT] Refreshing all portfolios and autocomplete data');
     await loadAllPortfoliosData();
   }, [loadAllPortfoliosData]);
+
+  // Refresh only tags (lightweight, no loading state)
+  const refreshTagsOnly = useCallback(async () => {
+    if (!allPortfoliosData) {
+      console.warn('⚠️ [PORTFOLIO CONTEXT] Cannot refresh tags - no portfolio data loaded');
+      return;
+    }
+
+    console.log('🏷️ [PORTFOLIO CONTEXT] Refreshing tags only (lightweight refresh)');
+    
+    try {
+      // Fetch updated tags in parallel
+      const [tagLibraryResponse, holdingTagsResponse] = await Promise.all([
+        api.get(`/tags/library`),
+        api.get(`/holdings/tags`)
+      ]);
+
+      const updatedTagLibrary = tagLibraryResponse.data;
+      const updatedHoldingTagsList = holdingTagsResponse.data;
+
+      // Convert holding tags array to map by symbol
+      const updatedHoldingTagsMap: Record<string, any> = {};
+      updatedHoldingTagsList.forEach((holdingTags: any) => {
+        if (holdingTags.symbol) {
+          updatedHoldingTagsMap[holdingTags.symbol] = holdingTags;
+        }
+      });
+
+      // Update only the tags in the existing data
+      setAllPortfoliosData(prevData => {
+        if (!prevData) return prevData;
+        
+        return {
+          ...prevData,
+          user_tag_library: updatedTagLibrary,
+          all_holding_tags: updatedHoldingTagsMap
+        };
+      });
+
+      console.log('✅ [PORTFOLIO CONTEXT] Tags refreshed successfully:', {
+        tagDefinitions: Object.keys(updatedTagLibrary?.tag_definitions || {}).length,
+        holdingTagsCount: Object.keys(updatedHoldingTagsMap).length,
+        updatedSymbols: Object.keys(updatedHoldingTagsMap)
+      });
+    } catch (error: any) {
+      console.error('❌ [PORTFOLIO CONTEXT] Error refreshing tags:', error);
+      // Don't throw - just log the error, UI will continue working with old tags
+    }
+  }, [allPortfoliosData]);
 
   // Current portfolio data in legacy format (bulletproof version)
   const currentPortfolioData = useMemo((): CompletePortfolioData | null => {
@@ -921,6 +971,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     computedData,
     loadAllPortfoliosData,
     refreshAllPortfoliosData,
+    refreshTagsOnly,
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,

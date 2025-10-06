@@ -556,7 +556,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
   // Get tags and quotes from context (no more API calls needed!)
-  const { getUserTagLibrary, getHoldingTagsBySymbol, refreshAllPortfoliosData } = usePortfolioData();
+  const { getUserTagLibrary, getHoldingTagsBySymbol, refreshTagsOnly } = usePortfolioData();
   
   console.log('🏷️ [HOLDINGS TABLE] Component initialized - checking tag utilities availability');
 
@@ -637,13 +637,13 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     }
   }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
 
-  // Handle tag updates (refresh all data to get updated tags)
+  // Handle tag updates (refresh only tags - lightweight and fast!)
   const handleTagsUpdated = async () => {
     try {
-      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing all portfolios data to get latest tags');
-      await refreshAllPortfoliosData();
+      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing tags only (lightweight)');
+      await refreshTagsOnly();
     } catch (error) {
-      console.error('Error refreshing data after tag update:', error);
+      console.error('Error refreshing tags after update:', error);
     }
   };
 
