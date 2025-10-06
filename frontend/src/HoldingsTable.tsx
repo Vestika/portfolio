@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, HoldingTags, TagDefinition, TagLibrary, TagType, TagValue } from './types';
+import { SecurityHolding, HoldingsTableData, TagDefinition, TagLibrary, TagType, TagValue } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
@@ -551,91 +551,30 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   // Tag management state
-  const [structuredTags, setStructuredTags] = useState<Record<string, HoldingTags>>({});
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
   // Get tags and quotes from context (no more API calls needed!)
-  const { getUserTagLibrary, getHoldingTagsBySymbol, refreshTagsOnly } = usePortfolioData();
+  const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData } = usePortfolioData();
   
   console.log('🏷️ [HOLDINGS TABLE] Component initialized - checking tag utilities availability');
 
-  // Load tags from context instead of API calls
+  // Load tag library from context (tags are already in holding.tags from computedData)
   useEffect(() => {
-    console.log('🏷️ [HOLDINGS TABLE] === DEBUGGING TAGS LOADING ===');
-    console.log('🏷️ [HOLDINGS TABLE] Holdings data received:', {
-      totalHoldings: dataWithRealEarnings.holdings.length,
-      sampleHolding: dataWithRealEarnings.holdings[0],
-      holdingsWithTagsObjects: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-      firstHoldingWithTags: dataWithRealEarnings.holdings.find(h => h.tags && Object.keys(h.tags).length > 0),
-      allHoldingSymbols: dataWithRealEarnings.holdings.map(h => h.symbol)
-    });
-    
     try {
-      // Get tag library from context with comprehensive debugging
-      console.log('📚 [HOLDINGS TABLE] Calling getUserTagLibrary()...');
       const library = getUserTagLibrary();
       
-      console.log('📚 [HOLDINGS TABLE] Tag library result:', {
-        libraryExists: !!library,
-        libraryType: typeof library,
-        libraryKeys: library ? Object.keys(library) : 'No library',
-        hasTagDefinitions: !!(library?.tag_definitions),
-        tagDefinitionsCount: library?.tag_definitions ? Object.keys(library.tag_definitions).length : 0,
-        tagDefinitionsSample: library?.tag_definitions ? Object.keys(library.tag_definitions).slice(0, 3) : 'No definitions',
-        rawLibrary: library
-      });
-      
-      // Set tag library (needed for add tag functionality)
       if (library && typeof library === 'object') {
         setTagLibrary(library);
-        console.log('✅ [HOLDINGS TABLE] Tag library set successfully');
+        console.log('✅ [HOLDINGS TABLE] Tag library loaded with', Object.keys(library?.tag_definitions || {}).length, 'tag definitions');
       } else {
-        console.log('⚠️ [HOLDINGS TABLE] Using fallback tag library');
         setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       }
-      
-      // Get structured holding tags from context for all symbols
-      console.log('🏷️ [HOLDINGS TABLE] Loading structured tags from context...');
-      const tagsMap: Record<string, HoldingTags> = {};
-      
-      dataWithRealEarnings.holdings.forEach((holding, index) => {
-        console.log(`🔍 [HOLDINGS TABLE] Checking tags for holding ${index + 1}/${dataWithRealEarnings.holdings.length}: ${holding.symbol}`);
-        
-        const holdingTags = getHoldingTagsBySymbol(holding.symbol);
-        console.log(`   Context result for ${holding.symbol}:`, {
-          found: !!holdingTags,
-          hasTagsObject: !!(holdingTags?.tags),
-          tagNames: holdingTags?.tags ? Object.keys(holdingTags.tags) : 'No tags'
-        });
-        
-        if (holdingTags && typeof holdingTags === 'object') {
-          tagsMap[holding.symbol] = holdingTags;
-        }
-      });
-      
-      setStructuredTags(tagsMap);
-      
-      console.log('✅ [HOLDINGS TABLE] === TAGS LOADING SUMMARY ===');
-      console.log('📊 [HOLDINGS TABLE] Final tags state:', {
-        tagLibrarySet: !!tagLibrary,
-        tagDefinitionsAvailable: Object.keys(tagLibrary?.tag_definitions || {}).length,
-        structuredTagsLoaded: Object.keys(tagsMap).length,
-        structuredTagSymbols: Object.keys(tagsMap),
-        willShowAddButton: Object.keys(library?.tag_definitions || {}).length > 0,
-        holdingsWithDirectTags: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-        holdingsWithDirectTagsSample: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).map(h => ({
-          symbol: h.symbol,
-          tags: Object.keys(h.tags || {})
-        }))
-      });
-      
     } catch (error) {
-      console.error('❌ [HOLDINGS TABLE] Error loading tags from context:', error);
+      console.error('❌ [HOLDINGS TABLE] Error loading tag library:', error);
       setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
-      setStructuredTags({});
     }
-  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
+  }, [getUserTagLibrary, allPortfoliosData?.user_tag_library]);
 
   // Handle tag updates (refresh only tags - lightweight and fast!)
   const handleTagsUpdated = async () => {
@@ -667,8 +606,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       // Apply tag filter if active
       let matchesTag = true;
       if (tagFilter) {
-        const holdingTags = structuredTags[holding.symbol];
-        matchesTag = holdingTags && Object.keys(holdingTags.tags).includes(tagFilter);
+        // Use holding.tags (fresh from context) instead of structuredTags (stale local state)
+        matchesTag = holding.tags && Object.keys(holding.tags).includes(tagFilter);
       }
 
       return matchesSymbol && matchesType && matchesTag;
@@ -744,8 +683,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   };
 
   const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
-    const structuredTag = structuredTags?.[holding.symbol];
-    
     // Get tags from holding data (should contain merged tags from context)
     const tagsToDisplay = holding.tags;
     
@@ -845,9 +782,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
             return null;
           }
           
-          console.log(`✅ [HOLDINGS TABLE] Showing add button for ${holding.symbol}`);
+          console.log(`✅ [HOLDINGS TABLE] Showing add button for ${holding.symbol}`, {
+            currentTags: holding.tags ? Object.keys(holding.tags) : 'No tags',
+            holdingTagsObject: holding.tags
+          });
+          
+          // Create a stable key based on symbol and current tags to force dropdown re-render when tags change
+          const dropdownKey = `${holding.symbol}-${holding.tags ? Object.keys(holding.tags).sort().join(',') : 'notags'}`;
+          
           return (
-            <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
+            <Select key={dropdownKey} onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
               <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
                 <Plus size={14} className="text-gray-400 hover:text-blue-400" />
               </SelectTrigger>
@@ -856,7 +800,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 <p className="text-xs text-gray-400 mb-2 px-2">Add tag to {holding.symbol}:</p>
                 {userDefinedTags.map((tagDef) => {
                   // Don't show tags that are already assigned
-                  const isAlreadyAssigned = structuredTag && structuredTag.tags[tagDef.name];
+                  // Use holding.tags (fresh from context) instead of structuredTag (stale local state)
+                  const isAlreadyAssigned = holding.tags && holding.tags[tagDef.name];
+                  
+                  console.log(`🔍 [DROPDOWN] Tag ${tagDef.name} for ${holding.symbol}:`, {
+                    isAlreadyAssigned,
+                    holdingHasTags: !!holding.tags,
+                    holdingTagNames: holding.tags ? Object.keys(holding.tags) : 'No tags',
+                    checkingFor: tagDef.name
+                  });
+                  
                   if (isAlreadyAssigned) return null;
 
                   return (
@@ -872,7 +825,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </SelectItem>
                   );
                 })}
-                {userDefinedTags.filter(tagDef => !(structuredTag && structuredTag.tags[tagDef.name])).length === 0 && (
+                {userDefinedTags.filter(tagDef => !(holding.tags && holding.tags[tagDef.name])).length === 0 && (
                   <div className="px-2 py-3 text-xs text-gray-500 text-center">
                     All your tags are already assigned
                   </div>

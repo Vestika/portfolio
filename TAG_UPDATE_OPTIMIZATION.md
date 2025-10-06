@@ -134,6 +134,44 @@ Returns tags for all holdings:
 - **After:** <200ms (tag-only refresh, no loading state)
 - **Improvement:** ~10-25x faster, feels instant to users
 
+## Bug Fix: Re-adding Removed Tags
+
+### Problem
+After removing a tag and trying to re-add it, the UI showed a checkmark (indicating it was already assigned) and prevented re-adding until a full page refresh.
+
+### Root Cause
+The dropdown was checking tag assignment using `structuredTags` local state instead of the fresh `holding.tags` data from context. This caused a **stale data** problem:
+
+```typescript
+// ❌ BAD: Checking stale local state
+const isAlreadyAssigned = structuredTag && structuredTag.tags[tagDef.name];
+```
+
+When tags were updated via `refreshTagsOnly()`:
+1. Context updated `allPortfoliosData.all_holding_tags` ✅
+2. `computedData` recalculated and merged tags into `holding.tags` ✅
+3. Holdings table received fresh data with updated tags ✅
+4. But dropdown still checked **local state** (stale) ❌
+
+### Solution
+Changed dropdown to use **fresh data** directly from `holding.tags` instead of stale local state:
+
+```typescript
+// ✅ GOOD: Checking fresh data from context
+const isAlreadyAssigned = holding.tags && holding.tags[tagDef.name];
+```
+
+This ensures the dropdown always checks the current state of tags, which are automatically updated when `refreshTagsOnly()` runs.
+
+### Additional Cleanup
+Since we're now using `holding.tags` directly everywhere (which comes from `computedData` in the context), we were able to:
+1. Remove the `structuredTags` local state entirely
+2. Simplify the `useEffect` to only load the tag library
+3. Remove unnecessary dependencies and code
+4. Eliminate the source of stale data
+
+The component is now simpler and more reliable - it always uses the **single source of truth** (`holding.tags` from context) instead of maintaining duplicate local state.
+
 ## Future Optimizations
 If needed, we could make this even faster with:
 1. **Optimistic updates:** Update UI immediately before API call
