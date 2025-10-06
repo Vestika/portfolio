@@ -487,10 +487,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       holdings: data.holdings.map(holding => {
         const earningsData = getEarningsBySymbol(holding.symbol);
         if (earningsData && earningsData.length > 0) {
-          console.log(`📅 [HOLDINGS TABLE] Adding real earnings data for ${holding.symbol}:`, {
-            earningsCount: earningsData.length,
-            sampleEarnings: earningsData.slice(0, 2)
-          });
           return {
             ...holding,
             earnings_calendar: earningsData
@@ -556,8 +552,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   // Get tags and quotes from context (no more API calls needed!)
   const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData } = usePortfolioData();
-  
-  console.log('🏷️ [HOLDINGS TABLE] Component initialized - checking tag utilities availability');
 
   // Load tag library from context (tags are already in holding.tags from computedData)
   useEffect(() => {
@@ -566,12 +560,11 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       
       if (library && typeof library === 'object') {
         setTagLibrary(library);
-        console.log('✅ [HOLDINGS TABLE] Tag library loaded with', Object.keys(library?.tag_definitions || {}).length, 'tag definitions');
       } else {
         setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       }
     } catch (error) {
-      console.error('❌ [HOLDINGS TABLE] Error loading tag library:', error);
+      console.error('Error loading tag library:', error);
       setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
     }
   }, [getUserTagLibrary, allPortfoliosData?.user_tag_library]);
@@ -579,7 +572,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   // Handle tag updates (refresh only tags - lightweight and fast!)
   const handleTagsUpdated = async () => {
     try {
-      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing tags only (lightweight)');
       await refreshTagsOnly();
     } catch (error) {
       console.error('Error refreshing tags after update:', error);
@@ -686,53 +678,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     // Get tags from holding data (should contain merged tags from context)
     const tagsToDisplay = holding.tags;
     
-    // Debug tag display process  
-    if (tagsToDisplay && Object.keys(tagsToDisplay).length > 0) {
-      const hasProperStructure = Object.values(tagsToDisplay).every(tag => 
-        typeof tag === 'object' && tag !== null && 'tag_type' in tag
-      );
-      
-      console.log(`🏷️ [HOLDINGS TABLE] Processing tags for ${holding.symbol}:`, {
-        tagCount: Object.keys(tagsToDisplay).length,
-        tagNames: Object.keys(tagsToDisplay),
-        hasProperTagValueStructure: hasProperStructure,
-        sampleTag: Object.values(tagsToDisplay)[0],
-        willShowTagDisplay: hasProperStructure
-      });
-      
-      if (!hasProperStructure) {
-        console.log(`⚠️ [HOLDINGS TABLE] Tags for ${holding.symbol} have incorrect structure:`, tagsToDisplay);
-      }
-    } else {
-      console.log(`🔍 [HOLDINGS TABLE] No tags to display for ${holding.symbol}:`, {
-        holdingHasTags: !!(holding.tags && Object.keys(holding.tags).length > 0),
-        holdingTagsType: typeof holding.tags,
-        holdingTagsValue: holding.tags
-      });
-    }
-    
-    // Safely get user defined tags with multiple null checks and debugging
+    // Get user defined tags
     let userDefinedTags: TagDefinition[] = [];
-    console.log(`🔧 [HOLDINGS TABLE] Processing tag library for ${holding.symbol}:`, {
-      hasTagLibrary: !!tagLibrary,
-      tagLibraryType: typeof tagLibrary,
-      hasTagDefinitions: !!(tagLibrary?.tag_definitions),
-      tagDefinitionsType: typeof tagLibrary?.tag_definitions,
-      tagDefinitionsCount: tagLibrary?.tag_definitions ? Object.keys(tagLibrary.tag_definitions).length : 0
-    });
-    
     try {
-      if (tagLibrary && 
-          typeof tagLibrary === 'object' && 
-          tagLibrary.tag_definitions && 
-          typeof tagLibrary.tag_definitions === 'object') {
+      if (tagLibrary?.tag_definitions && typeof tagLibrary.tag_definitions === 'object') {
         userDefinedTags = Object.values(tagLibrary.tag_definitions);
-        console.log(`✅ [HOLDINGS TABLE] Found ${userDefinedTags.length} user defined tags for add button`);
-      } else {
-        console.log(`⚠️ [HOLDINGS TABLE] Tag library structure invalid for add button - no user defined tags available`);
       }
     } catch (e) {
-      console.error('❌ [HOLDINGS TABLE] Error processing tag library:', e);
+      console.error('Error processing tag library:', e);
       userDefinedTags = [];
     }
 
@@ -746,14 +699,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           Object.entries(tagsToDisplay).forEach(([tagName, tagValue]) => {
             if (typeof tagValue === 'object' && tagValue !== null && 'tag_type' in tagValue) {
               properTagValues[tagName] = tagValue as TagValue;
-            } else {
-              console.log(`⚠️ [HOLDINGS TABLE] Skipping invalid tag for ${holding.symbol}: ${tagName}`, tagValue);
             }
           });
           
           if (Object.keys(properTagValues).length === 0) return null;
-          
-          console.log(`✅ [HOLDINGS TABLE] Rendering ${Object.keys(properTagValues).length} valid tags for ${holding.symbol}`);
           
           return (
             <TagDisplay
@@ -770,22 +719,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
         {(() => {
           const shouldShowAddButton = showManagementControls && userDefinedTags.length > 0;
-          console.log(`🔧 [HOLDINGS TABLE] Add tag button decision for ${holding.symbol}:`, {
-            showManagementControls,
-            userDefinedTagsLength: userDefinedTags.length,
-            shouldShowAddButton,
-            userDefinedTagsSample: userDefinedTags.slice(0, 2).map(tag => tag.name)
-          });
           
-          if (!shouldShowAddButton) {
-            console.log(`❌ [HOLDINGS TABLE] NOT showing add button for ${holding.symbol} - missing requirements`);
-            return null;
-          }
-          
-          console.log(`✅ [HOLDINGS TABLE] Showing add button for ${holding.symbol}`, {
-            currentTags: holding.tags ? Object.keys(holding.tags) : 'No tags',
-            holdingTagsObject: holding.tags
-          });
+          if (!shouldShowAddButton) return null;
           
           // Create a stable key based on symbol and current tags to force dropdown re-render when tags change
           const dropdownKey = `${holding.symbol}-${holding.tags ? Object.keys(holding.tags).sort().join(',') : 'notags'}`;
@@ -800,16 +735,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 <p className="text-xs text-gray-400 mb-2 px-2">Add tag to {holding.symbol}:</p>
                 {userDefinedTags.map((tagDef) => {
                   // Don't show tags that are already assigned
-                  // Use holding.tags (fresh from context) instead of structuredTag (stale local state)
+                  // Use holding.tags (fresh from context) instead of stale local state
                   const isAlreadyAssigned = holding.tags && holding.tags[tagDef.name];
-                  
-                  console.log(`🔍 [DROPDOWN] Tag ${tagDef.name} for ${holding.symbol}:`, {
-                    isAlreadyAssigned,
-                    holdingHasTags: !!holding.tags,
-                    holdingTagNames: holding.tags ? Object.keys(holding.tags) : 'No tags',
-                    checkingFor: tagDef.name
-                  });
-                  
                   if (isAlreadyAssigned) return null;
 
                   return (
@@ -1113,19 +1040,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           <Calendar size={16} />
                           <div className="text-xs text-gray-300">
                             {(() => {
-                              // Debug logging
-                              console.log(`🔍 [EARNINGS] Processing ${holding.symbol}:`, {
-                                hasEarnings: !!holding.earnings_calendar,
-                                earningsCount: holding.earnings_calendar?.length || 0,
-                                earningsDates: holding.earnings_calendar?.map(e => e.date) || []
-                              });
-                              
                               // Find the next upcoming earnings date
                               const upcomingEarnings = holding.earnings_calendar
                                 .filter(earning => new Date(earning.date) > new Date())
                                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                              
-                              console.log(`📅 [EARNINGS] ${holding.symbol} upcoming:`, upcomingEarnings.length);
                               
                               if (upcomingEarnings.length > 0) {
                                 const nextEarnings = upcomingEarnings[0];

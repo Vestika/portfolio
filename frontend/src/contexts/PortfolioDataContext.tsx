@@ -443,17 +443,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         timestamp: portfolioData.computation_timestamp,
         sampleHoldingTag: Object.values(portfolioData.all_holding_tags || {})[0] || 'No holding tags found'
       });
-      
-      // Debug a sample holding tag structure
-      if (portfolioData.all_holding_tags && Object.keys(portfolioData.all_holding_tags).length > 0) {
-        const sampleSymbol = Object.keys(portfolioData.all_holding_tags)[0];
-        const sampleHoldingTag = portfolioData.all_holding_tags[sampleSymbol];
-        console.log(`🏷️ [PORTFOLIO CONTEXT] Sample holding tag structure for ${sampleSymbol}:`, {
-          hasTagsObject: !!(sampleHoldingTag.tags),
-          tagNames: Object.keys(sampleHoldingTag.tags || {}),
-          sampleTagValue: sampleHoldingTag.tags ? Object.values(sampleHoldingTag.tags)[0] : 'No tags'
-        });
-      }
 
         // Set both portfolio data and autocomplete data
         setAllPortfoliosData(portfolioData);
@@ -498,11 +487,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   // Refresh only tags (lightweight, no loading state)
   const refreshTagsOnly = useCallback(async () => {
     if (!allPortfoliosData) {
-      console.warn('⚠️ [PORTFOLIO CONTEXT] Cannot refresh tags - no portfolio data loaded');
       return;
     }
-
-    console.log('🏷️ [PORTFOLIO CONTEXT] Refreshing tags only (lightweight refresh)');
     
     try {
       // Fetch updated tags in parallel
@@ -532,14 +518,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           all_holding_tags: updatedHoldingTagsMap
         };
       });
-
-      console.log('✅ [PORTFOLIO CONTEXT] Tags refreshed successfully:', {
-        tagDefinitions: Object.keys(updatedTagLibrary?.tag_definitions || {}).length,
-        holdingTagsCount: Object.keys(updatedHoldingTagsMap).length,
-        updatedSymbols: Object.keys(updatedHoldingTagsMap)
-      });
     } catch (error: any) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error refreshing tags:', error);
+      console.error('Error refreshing tags:', error);
       // Don't throw - just log the error, UI will continue working with old tags
     }
   }, [allPortfoliosData]);
@@ -676,33 +656,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       const holdingTags = allPortfoliosData?.all_holding_tags?.[symbol];
       const priceData = allPortfoliosData?.global_current_prices?.[symbol];
 
-      // Get tags from MongoDB holding tags only (security tags removed from global_securities)
+      // Get tags from MongoDB holding tags (security tags removed from global_securities)
       let combinedTags: Record<string, any> = {};
       
       // Use holding-specific tags (complex TagValue structures from MongoDB)
       if (holdingTags?.tags && typeof holdingTags.tags === 'object') {
-        console.log(`🏷️ [PORTFOLIO CONTEXT] MongoDB holding tags for ${symbol}:`, {
-          tagNames: Object.keys(holdingTags.tags),
-          sampleTag: Object.keys(holdingTags.tags)[0] ? {
-            name: Object.keys(holdingTags.tags)[0],
-            structure: holdingTags.tags[Object.keys(holdingTags.tags)[0]]
-          } : 'No tags'
-        });
-        
-        // Use MongoDB holding tags (they have the proper TagValue structure)
         combinedTags = { ...holdingTags.tags };
-      }
-      
-      // Log final result
-      if (Object.keys(combinedTags).length > 0) {
-        console.log(`✅ [PORTFOLIO CONTEXT] Combined tags for ${symbol}:`, {
-          tagCount: Object.keys(combinedTags).length,
-          tagNames: Object.keys(combinedTags),
-          tagSources: {
-            fromMongoDB: holdingTags?.tags ? Object.keys(holdingTags.tags).length : 0
-          },
-          sampleTagStructure: Object.values(combinedTags)[0]
-        });
       }
 
       // Calculate prices and values dynamically
@@ -848,37 +807,25 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [allPortfoliosData]);
 
-  // Tags utilities with error handling and debugging
+  // Tags utilities with error handling
   const getUserTagLibrary = useCallback(() => {
     try {
       const library = allPortfoliosData?.user_tag_library;
       if (!library) {
-        console.log('🏷️ [PORTFOLIO CONTEXT] No tag library available, using empty fallback');
         return { user_id: '', tag_definitions: {}, template_tags: {} };
       }
-      
-      // Only log when we actually have tag definitions
-      if (library.tag_definitions && Object.keys(library.tag_definitions).length > 0) {
-        console.log('✅ [PORTFOLIO CONTEXT] Tag library loaded with definitions:', Object.keys(library.tag_definitions));
-      }
-      
       return library;
     } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getUserTagLibrary:', error);
+      console.error('Error in getUserTagLibrary:', error);
       return { user_id: '', tag_definitions: {}, template_tags: {} };
     }
   }, [allPortfoliosData]);
 
   const getHoldingTagsBySymbol = useCallback((symbol: string) => {
     try {
-      const result = allPortfoliosData?.all_holding_tags?.[symbol];
-      // Only log for symbols that have tags to reduce noise
-      if (result && result.tags && Object.keys(result.tags).length > 0) {
-        console.log(`🏷️ [PORTFOLIO CONTEXT] Found holding tags for ${symbol}:`, Object.keys(result.tags));
-      }
-      return result;
+      return allPortfoliosData?.all_holding_tags?.[symbol];
     } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getHoldingTagsBySymbol:', error);
+      console.error('Error in getHoldingTagsBySymbol:', error);
       return undefined;
     }
   }, [allPortfoliosData]);
