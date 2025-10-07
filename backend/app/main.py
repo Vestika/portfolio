@@ -25,6 +25,7 @@ from .endpoints.ibkr import router as ibkr_router
 from .endpoints.files import router as files_router
 from .endpoints.notifications import router as notifications_router
 from .endpoints.real_estate import router as real_estate_router
+from .endpoints.feedback import router as feedback_router
 
 logger = logging.Logger(__name__)
 
@@ -159,6 +160,7 @@ app.include_router(ibkr_router)
 app.include_router(files_router)
 app.include_router(notifications_router)
 app.include_router(real_estate_router)
+app.include_router(feedback_router)
 
 # Mount static files for uploaded profile images
 import os

@@ -87,6 +87,16 @@ class Settings(BaseSettings):
         description="Google AI model to use for analysis"
     )
 
+    # Telegram Bot Configuration
+    telegram_bot_token: Optional[str] = Field(
+        default=None,
+        description="Telegram bot token for sending feedback notifications"
+    )
+    telegram_chat_id: Optional[str] = Field(
+        default=None,
+        description="Telegram chat ID (user/group/channel) to receive feedback notifications"
+    )
+
 
 # Global settings instance
 settings = Settings() 
