@@ -9,6 +9,10 @@ import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
 import EarningsCalendar from './components/EarningsCalendar';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
+import { Card, CardContent } from './components/ui/card';
+import { Button } from './components/ui/button';
+import { Switch } from './components/ui/switch';
+import { Separator } from './components/ui/separator';
 import TagAPI from './utils/tag-api';
 import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
 
@@ -28,6 +32,9 @@ import {
   Users,
   Plus,
   Calendar,
+  Filter,
+  X,
+  Layers,
 } from 'lucide-react';
 
 import israelFlag from './assets/israel-flag.svg';
@@ -445,6 +452,60 @@ const SortableHeader: React.FC<{
   </div>
 );
 
+const GroupHeader: React.FC<{
+  groupName: string;
+  holdings: SecurityHolding[];
+  baseCurrency: string;
+  isValueVisible: boolean;
+  colSpan: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ groupName, holdings, baseCurrency, isValueVisible, colSpan, isExpanded, onToggle }) => {
+  const totalValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+  const holdingsCount = holdings.length;
+
+  return (
+    <tr 
+      className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-b-2 border-purple-400/30 hover:from-purple-500/15 hover:to-blue-500/15 transition-all cursor-pointer"
+      onClick={onToggle}
+    >
+      <td colSpan={colSpan} className="px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-6 h-6">
+              {isExpanded ? (
+                <ChevronDown size={20} className="text-purple-400" />
+              ) : (
+                <ChevronRight size={20} className="text-purple-400" />
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-purple-500/20 rounded-md">
+                <Layers size={16} className="text-purple-400" />
+              </div>
+              <span className="text-base font-semibold text-purple-200">{groupName}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/20 rounded-md border border-purple-400/30">
+              <span className="text-xs text-gray-400">Holdings:</span>
+              <span className="text-sm font-semibold text-purple-300">{holdingsCount}</span>
+            </div>
+            {isValueVisible && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/20 rounded-md border border-purple-400/30">
+                <span className="text-xs text-gray-400">Total Value:</span>
+                <span className="text-sm font-semibold text-purple-300">
+                  {Math.round(totalValue).toLocaleString()} {baseCurrency}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isLoading = false }) => {
   const [sortConfig, setSortConfig] = useState<{
     key: keyof SecurityHolding | 'percent_change';
@@ -499,6 +560,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [expandedEarnings, setExpandedEarnings] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [chartTooltipData, setChartTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const [earningsTooltipData, setEarningsTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -545,6 +607,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [isGroupedByTag, setIsGroupedByTag] = useState(false);
 
   // Tag management state
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
@@ -643,6 +706,35 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
+  // Group holdings by tag value when grouping is enabled
+  const groupedHoldings = useMemo(() => {
+    if (!isGroupedByTag || !tagFilter) {
+      return null;
+    }
+
+    const groups: Record<string, SecurityHolding[]> = {};
+    
+    filteredAndSortedHoldings.forEach(holding => {
+      // Get the tag value for this holding (tags should be TagValue objects at runtime)
+      const tagValue = holding.tags?.[tagFilter] as any;
+      if (tagValue && typeof tagValue === 'object' && 'enum_value' in tagValue) {
+        const groupKey = (tagValue.enum_value as string) || 'Uncategorized';
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(holding);
+      } else {
+        // If holding doesn't have a proper value, put in "Uncategorized"
+        if (!groups['Uncategorized']) {
+          groups['Uncategorized'] = [];
+        }
+        groups['Uncategorized'].push(holding);
+      }
+    });
+
+    return groups;
+  }, [isGroupedByTag, tagFilter, filteredAndSortedHoldings]);
+
   const handleRemoveTag = async (symbol: string, tagName: string) => {
     try {
       await TagAPI.removeHoldingTag(symbol, tagName);
@@ -672,6 +764,19 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       console.error('Error saving tag:', error);
       throw error;
     }
+  };
+
+  // Toggle group expansion
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
   };
 
   const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
@@ -775,27 +880,74 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-h-[56px]">
           <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
 
-          {/* Tag Filter Indicator */}
-          {tagFilter && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-400/30 rounded-md">
-              <span className="text-sm text-blue-200">
-                Filtered by: <span className="font-medium">{tagFilter.replace(/_/g, ' ')}</span>
-                <span className="text-xs ml-1 opacity-75">
-                  ({filteredAndSortedHoldings.length} of {dataWithRealEarnings.holdings.length})
-                </span>
-              </span>
-              <button
-                onClick={() => setTagFilter(null)}
-                className="text-blue-300 hover:text-blue-100 transition-colors"
-                title="Clear filter"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          {/* Tag Filter Indicator - Enhanced Action Menu */}
+          {tagFilter && (() => {
+            // Get the tag definition to check if it's groupable (ENUM type)
+            const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
+            const isGroupable = tagDefinition?.tag_type === TagType.ENUM;
+            
+            return (
+              <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-400/30 shadow-lg backdrop-blur-sm">
+                <CardContent className="p-2.5">
+                  <div className="flex items-center gap-3">
+                    {/* Filter Info */}
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 bg-blue-500/20 rounded-md">
+                        <Filter size={14} className="text-blue-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-gray-400 leading-tight">Filtering by</span>
+                        <span className="text-xs font-semibold text-blue-200 leading-tight">
+                          {tagFilter.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <div className="px-1.5 py-0.5 bg-blue-500/20 rounded-md border border-blue-400/30">
+                        <span className="text-[10px] font-medium text-blue-300">
+                          {filteredAndSortedHoldings.length} / {dataWithRealEarnings.holdings.length}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <Separator orientation="vertical" className="h-6 bg-blue-400/20" />
+                    
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {isGroupable && (
+                        <>
+                          <div className="flex items-center gap-1.5">
+                            <Layers size={12} className="text-gray-400" />
+                            <span className="text-[10px] text-gray-300">Group by value</span>
+                            <Switch
+                              checked={isGroupedByTag}
+                              onCheckedChange={setIsGroupedByTag}
+                              className="scale-[0.65]"
+                            />
+                          </div>
+                          <Separator orientation="vertical" className="h-5 bg-blue-400/20" />
+                        </>
+                      )}
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setTagFilter(null);
+                          setIsGroupedByTag(false);
+                        }}
+                        className="h-6 px-2 text-[10px] text-red-300 hover:text-red-100 hover:bg-red-500/10"
+                      >
+                        <X size={12} />
+                        Clear Filter
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         {/* View Toggle */}
@@ -893,7 +1045,364 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedHoldings.map((holding) => (
+              {groupedHoldings ? (
+                // Render grouped view
+                Object.entries(groupedHoldings).map(([groupName, groupHoldings]) => (
+                  <React.Fragment key={`group-${groupName}`}>
+                    <GroupHeader
+                      groupName={groupName}
+                      holdings={groupHoldings}
+                      baseCurrency={dataWithRealEarnings.base_currency}
+                      isValueVisible={isValueVisible}
+                      colSpan={isValueVisible ? 11 : 9}
+                      isExpanded={expandedGroups.has(groupName)}
+                      onToggle={() => toggleGroup(groupName)}
+                    />
+                    {expandedGroups.has(groupName) && groupHoldings.map((holding) => (
+                      <React.Fragment key={holding.symbol}>
+                        <tr
+                          className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
+                          onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
+                        >
+                          <td className="px-2 md:px-4">
+                            {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                              <div className="flex items-center justify-center">
+                                {expandedRow === holding.symbol ? (
+                                  <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
+                                ) : (
+                                  <ChevronRight size={18} className="text-gray-400 hover:text-blue-400 transition-colors cursor-pointer" />
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
+                          <td className="px-2 md:px-4 font-medium text-blue-400">
+                            <div className="flex items-center gap-2">
+                              {/* Logo image */}
+                              {(() => {
+                                const logoUrl = getLogoUrl(holding);
+                                const isUsFlag = logoUrl === usFlag;
+                                const isFlag = logoUrl === israelFlag || isUsFlag;
+                                if (logoUrl) {
+                                  return (
+                                    <img
+                                      src={logoUrl}
+                                      alt={holding.symbol + ' logo'}
+                                      className={
+                                        isFlag
+                                          ? 'w-5 h-5 rounded-full object-cover mr-1 transition-transform duration-200 hover:scale-150'
+                                          : 'w-5 h-5 rounded-full bg-white object-contain border border-gray-300/40 mr-1 transition-transform duration-200 hover:scale-150'
+                                      }
+                                      onError={e => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                  );
+                                }
+                                return null;
+                              })()}
+                              <span>{getDisplaySymbol(holding.symbol)}</span>
+                              {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                                <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
+                                  {holding.account_breakdown.length}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
+                          <td className="px-2 md:px-4 text-sm hidden md:table-cell">
+                            {renderTags(holding, true)}
+                          </td>
+                          <td className="px-2 md:px-4 text-right text-sm text-gray-200">
+                            {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                            <span className="text-xs text-gray-400 ml-1">
+                              {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
+                            </span>
+                          </td>
+                          <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                            {(() => {
+                              const percentChange = getPercentChange(holding.symbol);
+                              const isPositive = percentChange > 0;
+                              const isNeutral = percentChange === 0;
+                              
+                              return (
+                                <span className={`font-medium ${
+                                  isNeutral ? 'text-gray-400' : 
+                                  isPositive ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                  {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          {isValueVisible && (
+                            <>
+                              <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                                {Math.round(holding.total_units).toLocaleString()}
+                              </td>
+                              <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
+                                {Math.round(holding.total_value).toLocaleString()}
+                                <span className="text-xs text-gray-400 ml-1 hidden md:inline">
+                                  ({calculatePercentage(holding)}%)
+                                </span>
+                              </td>
+                            </>
+                          )}
+                          <td className="px-2 md:px-4 hidden md:table-cell">
+                            {holding.earnings_calendar && holding.earnings_calendar.length > 0 ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const date = new Date(nextEarnings.date);
+                                      const today = new Date();
+                                      const diffTime = date.getTime() - today.getTime();
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      
+                                      const tooltipContent = `
+                                        <div style="padding: 4px;">
+                                          <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString('en-US', { 
+                                            weekday: 'long',
+                                            month: 'long', 
+                                            day: 'numeric',
+                                            year: 'numeric'
+                                          })}</div>
+                                          <div style="font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 2px;">
+                                            Q${nextEarnings.quarter} Earnings
+                                          </div>
+                                          <div style="font-size: 11px; color: #93c5fd;">
+                                            ${diffDays === 1 ? 'Tomorrow' : 
+                                              diffDays === 0 ? 'Today' : 
+                                              `in ${diffDays} days`}
+                                          </div>
+                                        </div>
+                                      `;
+                                      
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setEarningsTooltipData({
+                                        x: rect.left + rect.width / 2,
+                                        y: rect.top - 10,
+                                        content: tooltipContent,
+                                        visible: true
+                                      });
+                                    }
+                                  }
+                                }}
+                                onMouseLeave={() => {
+                                  setEarningsTooltipData(null);
+                                }}
+                                className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                              >
+                                <Calendar size={16} />
+                                <div className="text-xs text-gray-300">
+                                  {(() => {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const date = new Date(nextEarnings.date);
+                                      const today = new Date();
+                                      const diffTime = date.getTime() - today.getTime();
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      
+                                      return (
+                                        <span className="text-xs font-medium text-blue-300">
+                                          {diffDays === 1 ? 'Tomorrow' : 
+                                           diffDays === 0 ? 'Today' : 
+                                           `in ${diffDays} days`}
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span className="text-xs text-gray-500">
+                                          No upcoming
+                                        </span>
+                                      );
+                                    }
+                                  })()}
+                                </div>
+                              </button>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <span className="text-xs text-gray-600">-</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 md:px-4 hidden md:table-cell">
+                            {(() => {
+                              const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                              const isCurrency = holding.symbol.startsWith('FX:');
+                              const isCrypto = holding.symbol.endsWith('-USD');
+                              const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                              
+                              const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;
+                              
+                              return shouldShowChart ? (
+                                <MiniChart 
+                                  data={holding.historical_prices} 
+                                  symbol={holding.symbol} 
+                                  currency={holding.original_currency} 
+                                  baseCurrency={dataWithRealEarnings.base_currency}
+                                  onTooltipShow={setChartTooltipData}
+                                  onTooltipHide={() => setChartTooltipData(null)}
+                                />
+                              ) : null;
+                            })()}
+                          </td>
+                        </tr>
+                        {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                          <tr>
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                              <AccountBreakdownRow
+                                accountBreakdown={holding.account_breakdown}
+                                baseCurrency={dataWithRealEarnings.base_currency}
+                                isValueVisible={isValueVisible}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {expandedEarnings === holding.symbol && holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                          <tr>
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                              <EarningsCalendar
+                                earningsData={holding.earnings_calendar}
+                                symbol={holding.symbol}
+                                compact={false}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {expandedRow === holding.symbol && isMobile && (
+                          <tr className="bg-gray-800/50 md:hidden">
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-bold text-gray-400">Name</p>
+                                  <p>{holding.name}</p>
+                                </div>
+                                <div>
+                                  <p className="font-bold text-gray-400">Performance</p>
+                                  <p>
+                                    {(() => {
+                                      const percentChange = getPercentChange(holding.symbol);
+                                      const isPositive = percentChange > 0;
+                                      const isNeutral = percentChange === 0;
+                                      
+                                      return (
+                                        <span className={`font-medium ${
+                                          isNeutral ? 'text-gray-400' : 
+                                          isPositive ? 'text-green-400' : 'text-red-400'
+                                        }`}>
+                                          {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                                        </span>
+                                      );
+                                    })()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-bold text-gray-400">Tags</p>
+                                  <div>{renderTags(holding, true)}</div>
+                                </div>
+                                {isValueVisible && (
+                                  <div>
+                                    <p className="font-bold text-gray-400">Units</p>
+                                    <p>{Math.round(holding.total_units).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                                  <div className="col-span-2">
+                                    <p className="font-bold text-gray-400 mb-2">Earnings</p>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                                      }}
+                                      className="flex items-center gap-2 mb-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                                      title={(() => {
+                                        if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                                          const upcomingEarnings = holding.earnings_calendar
+                                            .filter(earning => new Date(earning.date) > new Date())
+                                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                          
+                                          if (upcomingEarnings.length > 0) {
+                                            const nextEarnings = upcomingEarnings[0];
+                                            const date = new Date(nextEarnings.date);
+                                            return `Next earnings: ${date.toLocaleDateString('en-US', { 
+                                              weekday: 'long',
+                                              month: 'long', 
+                                              day: 'numeric',
+                                              year: 'numeric'
+                                            })} Q${nextEarnings.quarter}`;
+                                          } else {
+                                            return "No upcoming earnings";
+                                          }
+                                        }
+                                        return "View earnings calendar";
+                                      })()}
+                                    >
+                                      <Calendar 
+                                        size={14} 
+                                        className="text-blue-400 bg-transparent"
+                                      />
+                                      <span className="text-sm text-gray-300">
+                                        {(() => {
+                                          const upcomingEarnings = holding.earnings_calendar
+                                            .filter(earning => new Date(earning.date) > new Date())
+                                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                          
+                                          if (upcomingEarnings.length > 0) {
+                                            const nextEarnings = upcomingEarnings[0];
+                                            const today = new Date();
+                                            const date = new Date(nextEarnings.date);
+                                            const diffTime = date.getTime() - today.getTime();
+                                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                            
+                                            return (
+                                              <span className="text-gray-300">
+                                                Reports {diffDays === 1 ? '(tomorrow)' : 
+                                                         diffDays === 0 ? '(today)' : 
+                                                         `(in ${diffDays} days)`}
+                                              </span>
+                                            );
+                                          } else {
+                                            return (
+                                              <span className="text-gray-400">
+                                                No upcoming earnings
+                                              </span>
+                                            );
+                                          }
+                                        })()}
+                                      </span>
+                                    </button>
+                                    <EarningsCalendar
+                                      earningsData={holding.earnings_calendar}
+                                      symbol={holding.symbol}
+                                      compact={true}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
+                ))
+              ) : (
+                // Render ungrouped view (normal list)
+                filteredAndSortedHoldings.map((holding) => (
                 <React.Fragment key={holding.symbol}>
                   <tr
                     className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
@@ -1237,7 +1746,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
