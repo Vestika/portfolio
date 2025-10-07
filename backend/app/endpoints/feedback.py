@@ -23,7 +23,7 @@ class FeedbackRequest(BaseModel):
     contact_email: Optional[str] = Field(default=None, max_length=320)
 
 
-@router.post("/")
+@router.post("")
 async def submit_feedback(
     payload: FeedbackRequest,
     request: Request,
