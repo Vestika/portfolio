@@ -34,6 +34,8 @@ jobs:
           FINNHUB_API_KEY: "${{ secrets.FINNHUB_API_KEY }}"
           FIREBASE_CREDENTIALS: '${{ secrets.FIREBASE_CREDENTIALS }}'
           GOOGLE_AI_API_KEY: "${{ secrets.GOOGLE_AI_API_KEY }}"
+          TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
           EOF
 
       # Build the Docker image
