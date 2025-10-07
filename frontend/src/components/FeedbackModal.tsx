@@ -84,7 +84,7 @@ export function FeedbackModal({ isOpen, onOpenChange }: FeedbackModalProps) {
               {Array.from({ length: 11 }, (_, i) => i).map((i) => (
                 <button
                   key={i}
-                  onClick={() => setNps(i)}
+                  onClick={() => setNps(prev => (prev === i ? null : i))}
                   className={`text-xs rounded flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 ${nps === i ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}
                 >
                   {i}
