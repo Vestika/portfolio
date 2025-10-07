@@ -14,6 +14,7 @@ import {
 import { useState } from 'react'
 import { AboutModal } from './AboutModal'
 import { NotificationBell } from './NotificationBell'
+import { FeedbackModal } from './FeedbackModal'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,11 +32,13 @@ interface TopBarProps {
   onProfileClick?: () => void
   onSettingsClick?: () => void
   onSignOutClick?: () => void
+  onFeedbackClick?: () => void
 }
 
-export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick }: TopBarProps) {
+export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick, onFeedbackClick }: TopBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const { profileImageUrl } = useUserProfile()
   
   const navigationItems = [
@@ -117,6 +120,16 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
         <div className="hidden md:flex items-center gap-2">
           {/* Notification Bell */}
           <NotificationBell />
+          {/* Feedback button */}
+          <button
+            onClick={() => {
+              setIsFeedbackOpen(true)
+              onFeedbackClick && onFeedbackClick()
+            }}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            Feedback
+          </button>
           
           {/* Profile Icon Dropdown */}
           <DropdownMenu>
@@ -172,6 +185,16 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
         <div className="md:hidden flex items-center gap-2">
           {/* Notification Bell for mobile */}
           <NotificationBell />
+          {/* Feedback button mobile */}
+          <button
+            onClick={() => {
+              setIsFeedbackOpen(true)
+              onFeedbackClick && onFeedbackClick()
+            }}
+            className="px-2 py-1 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            Feedback
+          </button>
           
           {/* Profile Icon for mobile */}
           <DropdownMenu>
@@ -267,6 +290,11 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
       <AboutModal 
         isOpen={isAboutModalOpen} 
         onOpenChange={setIsAboutModalOpen} 
+      />
+      {/* Feedback Modal */}
+      <FeedbackModal 
+        isOpen={isFeedbackOpen}
+        onOpenChange={setIsFeedbackOpen}
       />
     </div>
   )
