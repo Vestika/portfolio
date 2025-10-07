@@ -2,6 +2,7 @@ import React from 'react';
 import { AuthProvider } from './AuthContext';
 import { PortfolioDataProvider } from './PortfolioDataContext'; // Back to original full-featured version
 import { GrowthBookProvider } from './GrowthBookProvider';
+import { RealEstateProvider } from './RealEstateContext';
 
 interface PortfolioProvidersProps {
   children: React.ReactNode;
@@ -17,7 +18,9 @@ export const PortfolioProviders: React.FC<PortfolioProvidersProps> = ({ children
     <AuthProvider>
       <GrowthBookProvider>
         <PortfolioDataProvider>
-          {children}
+          <RealEstateProvider>
+            {children}
+          </RealEstateProvider>
         </PortfolioDataProvider>
       </GrowthBookProvider>
     </AuthProvider>
