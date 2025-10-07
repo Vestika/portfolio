@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
+import type { SecurityHolding } from '../types';
 import api from '../utils/api';
 
 // Helper function to compare arrays
@@ -726,7 +727,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
               currency: currentPortfolioData?.portfolio_metadata?.base_currency || 'USD',
               price_source: 'estimated',
               historical_prices: [],
-              logo: null,
               account_breakdown: [
                 {
                   account_name: account.account_name,
