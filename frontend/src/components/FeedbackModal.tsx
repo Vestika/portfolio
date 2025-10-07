@@ -96,7 +96,7 @@ export function FeedbackModal({ isOpen, onOpenChange }: FeedbackModalProps) {
 
         <div className="p-4 border-t border-gray-800 flex items-center justify-between">
           <div className="text-sm h-5">
-            {sent && <span className="text-green-400">Sent!</span>}
+            {sent && <span className="text-green-400">Thank you for your feedback!</span>}
           </div>
           <button
             onClick={submit}
