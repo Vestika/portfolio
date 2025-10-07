@@ -109,7 +109,10 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
     return tagName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  const handleTagClick = (tagName: string, tagValue: TagValue) => {
+  const handleTagClick = (e: React.MouseEvent, tagName: string, tagValue: TagValue) => {
+    // Stop propagation to prevent parent row click handlers from firing
+    e.stopPropagation();
+    
     // Always allow tag clicking for filtering, regardless of remove buttons
     if (onTagClick) {
       onTagClick(tagName, tagValue);
@@ -148,7 +151,7 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
                 ? 'ring-2 ring-blue-400 ring-opacity-60 shadow-lg scale-105' 
                 : (!showRemoveButtons && onTagClick ? 'hover:opacity-80 hover:scale-105' : '')
             }`}
-            onClick={() => handleTagClick(tagName, tagValue)}
+            onClick={(e) => handleTagClick(e, tagName, tagValue)}
             title={
               showRemoveButtons 
                 ? `${formatTagName(tagName)}: ${displayValue}${isActive ? ' (Click to clear filter)' : (onTagClick ? ' (Click to filter)' : '')}` 
