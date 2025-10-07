@@ -757,19 +757,23 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     filteredAndSortedHoldings.forEach(holding => {
       // Get the tag value for this holding (tags should be TagValue objects at runtime)
       const tagValue = holding.tags?.[tagFilter] as any;
-      if (tagValue && typeof tagValue === 'object' && 'enum_value' in tagValue) {
-        const groupKey = (tagValue.enum_value as string) || 'Uncategorized';
-        if (!groups[groupKey]) {
-          groups[groupKey] = [];
+      let groupKey = 'Uncategorized';
+      
+      if (tagValue && typeof tagValue === 'object') {
+        // Handle ENUM tags
+        if ('enum_value' in tagValue && tagValue.enum_value) {
+          groupKey = tagValue.enum_value as string;
+        } 
+        // Handle BOOLEAN tags
+        else if ('boolean_value' in tagValue) {
+          groupKey = tagValue.boolean_value ? 'Yes' : 'No';
         }
-        groups[groupKey].push(holding);
-      } else {
-        // If holding doesn't have a proper value, put in "Uncategorized"
-        if (!groups['Uncategorized']) {
-          groups['Uncategorized'] = [];
-        }
-        groups['Uncategorized'].push(holding);
       }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(holding);
     });
 
     return groups;
@@ -925,9 +929,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
           {/* Tag Filter Indicator - Enhanced Action Menu */}
           {tagFilter && (() => {
-            // Get the tag definition to check if it's groupable (ENUM type)
+            // Get the tag definition to check if it's groupable (ENUM or BOOLEAN types)
             const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
-            const isGroupable = tagDefinition?.tag_type === TagType.ENUM;
+            const isGroupable = tagDefinition?.tag_type === TagType.ENUM || tagDefinition?.tag_type === TagType.BOOLEAN;
             
             return (
               <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-400/30 shadow-lg backdrop-blur-sm">
