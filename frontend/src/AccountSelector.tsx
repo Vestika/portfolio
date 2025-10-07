@@ -311,9 +311,11 @@ function RealEstateAccountForm(props: {
         </div>
       )}
       {/* Action */}
-      <div className="mt-4 flex items-center gap-3">
-        <Button type="button" onClick={onEstimate} disabled={!canEstimate || loading}>{loading ? 'Estimating…' : 'Estimate'}</Button>
-      </div>
+      {form.financed && (
+        <div className="mt-4 flex items-center gap-3">
+          <Button type="button" onClick={onEstimate} disabled={!canEstimate || loading}>{loading ? 'Estimating…' : 'Estimate'}</Button>
+        </div>
+      )}
       <div className="text-sm min-h-[20px]">
         {error ? <span className="text-red-400">{error}</span> : null}
       </div>

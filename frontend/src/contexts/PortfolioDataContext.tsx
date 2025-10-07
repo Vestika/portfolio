@@ -702,6 +702,50 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       };
     }).sort((a, b) => b.total_value - a.total_value);
 
+    // Inject virtual Real Estate holdings from account properties so they show in the table
+    const reAdditionalHoldings: SecurityHolding[] = [];
+    try {
+      selectedAccounts.forEach((account) => {
+        if ((account.account_type || '').toLowerCase() === 'real-estate') {
+          const props: any = (account as any).account_properties || {};
+          const re = props.real_estate || {};
+          const propertyValue = typeof re.propertyValue === 'number' ? re.propertyValue : null;
+          if (propertyValue && propertyValue > 0) {
+            const loc = (re.location || account.account_name || 'Property') as string;
+            const symbol = `HOME:${loc}`;
+            reAdditionalHoldings.push({
+              symbol,
+              security_type: 'real-estate',
+              name: loc,
+              tags: {},
+              total_units: 1,
+              original_price: propertyValue,
+              original_currency: currentPortfolioData?.portfolio_metadata?.base_currency || 'USD',
+              value_per_unit: propertyValue,
+              total_value: propertyValue,
+              currency: currentPortfolioData?.portfolio_metadata?.base_currency || 'USD',
+              price_source: 'estimated',
+              historical_prices: [],
+              logo: null,
+              account_breakdown: [
+                {
+                  account_name: account.account_name,
+                  account_type: account.account_type,
+                  units: 1,
+                  value: propertyValue,
+                  owners: account.owners || []
+                }
+              ]
+            } as SecurityHolding);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('⚠️ [PORTFOLIO CONTEXT] Failed injecting real-estate virtual holdings:', e);
+    }
+
+    const mergedHoldings = [...allHoldings, ...reAdditionalHoldings];
+
     // Calculate tags summary
     const holdingsWithTags = allHoldings.filter(h => h.tags && Object.keys(h.tags).length > 0);
     
@@ -723,7 +767,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       totalValue: Math.round(totalValue * 100) / 100,
       holdingsTable: {
         base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
-        holdings: allHoldings
+        holdings: mergedHoldings
       }
     };
   }, [currentPortfolioData, selectedAccountNames, allPortfoliosData]);
