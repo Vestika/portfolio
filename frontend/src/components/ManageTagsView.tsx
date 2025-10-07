@@ -6,6 +6,7 @@ import { Tags, Plus, Edit, Trash2, Users, BarChart3 } from 'lucide-react';
 import { TagDefinition, TagLibrary, HoldingTags, TagType } from '../types';
 import TagDefinitionManager from './TagDefinitionManager';
 import TagAPI from '../utils/tag-api';
+import { usePortfolioData } from '../contexts/PortfolioDataContext';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: {
@@ -46,6 +47,7 @@ const TAG_TYPE_INFO = {
 };
 
 export function ManageTagsView() {
+  const { refreshTagsOnly } = usePortfolioData();
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [allHoldingTags, setAllHoldingTags] = useState<HoldingTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,8 @@ export function ManageTagsView() {
     try {
       await TagAPI.createTagDefinition(tagDefinition);
       await loadData();
+      // Update global context so tags are immediately available everywhere
+      await refreshTagsOnly();
       setDefinitionManager({ isOpen: false });
     } catch (error) {
       console.error('Error creating tag definition:', error);
@@ -93,6 +97,8 @@ export function ManageTagsView() {
     try {
       await TagAPI.deleteTagDefinition(tagName);
       await loadData();
+      // Update global context so deleted tags are removed everywhere
+      await refreshTagsOnly();
     } catch (error) {
       console.error('Error deleting tag definition:', error);
     }

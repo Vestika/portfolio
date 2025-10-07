@@ -632,6 +632,46 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     }
   }, [getUserTagLibrary, allPortfoliosData?.user_tag_library]);
 
+  // Track component mount/unmount to detect navigation back to this view
+  const lastVisitTime = React.useRef<number>(Date.now());
+  
+  // Refresh tag library when navigating back to this view or when page becomes visible
+  useEffect(() => {
+    // Check if we've been away for more than 1 second (indicates navigation away and back)
+    const timeSinceLastVisit = Date.now() - lastVisitTime.current;
+    const shouldRefreshOnMount = timeSinceLastVisit > 1000;
+
+    let refreshTimer: NodeJS.Timeout | null = null;
+
+    if (shouldRefreshOnMount) {
+      // Refresh tags after a brief delay to let Highcharts initialize first
+      refreshTimer = setTimeout(() => {
+        refreshTagsOnly();
+      }, 200);
+    }
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        await refreshTagsOnly();
+      }
+    };
+
+    const handleFocus = async () => {
+      await refreshTagsOnly();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    // Update last visit time and clean up when component unmounts
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      lastVisitTime.current = Date.now();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [refreshTagsOnly]);
+
   // Handle tag updates (refresh only tags - lightweight and fast!)
   const handleTagsUpdated = async () => {
     try {
