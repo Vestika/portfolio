@@ -48,7 +48,308 @@ import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
 import OptionsPlanConfig from './components/OptionsPlanConfig';
 import api from './utils/api';
+import { useRealEstate } from './hooks/useRealEstate';
+import type { RealEstateType, RealEstateAutocompleteResponse } from './types/realEstate';
 
+type RealEstateFormState = {
+  location: string;
+  rooms: number | '';
+  sqm: number | '';
+  purchasePrice: number | '';
+  loanAmount: number | '';
+  monthlyLoanPayment: number | '';
+  years: number | '';
+  amountPaid: number | '';
+  financed: boolean;
+  propertyValue: number | null;
+  equity: number | null;
+  ltv: number | null; // 0..1
+  leverageMultiple: number | null;
+  occupancy: 'living' | 'rent';
+  monthlyRent: number | '';
+  marketRent: number | null;
+  rentDiff: number | null;
+  rentDiffPct: number | null;
+};
+
+const defaultRealEstateForm: RealEstateFormState = {
+  location: '',
+  rooms: '',
+  sqm: '',
+  purchasePrice: '',
+  loanAmount: '',
+  monthlyLoanPayment: '',
+  years: '',
+  amountPaid: '',
+  financed: false,
+  propertyValue: null,
+  equity: null,
+  ltv: null,
+  leverageMultiple: null,
+  occupancy: 'living',
+  monthlyRent: '',
+  marketRent: null,
+  rentDiff: null,
+  rentDiffPct: null,
+};
+
+const numberOrNull = (v: any): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const extractPropertyValue = (resp: any): number | null => {
+  const rooms = resp?.rooms ?? null;
+  const prices = resp?.prices || {};
+  if (rooms != null) {
+    // prefer sell price keys
+    const exactSell = `sell_${rooms}_price`;
+    const exactRent = `rent_${rooms}_price`;
+    if (Object.prototype.hasOwnProperty.call(prices, exactSell)) {
+      const v = (prices as any)[exactSell];
+      return v == null ? null : Number(v);
+    }
+    if (Object.prototype.hasOwnProperty.call(prices, exactRent)) {
+      const v = (prices as any)[exactRent];
+      return v == null ? null : Number(v);
+    }
+    const foundSell = Object.entries(prices).find(([k]) => k.includes(`sell_${rooms}`));
+    if (foundSell) return foundSell[1] == null ? null : Number(foundSell[1] as any);
+    const foundRent = Object.entries(prices).find(([k]) => k.includes(`rent_${rooms}`));
+    if (foundRent) return foundRent[1] == null ? null : Number(foundRent[1] as any);
+  }
+  const first = Object.values(prices).find(v => v != null && Number.isFinite(Number(v)));
+  return first != null ? Number(first) : null;
+};
+
+function RealEstateAccountForm(props: {
+  form: RealEstateFormState;
+  setForm: React.Dispatch<React.SetStateAction<RealEstateFormState>>;
+  getAutocomplete: () => Promise<RealEstateAutocompleteResponse>;
+  estimatePrice: (args: { q: string; rooms?: number; type?: RealEstateType; sqm?: number }) => Promise<any>;
+  computeLeverage: (args: { propertyValue: number; debtOutstanding: number; amountAlreadyPaid?: number }) => { equity: number; ltv: number; leverageMultiple: number };
+}) {
+  const { form, setForm, getAutocomplete, estimatePrice, computeLeverage } = props;
+  const [auto, setAuto] = React.useState<RealEstateAutocompleteResponse | null>(null);
+  const [filtered, setFiltered] = React.useState<string[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    getAutocomplete()
+      .then((res) => { if (mounted) setAuto(res); })
+      .catch(() => { if (mounted) setAuto({ cities: [], cities_and_neighborhoods: [] }); });
+    return () => { mounted = false; };
+  }, [getAutocomplete]);
+
+  React.useEffect(() => {
+    if (!auto) return;
+    const list = auto.cities_and_neighborhoods || [];
+    const trimmed = form.location.trim();
+    if (!trimmed) { setFiltered([]); return; }
+    const lower = trimmed.toLowerCase();
+    setFiltered(list.filter(i => i.toLowerCase().includes(lower)).slice(0, 12));
+  }, [form.location, auto]);
+
+  const canEstimate = form.location.trim().length > 1 && form.rooms !== '';
+
+  const onEstimate = async () => {
+    if (!canEstimate) return;
+    setLoading(true); setError(null);
+    try {
+      const respSell = await estimatePrice({ q: form.location.trim(), rooms: form.rooms as number, type: 'sell', sqm: form.sqm === '' ? undefined : (form.sqm as number) });
+      const propertyValue = extractPropertyValue(respSell);
+      // Optionally fetch rent market value for comparison when occupancy is rent
+      let marketRent: number | null = null;
+      if (form.occupancy === 'rent') {
+        const respRent = await estimatePrice({ q: form.location.trim(), rooms: form.rooms as number, type: 'rent', sqm: form.sqm === '' ? undefined : (form.sqm as number) });
+        marketRent = extractPropertyValue(respRent);
+      }
+      let equity: number | null = null, ltv: number | null = null, leverageMultiple: number | null = null;
+      // Only compute leverage if financed; otherwise hide leverage metrics
+      if (form.financed) {
+        // Use purchase price as baseline for loan when loanAmount is not provided
+        const loan = numberOrNull(form.loanAmount) ?? numberOrNull(form.purchasePrice);
+        const paid = numberOrNull(form.amountPaid);
+        const outstanding = loan != null ? Math.max(loan - (paid || 0), 0) : 0;
+        if (propertyValue != null && loan != null) {
+          const lev = computeLeverage({ propertyValue, debtOutstanding: outstanding, amountAlreadyPaid: paid || 0 });
+          equity = lev.equity; ltv = lev.ltv; leverageMultiple = lev.leverageMultiple;
+        }
+      }
+      // Rent comparison metrics
+      let rentDiff: number | null = null;
+      let rentDiffPct: number | null = null;
+      const asked = numberOrNull(form.monthlyRent);
+      if (form.occupancy === 'rent' && marketRent != null && asked != null) {
+        rentDiff = asked - marketRent;
+        rentDiffPct = marketRent !== 0 ? (asked - marketRent) / marketRent : null;
+      }
+      setForm(s => ({ ...s, propertyValue, equity, ltv, leverageMultiple, marketRent, rentDiff, rentDiffPct }));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to fetch estimate');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <Label className="mb-1">Real Estate Details</Label>
+      {/* Property Section */}
+      <div className="mb-2 text-xs uppercase tracking-wide text-gray-400">Property</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="relative">
+          <Label className="text-sm">Location</Label>
+          <Input
+            placeholder="e.g., רמת גן"
+            value={form.location}
+            onChange={(e) => setForm(s => ({ ...s, location: e.target.value }))}
+            onFocus={() => {
+              // open suggestions if data exists
+              if (auto && form.location.trim()) {
+                const lower = form.location.trim().toLowerCase();
+                setFiltered((auto.cities_and_neighborhoods || []).filter(i => i.toLowerCase().includes(lower)).slice(0, 12));
+              }
+            }}
+          />
+          {filtered.length > 0 && (
+            <div className="absolute z-[9999] w-full mt-1 max-h-60 overflow-auto bg-gray-900 border border-gray-700 rounded shadow-lg">
+              {filtered.map(name => (
+                <div
+                  key={name}
+                  className="w-full px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 cursor-pointer"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setForm(s => ({ ...s, location: name }));
+                    setFiltered([]);
+                  }}
+                >
+                  {name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-sm">Occupancy</Label>
+            <Select value={form.occupancy} onValueChange={(value) => setForm(s => ({ ...s, occupancy: value as 'living' | 'rent' }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select occupancy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="living">Living</SelectItem>
+                <SelectItem value="rent">Rent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-sm">Rooms</Label>
+            <Input type="number" placeholder="e.g., 3" value={form.rooms} onChange={(e) => setForm(s => ({ ...s, rooms: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          </div>
+          <div className="md:col-span-2">
+            <Label className="text-sm">Purchase price (at purchase)</Label>
+            <Input type="number" placeholder="e.g., 2,300,000" value={form.purchasePrice} onChange={(e) => setForm(s => ({ ...s, purchasePrice: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          </div>
+          <div>
+            <Label className="text-sm">Square meters (optional)</Label>
+            <Input type="number" placeholder="e.g., 85" value={form.sqm} onChange={(e) => setForm(s => ({ ...s, sqm: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          </div>
+        </div>
+      </div>
+      {form.occupancy === 'rent' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-sm">Monthly rent (asked)</Label>
+            <Input type="number" placeholder="e.g., 7,500" value={form.monthlyRent} onChange={(e) => setForm(s => ({ ...s, monthlyRent: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          </div>
+          <div className="md:col-span-2 bg-gray-900 border border-gray-700 rounded p-3 text-sm mt-2 md:mt-6 min-h-[72px]">
+            <div>Market rent estimate: <span className="text-white font-semibold" style={{fontVariantNumeric:'tabular-nums'}}>{form.marketRent != null ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(form.marketRent) : '—'}</span></div>
+            {form.rentDiff != null && (
+              <div className="mt-1">
+                Your ask is <span className={form.rentDiff >= 0 ? 'text-red-400' : 'text-green-400'} style={{fontVariantNumeric:'tabular-nums'}}>{form.rentDiff >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(form.rentDiff)}</span>
+                {form.rentDiffPct != null && (
+                  <> (<span className={form.rentDiffPct >= 0 ? 'text-red-400' : 'text-green-400'} style={{fontVariantNumeric:'tabular-nums'}}>{(form.rentDiffPct * 100).toFixed(1)}%</span>)</>
+                )} vs market
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Financing Section (collapsible) */}
+      <div className="mt-4 mb-2 text-xs uppercase tracking-wide text-gray-400">Financing</div>
+      <div className="mb-2">
+        <label className="inline-flex items-center gap-2 text-sm text-gray-300">
+          <input type="checkbox" className="rounded border-border bg-background" checked={form.financed} onChange={(e) => setForm(s => ({ ...s, financed: e.target.checked }))} />
+          I financed this purchase with a loan
+        </label>
+      </div>
+      {form.financed && (
+        <div className="grid grid-cols-1 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="md:col-span-1">
+              <Label className="text-sm">Loan amount</Label>
+              <Input className="w-full" type="number" inputMode="numeric" placeholder="e.g., 1,200,000" value={form.loanAmount} onChange={(e) => setForm(s => ({ ...s, loanAmount: e.target.value === '' ? '' : Number(e.target.value) }))} />
+            </div>
+            <div className="md:col-span-1">
+              <Label className="text-sm">Monthly loan payment</Label>
+              <Input className="w-full" type="number" inputMode="numeric" placeholder="e.g., 5,200" value={form.monthlyLoanPayment} onChange={(e) => setForm(s => ({ ...s, monthlyLoanPayment: e.target.value === '' ? '' : Number(e.target.value) }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="md:col-span-1">
+              <Label className="text-sm">Amount already paid</Label>
+              <Input className="w-full" type="number" inputMode="numeric" placeholder="e.g., 200,000" value={form.amountPaid} onChange={(e) => setForm(s => ({ ...s, amountPaid: e.target.value === '' ? '' : Number(e.target.value) }))} />
+            </div>
+            <div className="md:col-span-1">
+              <Label className="text-sm">Years (optional)</Label>
+              <Input className="w-full" type="number" inputMode="numeric" placeholder="e.g., 25" value={form.years} onChange={(e) => setForm(s => ({ ...s, years: e.target.value === '' ? '' : Number(e.target.value) }))} />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Action */}
+      <div className="mt-4 flex items-center gap-3">
+        <Button type="button" onClick={onEstimate} disabled={!canEstimate || loading}>{loading ? 'Estimating…' : 'Estimate'}</Button>
+      </div>
+      <div className="text-sm min-h-[20px]">
+        {error ? <span className="text-red-400">{error}</span> : null}
+      </div>
+      {(form.propertyValue != null) && (
+        <div className="mt-3 bg-gray-900 border border-gray-700 rounded p-3 text-sm min-h-[100px]">
+          <div className="mb-2">Estimated value: <span className="text-white font-semibold" style={{fontVariantNumeric:'tabular-nums'}}>{new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(form.propertyValue as number)}</span></div>
+          {form.purchasePrice !== '' && (
+            <div className="mb-2 text-gray-300">
+              Change vs purchase: {(() => {
+                const pp = Number(form.purchasePrice);
+                const pv = Number(form.propertyValue);
+                const diff = pv - pp;
+                const pct = pp !== 0 ? (diff / pp) * 100 : 0;
+                return (
+                  <>
+                    <span className={diff >= 0 ? 'text-green-400' : 'text-red-400'} style={{fontVariantNumeric:'tabular-nums'}}>
+                      {diff >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(diff)}
+                    </span>
+                    <span className="ml-1 text-gray-400" style={{fontVariantNumeric:'tabular-nums'}}>({pct.toFixed(1)}%)</span>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          {(form.equity != null && form.ltv != null && form.leverageMultiple != null) && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-gray-300">
+              <div>Equity: <span className="text-green-400" style={{fontVariantNumeric:'tabular-nums'}}>{new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(form.equity)}</span></div>
+              <div>LTV: <span className="text-amber-400" style={{fontVariantNumeric:'tabular-nums'}}>{((form.ltv as number) * 100).toFixed(1)}%</span></div>
+              <div>Leverage: <span className="text-sky-400" style={{fontVariantNumeric:'tabular-nums'}}>{Number.isFinite(form.leverageMultiple as number) ? (form.leverageMultiple as number).toFixed(2) + '×' : '∞'}</span></div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
   onAccountsChange: (accountNames: string[]) => void;
@@ -263,6 +564,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [showEditIbkrHelp, setShowEditIbkrHelp] = useState<boolean>(false);
   const [suppressIbkrHover, setSuppressIbkrHover] = useState<boolean>(false);
   const [suppressEditIbkrHover, setSuppressEditIbkrHover] = useState<boolean>(false);
+  // Real estate state (add modal only)
+  const { getAutocomplete, estimatePrice, computeLeverage } = useRealEstate();
+  const [reForm, setReForm] = useState<RealEstateFormState>(defaultRealEstateForm);
   
   // Symbol editing state for enhanced display
   const [editingSymbolIndex, setEditingSymbolIndex] = useState<number | null>(null);
@@ -902,6 +1206,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                       <SelectItem value="education-fund">Education Fund</SelectItem>
                       <SelectItem value="retirement-account">Retirement Account</SelectItem>
                       <SelectItem value="company-custodian-account">Company Custodian Account</SelectItem>
+                      <SelectItem value="real-estate">Real Estate</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1274,6 +1579,14 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                       </div>
                     </div>
                   </div>
+                ) : newAccount.account_type === 'real-estate' ? (
+                  <RealEstateAccountForm
+                    form={reForm}
+                    setForm={setReForm}
+                    getAutocomplete={getAutocomplete}
+                    estimatePrice={estimatePrice}
+                    computeLeverage={computeLeverage}
+                  />
                 ) : (
                   <>
                     <Label className="mb-3">Holdings</Label>
@@ -1430,6 +1743,52 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     return;
                   } catch (e) {
                     const msg = e instanceof Error ? e.message : 'Error adding account';
+                    alert(msg);
+                    return;
+                  }
+                }
+                if (newAccount.account_type === 'real-estate') {
+                  const properties = {
+                    real_estate: {
+                      location: reForm.location,
+                      rooms: reForm.rooms === '' ? null : reForm.rooms,
+                      sqm: reForm.sqm === '' ? null : reForm.sqm,
+                      financed: reForm.financed,
+                      loanAmount: reForm.loanAmount === '' ? null : reForm.loanAmount,
+                      monthlyLoanPayment: reForm.monthlyLoanPayment === '' ? null : reForm.monthlyLoanPayment,
+                      years: reForm.years === '' ? null : reForm.years,
+                      amountPaid: reForm.amountPaid === '' ? null : reForm.amountPaid,
+                      purchasePrice: reForm.purchasePrice === '' ? null : reForm.purchasePrice,
+                      propertyValue: reForm.propertyValue,
+                      equity: reForm.equity,
+                      ltv: reForm.ltv,
+                      leverageMultiple: reForm.leverageMultiple,
+                      occupancy: reForm.occupancy,
+                      monthlyRent: reForm.monthlyRent === '' ? null : reForm.monthlyRent,
+                      marketRent: reForm.marketRent,
+                      rentDiff: reForm.rentDiff,
+                      rentDiffPct: reForm.rentDiffPct,
+                    }
+                  };
+                  const payload = {
+                    account_name: newAccount.account_name,
+                    account_type: newAccount.account_type,
+                    owners: newAccount.owners,
+                    holdings: [],
+                    rsu_plans: [],
+                    espp_plans: [],
+                    options_plans: [],
+                    account_properties: properties,
+                  };
+                  try {
+                    await api.post(`/portfolio/${selectedFile}/accounts`, payload);
+                    setShowAddAccountModal(false);
+                    setReForm(defaultRealEstateForm);
+                    setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] } );
+                    await onAccountAdded();
+                    return;
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : 'Error adding real estate account';
                     alert(msg);
                     return;
                   }

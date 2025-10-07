@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
 import api from './utils/api';
+import { useRealEstateContext } from './contexts/RealEstateContext';
 interface CashHoldings {
   [currency: string]: number;
 }
@@ -86,7 +87,7 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
       });
   }, []);
 
-  // No network calls needed for IBIT→BTC; purely derived from static ratio
+  const realEstate = useRealEstateContext();
 
   return (
     <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
@@ -156,6 +157,20 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </span>
             )}
+          </div>
+        )}
+
+        {/* Real Estate Leverage Chip */}
+        {realEstate?.leverage && (
+          <div
+            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
+            title="Real Estate Leverage"
+          >
+            <span className="w-2 h-2 rounded-full mr-2 bg-sky-400"></span>
+            <span className="text-xs font-medium">LTV:</span>
+            <span className="ml-1 text-xs text-sky-400">{(realEstate.leverage.ltv * 100).toFixed(1)}%</span>
+            <span className="ml-2 text-xs font-medium">Lev:</span>
+            <span className="ml-1 text-xs text-sky-400">{Number.isFinite(realEstate.leverage.leverageMultiple) ? realEstate.leverage.leverageMultiple.toFixed(2) + '×' : '∞'}</span>
           </div>
         )}
         <div className="flex-1" />
