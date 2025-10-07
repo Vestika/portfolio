@@ -47,6 +47,14 @@ export interface AllPortfoliosData {
   user_tag_library: any; // TagLibrary type from backend
   all_holding_tags: Record<string, any>; // HoldingTags by symbol
   all_options_vesting: Record<string, Record<string, any>>; // portfolio_id -> account_name -> vesting data
+  custom_charts?: Array<{
+    chart_id: string;
+    chart_title: string;
+    tag_name: string;
+    portfolio_id?: string;
+    chart_data: Array<{ label: string; value: number; percentage: number }>;
+    chart_total: number;
+  }>;
   user_preferences: {
     preferred_currency: string;
     default_portfolio_id: string | null;
@@ -170,6 +178,7 @@ interface PortfolioDataContextType {
   loadAllPortfoliosData: () => Promise<void>;
   refreshAllPortfoliosData: () => Promise<void>;
   refreshTagsOnly: () => Promise<void>;
+  updateCustomCharts: (charts: any[]) => void;
   
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
@@ -398,14 +407,19 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         }
       } else {
         // Existing backend aggregation path (default)
-        // Fetch both endpoints in parallel for maximum performance
-        const [portfolioResponse, autocompleteResponse] = await Promise.all([
+        // Fetch endpoints in parallel for maximum performance
+        const [portfolioResponse, autocompleteResponse, customChartsResponse] = await Promise.all([
           api.get(`/portfolios/complete-data`),
-          api.get(`/autocomplete`)
+          api.get(`/autocomplete`),
+          api.get(`/user/custom-charts`).catch(() => ({ data: [] })) // Gracefully handle if endpoint fails
         ]);
 
         const portfolioData: AllPortfoliosData = portfolioResponse.data;
         const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
+        const customCharts = customChartsResponse.data || [];
+        
+        // Add custom charts to portfolio data
+        portfolioData.custom_charts = customCharts;
       
       // Calculate total historical price series (now global)
       const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
@@ -649,6 +663,19 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         chart_data: symbolData.slice(0, 20) // Top 20
       }
     ];
+    
+    // Add custom charts for the selected portfolio from allPortfoliosData
+    const customCharts = allPortfoliosData?.custom_charts?.filter((chart: any) => 
+      !chart.portfolio_id || chart.portfolio_id === selectedPortfolioId
+    ) || [];
+    
+    customCharts.forEach((customChart: any) => {
+      filteredAggregations.push({
+        chart_title: customChart.chart_title,
+        chart_total: customChart.chart_total,
+        chart_data: customChart.chart_data
+      });
+    });
 
     // Create properly aggregated holdings table (no duplicates)
     const allHoldings = Object.entries(holdingValues).map(([symbol, data]) => {
@@ -904,6 +931,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [autocompleteData]);
 
+  // Update custom charts without refetching all data
+  const updateCustomCharts = useCallback((charts: any[]) => {
+    setAllPortfoliosData(prevData => {
+      if (!prevData) return prevData;
+      return {
+        ...prevData,
+        custom_charts: charts
+      };
+    });
+  }, []);
+
   const value: PortfolioDataContextType = {
     allPortfoliosData,
     autocompleteData,
@@ -919,6 +957,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     loadAllPortfoliosData,
     refreshAllPortfoliosData,
     refreshTagsOnly,
+    updateCustomCharts,
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,

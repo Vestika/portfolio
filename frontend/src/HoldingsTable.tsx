@@ -14,6 +14,7 @@ import { Button } from './components/ui/button';
 import { Switch } from './components/ui/switch';
 import { Separator } from './components/ui/separator';
 import TagAPI from './utils/tag-api';
+import PortfolioAPI from './utils/portfolio-api';
 import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
 
 import {
@@ -35,6 +36,7 @@ import {
   Filter,
   X,
   Layers,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
 
 import israelFlag from './assets/israel-flag.svg';
@@ -614,7 +616,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
   // Get tags and quotes from context (no more API calls needed!)
-  const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData } = usePortfolioData();
+  const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData, updateCustomCharts, selectedPortfolioId } = usePortfolioData();
 
   // Load tag library from context (tags are already in holding.tags from computedData)
   useEffect(() => {
@@ -810,6 +812,143 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     }
   };
 
+  // Check if a chart already exists for the current tag filter
+  const existingChart = useMemo(() => {
+    if (!tagFilter || !allPortfoliosData?.custom_charts) return null;
+    
+    return allPortfoliosData.custom_charts.find(chart => 
+      chart.tag_name === tagFilter &&
+      (!chart.portfolio_id || chart.portfolio_id === selectedPortfolioId)
+    );
+  }, [tagFilter, allPortfoliosData?.custom_charts, selectedPortfolioId]);
+
+  // Handler for removing a custom chart
+  const handleRemoveChart = async () => {
+    if (!existingChart) return;
+
+    console.log('🗑️ [REMOVE CHART] Removing chart:', existingChart);
+
+    try {
+      // Delete from backend
+      await PortfolioAPI.deleteCustomChart(existingChart.chart_id);
+      console.log('🗑️ [REMOVE CHART] Chart deleted from backend');
+
+      // Update context immediately
+      const updatedCharts = (allPortfoliosData?.custom_charts || []).filter(
+        chart => chart.chart_id !== existingChart.chart_id
+      );
+      updateCustomCharts(updatedCharts);
+
+      console.log('🗑️ [REMOVE CHART] Complete! Chart removed instantly.');
+    } catch (error) {
+      console.error('🗑️ [REMOVE CHART] Error removing chart:', error);
+    }
+  };
+
+  // Handler for creating a custom chart from tag groupings
+  const handleCreateChart = async () => {
+    console.log('🎨 [CREATE CHART] Button clicked!');
+    console.log('🎨 [CREATE CHART] tagFilter:', tagFilter);
+    console.log('🎨 [CREATE CHART] tagLibrary:', tagLibrary);
+    
+    if (!tagFilter) {
+      console.warn('🎨 [CREATE CHART] Missing tagFilter');
+      return;
+    }
+
+    const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
+    if (!tagDefinition) {
+      console.warn('🎨 [CREATE CHART] Tag definition not found for:', tagFilter);
+      return;
+    }
+
+    console.log('🎨 [CREATE CHART] Tag definition found:', tagDefinition);
+
+    try {
+      // Calculate groups on-the-fly from filtered holdings
+      const groups: Record<string, SecurityHolding[]> = {};
+      
+      filteredAndSortedHoldings.forEach(holding => {
+        const tagValue = holding.tags?.[tagFilter] as any;
+        let groupKey = 'Uncategorized';
+        
+        if (tagValue && typeof tagValue === 'object') {
+          // Handle ENUM tags
+          if ('enum_value' in tagValue && tagValue.enum_value) {
+            groupKey = tagValue.enum_value as string;
+          } 
+          // Handle BOOLEAN tags
+          else if ('boolean_value' in tagValue) {
+            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+          }
+        }
+        
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(holding);
+      });
+
+      console.log('🎨 [CREATE CHART] Groups calculated:', groups);
+
+      // Calculate chart data from groups
+      const totalValue = filteredAndSortedHoldings.reduce((sum, h) => sum + h.total_value, 0);
+      console.log('🎨 [CREATE CHART] Total value:', totalValue);
+      
+      const chartData = Object.entries(groups).map(([groupName, holdings]) => {
+        const groupValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+        const percentage = totalValue > 0 ? (groupValue / totalValue) * 100 : 0;
+        
+        return {
+          label: groupName,
+          value: Math.round(groupValue * 100) / 100,
+          percentage: Math.round(percentage * 100) / 100
+        };
+      }).sort((a, b) => b.value - a.value);
+
+      console.log('🎨 [CREATE CHART] Chart data calculated:', chartData);
+
+      // Create chart title
+      const chartTitle = `${tagDefinition.display_name} Distribution`;
+      console.log('🎨 [CREATE CHART] Chart title:', chartTitle);
+
+      const requestData = {
+        chart_title: chartTitle,
+        tag_name: tagFilter,
+        portfolio_id: selectedPortfolioId || undefined,
+        chart_data: chartData,
+        chart_total: Math.round(totalValue * 100) / 100
+      };
+      
+      console.log('🎨 [CREATE CHART] Sending request:', requestData);
+
+      // Save chart to backend
+      const response = await PortfolioAPI.createCustomChart(requestData);
+      console.log('🎨 [CREATE CHART] Chart created successfully:', response);
+
+      // Update context directly - instant update!
+      console.log('🎨 [CREATE CHART] Updating context with new chart...');
+      const newChart = {
+        chart_id: response.chart_id,
+        chart_title: response.chart_title,
+        tag_name: response.tag_name,
+        portfolio_id: response.portfolio_id,
+        chart_data: requestData.chart_data, // Use the data we already calculated
+        chart_total: requestData.chart_total
+      };
+      const updatedCharts = [
+        ...(allPortfoliosData?.custom_charts || []),
+        newChart
+      ];
+      updateCustomCharts(updatedCharts);
+
+      // Show success message
+      console.log('🎨 [CREATE CHART] Complete! Chart added instantly.');
+    } catch (error) {
+      console.error('🎨 [CREATE CHART] Error creating chart:', error);
+    }
+  };
+
   // Toggle group expansion
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
@@ -933,6 +1072,13 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
             const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
             const isGroupable = tagDefinition?.tag_type === TagType.ENUM || tagDefinition?.tag_type === TagType.BOOLEAN;
             
+            console.log('🎨 [TAG FILTER UI] Rendering tag filter bar', {
+              tagFilter,
+              tagDefinition,
+              isGroupable,
+              tagType: tagDefinition?.tag_type
+            });
+            
             return (
               <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-400/30 shadow-lg backdrop-blur-sm">
                 <CardContent className="p-2.5">
@@ -970,6 +1116,41 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               className="scale-[0.65]"
                             />
                           </div>
+                          <Separator orientation="vertical" className="h-5 bg-blue-400/20" />
+                          
+                          {existingChart ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                console.log('🗑️ [BUTTON] Remove Chart button clicked!');
+                                handleRemoveChart();
+                              }}
+                              className="h-6 px-2 text-[10px] text-red-300 hover:text-red-100 hover:bg-red-500/10"
+                              title={`Remove chart "${existingChart.chart_title}"`}
+                            >
+                              <X size={12} />
+                              Remove Chart
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                console.log('🎨 [BUTTON] Create Chart button clicked!');
+                                handleCreateChart();
+                              }}
+                              className="h-6 px-2 text-[10px] text-green-300 hover:text-green-100 hover:bg-green-500/10"
+                              title="Create a chart from this tag grouping"
+                            >
+                              <PieChartIcon size={12} />
+                              Create Chart
+                            </Button>
+                          )}
                           <Separator orientation="vertical" className="h-5 bg-blue-400/20" />
                         </>
                       )}
