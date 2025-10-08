@@ -7,7 +7,6 @@ import { Info, PieChart } from 'lucide-react';
 
 interface ESPPViewProps {
   esppPlans: ESPPPlan[];
-  onEditPlan?: (plan: ESPPPlan) => void;
 }
 
 const ESPPView: React.FC<ESPPViewProps> = ({ esppPlans }) => {
