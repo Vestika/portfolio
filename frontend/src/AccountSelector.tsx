@@ -1152,9 +1152,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                 end_date: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
                               }],
                               stock_discount_percentage: 15,
-                              base_stock_price: 180,
-                              current_stock_price: undefined,
-                              exchange_rate: 3.65
+                              base_stock_price: 0,
+                              exchange_rate: undefined
                             };
                             setNewAccount({
                               ...newAccount,

@@ -979,6 +979,136 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
     return historical_prices
 
 
+# ============== Generic prices by dates ==============
+class PricesByDatesRequest(BaseModel):
+    symbol: str
+    dates: list[str]
+
+
+@router.post("/prices/by-dates")
+async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return price for a symbol at specific dates.
+
+    - Accepts: { "symbol": "AAPL" or "USDILS=X", "dates": ["YYYY-MM-DD", ...] }
+    - Returns: { "symbol": "AAPL", "prices": { "YYYY-MM-DD": float | null } }
+
+    Implementation details:
+    - Performs a single batched yfinance download across min..max requested dates
+    - Maps each requested date to the closest available market date (prefer same/previous day, otherwise closest)
+    - On errors/timeouts, returns null for the affected dates
+    - Supports both regular stocks (AAPL) and currency pairs (USDILS=X)
+    """
+    try:
+        if not request.dates:
+            raise HTTPException(status_code=400, detail="At least one date must be provided")
+        
+        if not request.symbol:
+            raise HTTPException(status_code=400, detail="Symbol must be provided")
+
+        # Parse and validate dates
+        parsed_dates: list[date] = []
+        for ds in request.dates:
+            try:
+                parsed_dates.append(datetime.strptime(ds, "%Y-%m-%d").date())
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid date format: {ds}. Use YYYY-MM-DD")
+
+        min_day = min(parsed_dates)
+        max_day = max(parsed_dates)
+
+        # Add 1 day to end as yfinance end is exclusive
+        end_inclusive_plus_one = max_day + timedelta(days=1)
+
+        # Fetch price series once for the whole range
+        def fetch_prices_sync():
+            return yf.download(request.symbol, start=min_day, end=end_inclusive_plus_one, progress=False, auto_adjust=True)
+
+        loop = asyncio.get_event_loop()
+        try:
+            data = await asyncio.wait_for(
+                loop.run_in_executor(None, fetch_prices_sync),
+                timeout=6.0,
+            )
+        except asyncio.TimeoutError:
+            data = None
+
+        # Build a map of available dates -> price
+        available: dict[date, float] = {}
+        if data is not None and not data.empty:
+            try:
+                prices = data["Close"].dropna()
+                for dt in prices.index:
+                    # dt might be pandas.Timestamp
+                    d = dt.date() if hasattr(dt, "date") else datetime.strptime(str(dt), "%Y-%m-%d").date()
+                    # Round to 4 decimal places for currencies, 2 for stocks
+                    precision = 4 if "=" in request.symbol else 2
+                    available[d] = float(round(prices.loc[dt], precision))
+            except Exception:
+                # If any unexpected structure, leave available empty to fall back to nulls
+                available = {}
+
+        # Pre-sort available dates for closest lookup
+        available_days_sorted = sorted(available.keys())
+
+        def find_price_for_day(target: date) -> float | None:
+            if not available_days_sorted:
+                return None
+            # Exact match
+            if target in available:
+                return available[target]
+            # Prefer closest previous trading day
+            prev_days = [d for d in available_days_sorted if d <= target]
+            if prev_days:
+                return available[prev_days[-1]]
+            # Otherwise take the earliest next available
+            next_days = [d for d in available_days_sorted if d > target]
+            if next_days:
+                return available[next_days[0]]
+            return None
+
+        result_prices: dict[str, float | None] = {}
+        for ds, d in zip(request.dates, parsed_dates):
+            result_prices[ds] = find_price_for_day(d)
+
+        # Determine currency info based on symbol
+        if "=" in request.symbol:
+            # Currency pair like USDILS=X
+            base_currency = request.symbol.split("=")[0][:3]
+            quote_currency = request.symbol.split("=")[0][3:]
+        else:
+            # Regular stock - we don't know the currency from yfinance alone
+            base_currency = "USD"  # Default assumption
+            quote_currency = None
+
+        return {
+            "symbol": request.symbol,
+            "base_currency": base_currency,
+            "quote_currency": quote_currency,
+            "prices": result_prices,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== Legacy USD/ILS endpoint for backward compatibility ==============
+class USDILSByDatesRequest(BaseModel):
+    dates: list[str]
+
+
+@router.post("/fx/usd-ils-by-dates")
+async def get_usd_ils_by_dates(request: USDILSByDatesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Legacy endpoint for USD/ILS rates. Use /prices/by-dates instead.
+    """
+    # Delegate to the generic endpoint
+    generic_request = PricesByDatesRequest(symbol="USDILS=X", dates=request.dates)
+    return await get_prices_by_dates(generic_request, user)
+
+
 @router.get("/portfolios/complete-data")
 async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> dict[str, Any]:
     """

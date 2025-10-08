@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ESPPPlan } from '../types';
-import { ESPPCalculator, ESPPCalculationResult, ESPPPeriodData } from '../utils/esppCalculator';
+import { ESPPCalculator, ESPPCalculationResult } from '../utils/esppCalculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { TrendingUp, TrendingDown, DollarSign, PieChart, Calendar, Target } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { Button } from '@/components/ui/button';
+import { PieChart, ChevronDown } from 'lucide-react';
+import api from '../utils/api';
 
 interface ESPPAnalysisProps {
   plan: ESPPPlan;
@@ -13,18 +12,61 @@ interface ESPPAnalysisProps {
 
 const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
   const [calculation, setCalculation] = useState<ESPPCalculationResult | null>(null);
-  const [projection, setProjection] = useState<ESPPPeriodData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    if (plan && plan.symbol && plan.base_salary > 0) {
-      const result = ESPPCalculator.calculateESPP(plan);
-      const projectionData = ESPPCalculator.calculateESPPProjection(plan);
-      
+    const run = async () => {
+      if (!(plan && plan.symbol && plan.base_salary > 0)) return;
+
+      // Derive purchase dates (every 6 months within the current/longest period)
+      const longestPeriod = plan.buying_periods.reduce((longest, current) => {
+        const currentDuration = new Date(current.end_date).getTime() - new Date(current.start_date).getTime();
+        const longestDuration = new Date(longest.end_date).getTime() - new Date(longest.start_date).getTime();
+        return currentDuration > longestDuration ? current : longest;
+      });
+
+      const startDate = new Date(longestPeriod.start_date);
+      const endDate = new Date(longestPeriod.end_date);
+      const totalMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+      const purchaseDates: string[] = [];
+      for (let m = 6; m <= totalMonths; m += 6) {
+        const d = new Date(startDate);
+        d.setMonth(d.getMonth() + m);
+        purchaseDates.push(d.toISOString().split('T')[0]);
+      }
+
+      let fxByDate: Record<string, number> | undefined = undefined;
+      try {
+        if (purchaseDates.length > 0) {
+          const resp = await api.post('/prices/by-dates', { 
+            symbol: 'USDILS=X', 
+            dates: purchaseDates 
+          });
+          fxByDate = resp.data?.prices || undefined;
+        }
+      } catch (e) {
+        fxByDate = undefined; // fall back silently
+      }
+
+      // Fetch current stock price
+      let currentStockPrice: number | undefined = undefined;
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const resp = await api.post('/prices/by-dates', {
+          symbol: plan.symbol,
+          dates: [today]
+        });
+        currentStockPrice = resp.data?.prices?.[today] || undefined;
+      } catch (e) {
+        currentStockPrice = undefined; // fall back silently
+      }
+
+      const result = ESPPCalculator.calculateESPP(plan, fxByDate, currentStockPrice);
       setCalculation(result);
-      setProjection(projectionData);
       setIsLoading(false);
-    }
+    };
+    run();
   }, [plan]);
 
   if (isLoading || !calculation) {
@@ -62,321 +104,294 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
   };
 
   const isGain = calculation.totalGainLoss >= 0;
-  const progressPercentage = calculation.monthsElapsed > 0 ? 
-    (calculation.monthsElapsed / (calculation.monthsElapsed + calculation.monthsRemaining)) * 100 : 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header Card */}
+    <div className="space-y-4">
+      {/* Comprehensive ESPP Data Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <PieChart className="h-5 w-5" />
-            ESPP Analysis - {plan.symbol}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Monthly Contribution */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <DollarSign className="h-4 w-4" />
-                Monthly Contribution
-              </div>
-              <div className="text-2xl font-bold">
-                {formatCurrency(calculation.monthlyContribution, 'ILS')}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {formatCurrency(calculation.monthlyContributionUSD, 'USD')}
-              </div>
-            </div>
-
-            {/* Total Contributions */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Target className="h-4 w-4" />
-                Total Contributions
-              </div>
-              <div className="text-2xl font-bold">
-                {formatCurrency(calculation.totalContributions, 'ILS')}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {formatCurrency(calculation.totalContributionsUSD, 'USD')}
-              </div>
-            </div>
-
-            {/* Current Value */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                {isGain ? <TrendingUp className="h-4 w-4 text-green-500" /> : <TrendingDown className="h-4 w-4 text-red-500" />}
-                Current Value
-              </div>
-              <div className="text-2xl font-bold">
-                {formatCurrency(calculation.totalSharesValue, 'USD')}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {formatCurrency(calculation.totalSharesValueILS, 'ILS')}
-              </div>
-            </div>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <PieChart className="h-5 w-5" />
+              ESPP Performance - {plan.symbol}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="h-8 w-8 p-0 hover:bg-transparent transition-all duration-200 rounded-full"
+            >
+              <ChevronDown 
+                className={`h-4 w-4 transition-all duration-300 ease-in-out ${
+                  isCollapsed ? 'rotate-180 text-muted-foreground' : 'text-primary'
+                }`} 
+              />
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Performance Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Gain/Loss Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Performance</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Gain/Loss</span>
-              <div className="flex items-center gap-2">
-                {isGain ? (
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-red-500" />
-                )}
-                <span className={`font-bold ${isGain ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(calculation.totalGainLoss, 'USD')}
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Gain/Loss (ILS)</span>
-              <span className={`font-bold ${isGain ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(calculation.totalGainLossILS, 'ILS')}
-              </span>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Percentage</span>
-              <Badge variant={isGain ? 'default' : 'destructive'}>
-                {isGain ? '+' : ''}{formatNumber(calculation.totalGainLossPercentage)}%
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stock Details Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Stock Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Shares Owned</span>
-              <span className="font-bold">{formatNumber(calculation.totalSharesOwned, 4)}</span>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Pending Contribution</span>
-              <span className="font-bold">{formatCurrency(calculation.pendingContribution, 'USD')}</span>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Discounted Price</span>
-              <span className="font-bold">{formatCurrency(calculation.discountedStockPrice, 'USD')}</span>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Current Price</span>
-              <span className="font-bold">{formatCurrency(plan.current_stock_price || plan.base_stock_price, 'USD')}</span>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Discount</span>
-              <Badge variant="secondary">
-                {plan.stock_discount_percentage}%
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Progress Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Plan Progress
-          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Months Elapsed: {calculation.monthsElapsed}</span>
-              <span>Months Remaining: {calculation.monthsRemaining}</span>
-            </div>
-            <Progress value={progressPercentage} className="h-2" />
-            <div className="text-xs text-muted-foreground text-center">
-              {formatNumber(progressPercentage)}% of current period completed
-            </div>
-          </div>
-          
-          {calculation.nextPurchaseDate && (
-            <div className="pt-2 border-t">
-              <div className="text-sm text-muted-foreground">Next Purchase Date</div>
-              <div className="font-semibold">
-                {calculation.nextPurchaseDate.toLocaleDateString()}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {calculation.pendingContribution > 0 && 
-                  `Pending: ${formatCurrency(calculation.pendingContribution, 'USD')}`
-                }
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Purchase History */}
-      {calculation.purchases.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Purchase History</CardTitle>
-          </CardHeader>
+        {!isCollapsed && (
           <CardContent>
-            <div className="space-y-3">
-              {calculation.purchases.map((purchase, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                  <div className="space-y-1">
-                    <div className="font-semibold">
-                      Purchase #{index + 1}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {purchase.purchaseDate.toLocaleDateString()}
-                    </div>
-                    <div className="text-sm">
-                      {formatNumber(purchase.sharesPurchased, 4)} shares @ {formatCurrency(purchase.purchasePrice, 'USD')}
-                    </div>
-                  </div>
-                  <div className="text-right space-y-1">
-                    <div className="font-semibold">
-                      {formatCurrency(purchase.currentValue, 'USD')}
-                    </div>
-                    <div className={`text-sm ${purchase.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrency(purchase.gainLoss, 'USD')} 
-                      ({purchase.gainLossPercentage >= 0 ? '+' : ''}{formatNumber(purchase.gainLossPercentage)}%)
-                    </div>
-                  </div>
+            <div className="space-y-6">
+            {/* Plan Summary - Compact */}
+            <div className="bg-muted/20 rounded-lg p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                  <div className="text-xs text-muted-foreground">Monthly Contribution</div>
+                  <div className="font-semibold text-sm">{formatCurrency(calculation.monthlyContribution, 'ILS')}</div>
                 </div>
-              ))}
+                <div>
+                  <div className="text-xs text-muted-foreground">Stock Discount</div>
+                  <div className="font-semibold text-sm text-green-600">{plan.stock_discount_percentage}%</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Purchase Price</div>
+                  <div className="font-semibold text-sm">{formatCurrency(calculation.discountedStockPrice, 'USD')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Plan Progress</div>
+                  <div className="font-semibold text-sm">{calculation.monthsElapsed}/{calculation.monthsElapsed + calculation.monthsRemaining}</div>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Contribution vs Value Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Shares Owned vs Current Value</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={projection}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value: number, name: string) => [
-                    name === 'sharesCanBuy' ? formatNumber(value, 2) : formatCurrency(value, 'USD'),
-                    name === 'sharesCanBuy' ? 'Shares Owned' : 'Current Value'
-                  ]}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="sharesCanBuy" 
-                  stroke="#8884d8" 
-                  strokeWidth={2}
-                  name="Shares Owned"
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="currentValue" 
-                  stroke="#82ca9d" 
-                  strokeWidth={2}
-                  name="Current Value"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+            {/* Key Performance Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-blue-400">
+                  {formatCurrency(calculation.totalSharesValueILS, 'ILS')}
+                </div>
+                <div className="text-sm text-muted-foreground">Current Value</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatCurrency(calculation.totalSharesValue, 'USD')}
+                </div>
+              </div>
+              
+              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <div className={`text-2xl font-bold ${isGain ? 'text-green-400' : 'text-red-400'}`}>
+                  {isGain ? '+' : ''}{formatCurrency(calculation.totalGainLossILS, 'ILS')}
+                </div>
+                <div className="text-sm text-muted-foreground">Total Gain/Loss</div>
+                <div className={`text-xs ${isGain ? 'text-green-400' : 'text-red-400'}`}>
+                  {isGain ? '+' : ''}{formatNumber(calculation.totalGainLossPercentage)}%
+                </div>
+              </div>
+              
+              <div className="text-center p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-pink-400">
+                  {calculation.purchases.reduce((total, purchase) => total + Math.floor(purchase.sharesPurchased), 0)}
+                </div>
+                <div className="text-sm text-muted-foreground">Shares Owned</div>
+                <div className="text-xs text-muted-foreground">
+                  {calculation.purchases.length} purchases
+                </div>
+              </div>
+            </div>
 
-        {/* Gain/Loss Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Monthly Gain/Loss</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={projection}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value: number) => [formatCurrency(value, 'USD'), 'Gain/Loss']}
-                />
-                <Bar 
-                  dataKey="gainLoss" 
-                  fill="#8884d8"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+            {/* ESPP Progress Chart */}
+            <div className="space-y-3">
+              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Plan Progress</h4>
+              <Card>
+                <CardContent className="p-6">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold">{plan.symbol} ESPP Timeline</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {calculation.monthsElapsed} of {calculation.monthsElapsed + calculation.monthsRemaining} months completed
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-blue-400">
+                        {Math.round((calculation.monthsElapsed / (calculation.monthsElapsed + calculation.monthsRemaining)) * 100)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">Complete</div>
+                    </div>
+                  </div>
+                  
+                  {/* Clean Progress Bar */}
+                  <div className="mb-6">
+                    <div className="flex justify-between text-xs font-medium text-gray-600 dark:text-gray-400 mb-3">
+                      <span>Plan Start</span>
+                      <span>Plan End</span>
+                    </div>
+                    <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                      <div 
+                        className="bg-gradient-to-r from-blue-400 to-blue-500 h-3 rounded-full transition-all duration-500"
+                        style={{ 
+                          width: `${(calculation.monthsElapsed / (calculation.monthsElapsed + calculation.monthsRemaining)) * 100}%` 
+                        }}
+                      ></div>
+                      
+                      {/* Clean Purchase Markers with Tooltips */}
+                      {calculation.purchases.map((purchase, index) => {
+                        const totalMonths = calculation.monthsElapsed + calculation.monthsRemaining;
+                        const purchaseMonth = Math.min(calculation.monthsElapsed, (index + 1) * 6);
+                        const position = (purchaseMonth / totalMonths) * 100;
+                        const contributionAmountILS = purchase.contributionAmount * (plan.exchange_rate || 3.65);
+                        const currentValueILS = purchase.currentValue * (plan.exchange_rate || 3.65);
+                        const gainLossILS = purchase.gainLoss * (plan.exchange_rate || 3.65);
+                        
+                        return (
+                          <div
+                            key={index}
+                            className="absolute top-1/2 transform -translate-y-1/2 w-3 h-3 bg-pink-400 rounded-full border-2 border-white dark:border-gray-800 shadow-sm cursor-pointer group"
+                            style={{ left: `${position}%`, marginLeft: '-6px' }}
+                          >
+                            {/* Tooltip */}
+                            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-slate-100 dark:text-slate-100 text-xs px-4 py-3 rounded-xl shadow-2xl border border-slate-700 dark:border-slate-600 opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap z-10 pointer-events-none backdrop-blur-sm">
+                              <div className="font-semibold mb-2 text-pink-400 dark:text-pink-300">Purchase {index + 1}</div>
+                              <div className="space-y-1">
+                                <div className="text-slate-300 dark:text-slate-200">
+                                  {purchase.purchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </div>
+                                <div className="text-slate-300 dark:text-slate-200">
+                                  {Math.floor(purchase.sharesPurchased)} shares @ {formatCurrency(purchase.purchasePrice, 'USD')}
+                                </div>
+                                <div className="text-slate-300 dark:text-slate-200">
+                                  Invested: {formatCurrency(contributionAmountILS, 'ILS')}
+                                </div>
+                                <div className="text-slate-300 dark:text-slate-200">
+                                  Current: {formatCurrency(currentValueILS, 'ILS')}
+                                </div>
+                                <div className={`text-xs font-semibold ${purchase.gainLoss >= 0 ? 'text-emerald-400 dark:text-emerald-300' : 'text-red-400 dark:text-red-300'}`}>
+                                  {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrency(gainLossILS, 'ILS')} ({purchase.gainLossPercentage.toFixed(1)}%)
+                                </div>
+                              </div>
+                              {/* Arrow */}
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Next Purchase Marker with Tooltip */}
+                      {calculation.pendingContribution > 0 && calculation.nextPurchaseDate && (
+                        <div
+                          className="absolute top-1/2 transform -translate-y-1/2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white dark:border-gray-800 shadow-sm cursor-pointer group"
+                          style={{ 
+                            left: `${((calculation.monthsElapsed + (6 - calculation.monthsSinceLastPurchase)) / (calculation.monthsElapsed + calculation.monthsRemaining)) * 100}%`, 
+                            marginLeft: '-6px' 
+                          }}
+                        >
+                          {/* Tooltip */}
+                          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-slate-100 dark:text-slate-100 text-xs px-4 py-3 rounded-xl shadow-2xl border border-slate-700 dark:border-slate-600 opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap z-10 pointer-events-none backdrop-blur-sm">
+                            <div className="font-semibold mb-2 text-orange-400 dark:text-orange-300">Next Purchase</div>
+                            <div className="space-y-1">
+                              <div className="text-slate-300 dark:text-slate-200">
+                                {calculation.nextPurchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </div>
+                              <div className="text-slate-300 dark:text-slate-200">
+                                Money waiting: {formatCurrency(calculation.pendingContributionILS, 'ILS')}
+                              </div>
+                              <div className="text-slate-300 dark:text-slate-200">
+                                Estimated shares: {Math.floor(calculation.pendingShares)}
+                              </div>
+                              <div className="text-slate-300 dark:text-slate-200">
+                                Price: {formatCurrency(calculation.discountedStockPrice, 'USD')} per share
+                              </div>
+                              <div className="text-slate-300 dark:text-slate-200">
+                                {calculation.monthsSinceLastPurchase} months accumulated
+                              </div>
+                            </div>
+                            {/* Arrow */}
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Clean Stats Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <div className="text-xl font-bold text-blue-400">{calculation.monthsElapsed}</div>
+                      <div className="text-sm text-muted-foreground">Months Elapsed</div>
+                    </div>
+                    <div className="text-center p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg">
+                      <div className="text-xl font-bold text-gray-400">{calculation.monthsRemaining}</div>
+                      <div className="text-sm text-muted-foreground">Months Remaining</div>
+                    </div>
+                    <div className="text-center p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg">
+                      <div className="text-xl font-bold text-pink-400">{calculation.purchases.length}</div>
+                      <div className="text-sm text-muted-foreground">Purchases Made</div>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="text-xl font-bold text-green-400">
+                        {calculation.pendingContribution > 0 ? 'Active' : 'Complete'}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Status</div>
+                    </div>
+                  </div>
+                  
+                </CardContent>
+              </Card>
+            </div>
 
-      {/* Summary Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Monthly Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">Month</th>
-                  <th className="text-right p-2">Contribution</th>
-                  <th className="text-right p-2">Total Contributed</th>
-                  <th className="text-right p-2">Shares Owned</th>
-                  <th className="text-right p-2">Current Value</th>
-                  <th className="text-right p-2">Gain/Loss</th>
-                  <th className="text-right p-2">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projection.slice(0, 24).map((data) => {
-                  const isPurchaseMonth = data.month % 6 === 0;
-                  return (
-                    <tr key={data.month} className={`border-b ${isPurchaseMonth ? 'bg-green-50 dark:bg-green-900/20' : ''}`}>
-                      <td className="p-2">
-                        {data.month}
-                        {isPurchaseMonth && <span className="ml-2 text-xs text-green-600">📈 Purchase</span>}
-                      </td>
-                      <td className="text-right p-2">{formatCurrency(data.contribution, 'USD')}</td>
-                      <td className="text-right p-2">{formatCurrency(data.cumulativeContribution, 'USD')}</td>
-                      <td className="text-right p-2">{formatNumber(data.sharesCanBuy, 4)}</td>
-                      <td className="text-right p-2">{formatCurrency(data.currentValue, 'USD')}</td>
-                      <td className={`text-right p-2 ${data.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(data.gainLoss, 'USD')}
-                      </td>
-                      <td className={`text-right p-2 ${data.gainLossPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {data.gainLossPercentage >= 0 ? '+' : ''}{formatNumber(data.gainLossPercentage)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {/* Purchase History */}
+            {calculation.purchases.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Purchase History</h4>
+                <div className="space-y-2">
+                  {calculation.purchases.map((purchase, index) => {
+                    const currentValueILS = purchase.currentValue * (plan.exchange_rate || 3.65);
+                    const gainLossILS = purchase.gainLoss * (plan.exchange_rate || 3.65);
+                    
+                    return (
+                      <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {purchase.purchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {Math.floor(purchase.sharesPurchased)} shares @ {formatCurrency(purchase.purchasePrice, 'USD')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <div className="font-medium">
+                              {formatCurrency(currentValueILS, 'ILS')}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatCurrency(purchase.currentValue, 'USD')}
+                            </div>
+                            <div className={`text-sm font-semibold ${purchase.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrency(gainLossILS, 'ILS')}
+                            </div>
+                            <div className={`text-xs ${purchase.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {purchase.gainLoss >= 0 ? '+' : ''}{purchase.gainLossPercentage.toFixed(1)}%
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => {
+                              // TODO: Implement add stocks to account functionality
+                              console.log(`Adding ${Math.floor(purchase.sharesPurchased)} shares of ${plan.symbol} to account`);
+                            }}
+                            className="text-xs px-3 py-1.5 h-auto bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-0 rounded-lg transition-all duration-200 hover:scale-105"
+                          >
+                            + Add to Portfolio
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
           </div>
         </CardContent>
+        )}
       </Card>
+
+
+
     </div>
   );
 };

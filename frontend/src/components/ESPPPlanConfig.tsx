@@ -2,8 +2,7 @@ import React from 'react';
 import { ESPPPlan } from '../types';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { X, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ESPPPlanConfigProps {
   plan: ESPPPlan;
@@ -22,20 +21,6 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
     onChange({ ...plan, ...updates });
   };
 
-  const addBuyingPeriod = () => {
-    const newPeriod = {
-      start_date: '',
-      end_date: ''
-    };
-    updatePlan({
-      buying_periods: [...plan.buying_periods, newPeriod]
-    });
-  };
-
-  const removeBuyingPeriod = (index: number) => {
-    const updatedPeriods = plan.buying_periods.filter((_, i) => i !== index);
-    updatePlan({ buying_periods: updatedPeriods });
-  };
 
   const updateBuyingPeriod = (index: number, field: 'start_date' | 'end_date', value: string) => {
     const updatedPeriods = plan.buying_periods.map((period, i) => 
@@ -122,59 +107,9 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="base-stock-price">Base Stock Price (USD)</Label>
-            <Input
-              id="base-stock-price"
-              type="number"
-              min="0"
-              step="0.01"
-              value={plan.base_stock_price}
-              onChange={(e) => updatePlan({ base_stock_price: parseFloat(e.target.value) || 0 })}
-              placeholder="e.g., 180.00"
-            />
-          </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="current-stock-price">Current Stock Price (USD)</Label>
-            <Input
-              id="current-stock-price"
-              type="number"
-              min="0"
-              step="0.01"
-              value={plan.current_stock_price || ''}
-              onChange={(e) => updatePlan({ current_stock_price: parseFloat(e.target.value) || undefined })}
-              placeholder="e.g., 200.00"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="exchange-rate">USD to ILS Exchange Rate</Label>
-            <Input
-              id="exchange-rate"
-              type="number"
-              min="0"
-              step="0.01"
-              value={plan.exchange_rate || ''}
-              onChange={(e) => updatePlan({ exchange_rate: parseFloat(e.target.value) || undefined })}
-              placeholder="e.g., 3.65"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Buying Periods</Label>
-              <Button
-                type="button"
-                onClick={addBuyingPeriod}
-                variant="outline"
-                size="sm"
-                className="h-8"
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Add Period
-              </Button>
-            </div>
+            <Label>Buying Periods</Label>
             
             <div className="space-y-2">
               {plan.buying_periods.map((period, index) => (
@@ -195,15 +130,6 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
                       placeholder="End Date"
                     />
                   </div>
-                  <Button
-                    type="button"
-                    onClick={() => removeBuyingPeriod(index)}
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
                 </div>
               ))}
             </div>

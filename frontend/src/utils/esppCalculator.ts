@@ -27,6 +27,9 @@ export interface ESPPCalculationResult {
   nextPurchaseDate: Date | null; // Next purchase date
   purchases: ESPPPurchase[]; // All purchases made so far
   pendingContribution: number; // Amount pending for next purchase in USD
+  pendingContributionILS: number; // Amount pending for next purchase in ILS
+  pendingShares: number; // Estimated shares that can be bought with pending money
+  monthsSinceLastPurchase: number; // Months since last purchase (0-5)
 }
 
 export interface ESPPPeriodData {
@@ -40,12 +43,11 @@ export interface ESPPPeriodData {
 }
 
 export class ESPPCalculator {
-  static calculateESPP(plan: ESPPPlan): ESPPCalculationResult {
+  static calculateESPP(plan: ESPPPlan, fxRatesByDate?: Record<string, number>, currentStockPrice?: number): ESPPCalculationResult {
     const exchangeRate = plan.exchange_rate || 3.65;
-    const currentStockPrice = plan.current_stock_price || plan.base_stock_price;
-    
+
     // Calculate monthly contribution
-    const monthlyContribution = (plan.base_salary * plan.income_percentage) / 100;
+    const monthlyContribution = (plan.base_salary * plan.income_percentage) / 100; // ILS
     const monthlyContributionUSD = monthlyContribution / exchangeRate;
     
     // Calculate discounted stock price
@@ -100,11 +102,14 @@ export class ESPPCalculator {
       for (let i = 0; i < purchasesElapsed; i++) {
         const purchaseDate = new Date(startDate);
         purchaseDate.setMonth(purchaseDate.getMonth() + (i + 1) * purchaseInterval);
+        const purchaseDateStr = purchaseDate.toISOString().split('T')[0];
+        const fxAtPurchase = fxRatesByDate?.[purchaseDateStr] || exchangeRate; // ILS per USD
         
         // Calculate contribution for this 6-month period
-        const contributionAmount = monthlyContributionUSD * purchaseInterval;
+        const sixMonthContributionILS = monthlyContribution * purchaseInterval; // ILS
+        const contributionAmount = sixMonthContributionILS / fxAtPurchase; // USD
         const sharesPurchased = contributionAmount / discountedStockPrice;
-        const currentValue = sharesPurchased * currentStockPrice;
+        const currentValue = sharesPurchased * (currentStockPrice || plan.base_stock_price);
         const gainLoss = currentValue - contributionAmount;
         const gainLossPercentage = contributionAmount > 0 ? (gainLoss / contributionAmount) * 100 : 0;
         
@@ -126,7 +131,15 @@ export class ESPPCalculator {
     
     // Calculate pending contribution for next purchase
     const monthsSinceLastPurchase = monthsElapsed % 6;
-    const pendingContribution = monthlyContributionUSD * monthsSinceLastPurchase;
+    // Use latest available FX (from last purchase) or fallback to plan.exchange_rate
+    let latestFx = exchangeRate;
+    if (purchases.length > 0) {
+      const lastPurchaseDateStr = purchases[purchases.length - 1].purchaseDate.toISOString().split('T')[0];
+      latestFx = fxRatesByDate?.[lastPurchaseDateStr] || exchangeRate;
+    }
+    const pendingContributionILS = monthlyContribution * monthsSinceLastPurchase;
+    const pendingContribution = pendingContributionILS / latestFx;
+    const pendingShares = pendingContribution / discountedStockPrice;
     
     // Calculate total contributions (including pending)
     const totalContributions = monthlyContribution * monthsElapsed;
@@ -153,13 +166,16 @@ export class ESPPCalculator {
       monthsRemaining,
       nextPurchaseDate,
       purchases,
-      pendingContribution
+      pendingContribution,
+      pendingContributionILS,
+      pendingShares,
+      monthsSinceLastPurchase
     };
   }
   
   static calculateESPPProjection(plan: ESPPPlan): ESPPPeriodData[] {
     const exchangeRate = plan.exchange_rate || 3.65;
-    const currentStockPrice = plan.current_stock_price || plan.base_stock_price;
+    const currentStockPrice = plan.base_stock_price;
     const monthlyContribution = (plan.base_salary * plan.income_percentage) / 100;
     const monthlyContributionUSD = monthlyContribution / exchangeRate;
     const discountedStockPrice = plan.base_stock_price * (1 - plan.stock_discount_percentage / 100);

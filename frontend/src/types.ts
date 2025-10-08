@@ -28,7 +28,6 @@ export interface ESPPPlan {
   }[];
   stock_discount_percentage: number; // Discount percentage (e.g., 15%)
   base_stock_price: number; // Stock price before discount in USD
-  current_stock_price?: number; // Current market price in USD
   exchange_rate?: number; // USD to ILS exchange rate
 }
 
