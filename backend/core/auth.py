@@ -4,6 +4,7 @@ Authentication functionality using Firebase and MongoDB
 from fastapi import Depends, HTTPException, Request
 from pymongo.asynchronous.database import AsyncDatabase
 from models.user_model import User
+from services.telegram.service import get_telegram_service
 from core.database import get_db
 
 async def get_current_user(
@@ -43,6 +44,15 @@ async def get_current_user(
         result = await db.users.insert_one(new_user.dict(exclude={'id'}))
         new_user.id = str(result.inserted_id)
         print(f"✅ [AUTH] Created new user with ID: {new_user.id}")
+
+        # Best-effort Telegram notification for new user creation
+        try:
+            telegram_service = get_telegram_service()
+            await telegram_service.send_text(
+                f"👤 New user created\nName: {new_user.name}\nEmail: {new_user.email}\nUID: {new_user.firebase_uid}"
+            )
+        except Exception as e:
+            print(f"⚠️ [AUTH] Failed to send Telegram new-user notification: {e}")
         return new_user
 
     # Convert MongoDB document to User model
