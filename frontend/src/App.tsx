@@ -62,6 +62,7 @@ const App: React.FC = () => {
   const [hasCheckedPortfolios, setHasCheckedPortfolios] = useState(false);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
+  const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
   const [activeView, setActiveView] = useState<NavigationView>('portfolios');
   const [subView, setSubView] = useState<'profile' | 'settings' | null>(null);
 
@@ -184,6 +185,26 @@ const App: React.FC = () => {
     
     console.log('📊 [APP] Using options vesting from context for', companyCustodianAccounts.length, 'selected company accounts (no API calls)');
     setMainOptionsVesting(optionsVestingMap);
+
+    // Get ESPP plans from context - filtered by selected accounts
+    const esppPlansMap: Record<string, unknown> = {};
+    const companyCustodianAccountsForESPP = filteredAccounts.filter(
+      (account: any) => account.account_type === 'company-custodian-account'
+    );
+    
+    companyCustodianAccountsForESPP.forEach((account: any) => {
+      try {
+        const esppData = account.espp_plans || [];
+        console.log(`🔶 [APP] ESPP plans for selected account ${account.account_name}:`, esppData.length, 'plans');
+        esppPlansMap[account.account_name] = esppData;
+      } catch (error) {
+        console.error(`❌ [APP] Error processing ESPP plans for account ${account.account_name}:`, error);
+        esppPlansMap[account.account_name] = [];
+      }
+    });
+    
+    console.log('📊 [APP] Using ESPP plans from context for', companyCustodianAccountsForESPP.length, 'selected company accounts (no API calls)');
+    setMainESPPPlans(esppPlansMap);
   }, [currentPortfolioData, selectedPortfolioId, selectedAccountNames, getOptionsVestingByAccount]); // Updated: depend on selectedAccountNames
 
   const handleAccountsChange = (accountNames: string[]) => {
@@ -466,6 +487,7 @@ const App: React.FC = () => {
                   isValueVisible={isValueVisible}
                   mainRSUVesting={mainRSUVesting}
                   mainOptionsVesting={mainOptionsVesting}
+                  mainESPPPlans={mainESPPPlans}
                   globalPrices={allPortfoliosData?.global_current_prices || {}}
                 />
               )

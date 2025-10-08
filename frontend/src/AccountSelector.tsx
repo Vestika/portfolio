@@ -468,7 +468,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const validESPPPlans = newAccount.espp_plans
-        .filter(plan => plan.symbol.trim() && plan.units > 0);
+        .filter(plan => plan.symbol.trim() && plan.base_salary > 0);
 
       const validOptionsPlans = newAccount.options_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
@@ -671,7 +671,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
       const validESPPPlans = editAccount.espp_plans
-        .filter(plan => plan.symbol.trim() && plan.units > 0);
+        .filter(plan => plan.symbol.trim() && plan.base_salary > 0);
 
       const validOptionsPlans = editAccount.options_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
@@ -1183,14 +1183,15 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             const newESPPPlan: ESPPPlan = {
                               id: Date.now().toString(),
                               symbol: '',
-                              units: 0,
+                              base_salary: 35000,
                               income_percentage: 15,
                               buying_periods: [{
                                 start_date: new Date().toISOString().split('T')[0],
                                 end_date: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
                               }],
                               stock_discount_percentage: 15,
-                              base_stock_price: 100
+                              base_stock_price: 0,
+                              exchange_rate: undefined
                             };
                             setNewAccount({
                               ...newAccount,
@@ -1766,7 +1767,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                             const newESPPPlan: ESPPPlan = {
                               id: Date.now().toString(),
                               symbol: '',
-                              units: 0,
+                              base_salary: 0,
                               income_percentage: 15,
                               buying_periods: [{
                                 start_date: new Date().toISOString().split('T')[0],

@@ -20,14 +20,15 @@ export interface RSUPlan {
 export interface ESPPPlan {
   id: string;
   symbol: string;
-  units: number;
-  income_percentage: number;
+  base_salary: number; // Base salary in ILS
+  income_percentage: number; // Percentage of salary to contribute (e.g., 15%)
   buying_periods: {
     start_date: string;
     end_date: string;
   }[];
-  stock_discount_percentage: number;
-  base_stock_price: number;
+  stock_discount_percentage: number; // Discount percentage (e.g., 15%)
+  base_stock_price: number; // Stock price before discount in USD
+  exchange_rate?: number; // USD to ILS exchange rate
 }
 
 export interface OptionsPlan {

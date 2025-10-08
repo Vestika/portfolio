@@ -3,6 +3,7 @@ import PieChart from '../PieChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
+import ESPPView from './ESPPView'
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -19,6 +20,7 @@ interface PortfolioViewProps {
   isValueVisible: boolean
   mainRSUVesting: Record<string, any>
   mainOptionsVesting: Record<string, any>
+  mainESPPPlans: Record<string, any>
   globalPrices: Record<string, any>
 }
 
@@ -30,6 +32,7 @@ export function PortfolioView({
   isValueVisible,
   mainRSUVesting,
   mainOptionsVesting,
+  mainESPPPlans,
   globalPrices
 }: PortfolioViewProps) {
   const showEmptyState = availablePortfolios.length === 0
@@ -207,6 +210,33 @@ export function PortfolioView({
                     );
                   })}
                 </div>
+              </div>
+            ));
+          })()}
+          
+          {/* ESPP Plans grouped by symbol */}
+          {(() => {
+            // 1. Gather all ESPP plans with their account names
+            const allESPPPlans: Array<{ plan: any; accountName: string }> = [];
+            Object.entries(mainESPPPlans).forEach(([accountName, plans]) => {
+              (plans as any[]).forEach(plan => {
+                allESPPPlans.push({ plan, accountName });
+              });
+            });
+            
+            // 2. Group by symbol
+            const grouped: Record<string, Array<{ plan: any; accountName: string }>> = {};
+            allESPPPlans.forEach(({ plan, accountName }) => {
+              if (!grouped[plan.symbol]) grouped[plan.symbol] = [];
+              grouped[plan.symbol].push({ plan, accountName });
+            });
+            
+            // 3. Render each symbol group
+            return Object.entries(grouped).map(([symbol, plans]) => (
+              <div key={`espp-${symbol}`} className="col-span-1 md:col-span-2">
+                <ESPPView 
+                  esppPlans={plans.map(({ plan }) => plan)}
+                />
               </div>
             ));
           })()}
