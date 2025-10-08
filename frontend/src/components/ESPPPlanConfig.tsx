@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ESPPPlan } from '../types';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { X, ChevronDown, ChevronRight, HelpCircle } from 'lucide-react';
 
 interface ESPPPlanConfigProps {
   plan: ESPPPlan;
@@ -17,10 +18,17 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
   isCollapsed = false, 
   onToggleCollapse 
 }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
   const updatePlan = (updates: Partial<ESPPPlan>) => {
     onChange({ ...plan, ...updates });
   };
 
+
+  const removeBuyingPeriod = (index: number) => {
+    const updatedPeriods = plan.buying_periods.filter((_, i) => i !== index);
+    updatePlan({ buying_periods: updatedPeriods });
+  };
 
   const updateBuyingPeriod = (index: number, field: 'start_date' | 'end_date', value: string) => {
     const updatedPeriods = plan.buying_periods.map((period, i) => 
@@ -107,6 +115,35 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
             />
           </div>
 
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="base-stock-price">Base Stock Price (USD)</Label>
+              <div className="relative">
+                <HelpCircle 
+                  className="h-4 w-4 text-muted-foreground cursor-help hover:text-primary transition-colors duration-200" 
+                  onMouseEnter={() => setShowTooltip(true)}
+                  onMouseLeave={() => setShowTooltip(false)}
+                />
+                {showTooltip && (
+                  <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 dark:bg-slate-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl border border-slate-700 dark:border-slate-600 whitespace-nowrap z-50 animate-in fade-in-0 zoom-in-95 duration-200">
+                    Plan-determined price before discount
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-slate-900 dark:border-t-slate-800"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Input
+              id="base-stock-price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={plan.base_stock_price}
+              onChange={(e) => updatePlan({ base_stock_price: parseFloat(e.target.value) || 0 })}
+              placeholder="e.g., 180.00"
+            />
+          </div>
+
+
 
           <div className="grid gap-2">
             <Label>Buying Periods</Label>
@@ -130,6 +167,15 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
                       placeholder="End Date"
                     />
                   </div>
+                  <Button
+                    type="button"
+                    onClick={() => removeBuyingPeriod(index)}
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 </div>
               ))}
             </div>
