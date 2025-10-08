@@ -44,11 +44,25 @@ async def delete_tag_definition(
     current_user: User = Depends(get_current_user),
     tag_service: TagService = Depends(get_tag_service)
 ):
-    """Delete a tag definition and all associated values"""
+    """Delete a tag definition and all associated values and charts"""
     user_id = current_user.firebase_uid
     success = await tag_service.delete_tag_definition(user_id, tag_name)
     if not success:
         raise HTTPException(status_code=404, detail="Tag definition not found")
+    
+    # Also delete any custom charts associated with this tag
+    try:
+        custom_charts_collection = db_manager.get_collection("custom_charts")
+        delete_result = await custom_charts_collection.delete_many({
+            "user_id": user_id,
+            "tag_name": tag_name
+        })
+        if delete_result.deleted_count > 0:
+            print(f"🗑️ [TAG DELETE] Deleted {delete_result.deleted_count} custom charts for tag '{tag_name}'")
+    except Exception as e:
+        print(f"⚠️ [TAG DELETE] Failed to delete custom charts for tag '{tag_name}': {e}")
+        # Don't fail the tag deletion if chart cleanup fails
+    
     return {"message": f"Tag definition '{tag_name}' deleted successfully"}
 
 @router.post("/tags/adopt-template/{template_name}")

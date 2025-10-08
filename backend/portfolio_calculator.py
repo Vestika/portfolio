@@ -149,10 +149,17 @@ class PortfolioCalculator:
                     unit_price = 0.0
         
         # Convert to base currency if needed
-        logger.debug(f"Converting {security.symbol}: {security.currency} ({type(security.currency)}) -> {self.base_currency} ({type(self.base_currency)})")
-        exchange_rate = self.get_exchange_rate(security.currency, self.base_currency)
-        value_in_base = unit_price * exchange_rate
-        total_value = value_in_base * units
+        # Special case: FX: symbols are already priced in base currency (no conversion needed)
+        if security.symbol.startswith('FX:'):
+            logger.debug(f"FX symbol {security.symbol}: price already in base currency, skipping conversion")
+            exchange_rate = 1.0
+            value_in_base = unit_price
+            total_value = value_in_base * units
+        else:
+            logger.debug(f"Converting {security.symbol}: {security.currency} ({type(security.currency)}) -> {self.base_currency} ({type(self.base_currency)})")
+            exchange_rate = self.get_exchange_rate(security.currency, self.base_currency)
+            value_in_base = unit_price * exchange_rate
+            total_value = value_in_base * units
         
         logger.debug(f"Conversion for {security.symbol}: {unit_price} {security.currency} * {exchange_rate} = {value_in_base} {self.base_currency} (total: {total_value} for {units} units)")
         

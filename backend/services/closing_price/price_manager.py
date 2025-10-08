@@ -1,4 +1,5 @@
 import json
+import httpx
 from datetime import datetime, timedelta
 from loguru import logger
 from typing import Optional, Any
@@ -7,6 +8,7 @@ from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
 from .database import db, cache, ensure_connections
 from .models import StockPrice, TrackedSymbol, PriceResponse
+from .currency_service import currency_service
 
 
 class PriceManager:
@@ -97,13 +99,19 @@ class PriceManager:
         
         for symbol in symbols:
             try:
-                # Detect symbol type and determine market
-                symbol_type = detect_symbol_type(symbol)
-                if symbol_type == "unknown":
-                    results[symbol] = "unsupported_symbol_type"
-                    continue
-                
-                market_type = "TASE" if symbol.isdigit() else "US"
+                # Detect symbol type and determine market with new types
+                if symbol.startswith("FX:"):
+                    symbol_type = "currency"
+                    market_type = "CURRENCY"
+                elif symbol.endswith("-USD") and not symbol.isdigit():
+                    symbol_type = "crypto"
+                    market_type = "CRYPTO"
+                else:
+                    symbol_type = detect_symbol_type(symbol)
+                    if symbol_type == "unknown":
+                        results[symbol] = "unsupported_symbol_type"
+                        continue
+                    market_type = "TASE" if symbol.isdigit() else "US"
                 
                 # Check if already tracked
                 existing = await db.database.tracked_symbols.find_one({"symbol": symbol})
@@ -248,12 +256,20 @@ class PriceManager:
     async def _fetch_and_store_price(self, symbol: str) -> Optional[PriceResponse]:
         """Fetch fresh price and store in DB and cache"""
         try:
-            fetcher = create_stock_fetcher(symbol)
-            if not fetcher:
-                logger.error(f"No suitable fetcher found for symbol: {symbol}")
-                return None
-                
-            price_data = await fetcher.fetch_price(symbol)
+            # Handle different symbol types with appropriate data sources
+            if symbol.startswith("FX:"):
+                # Currency symbol - use currency_service
+                price_data = await self._fetch_currency_price(symbol)
+            elif symbol.endswith("-USD") and not symbol.isdigit():
+                # Crypto symbol - use special crypto fetcher
+                price_data = await self._fetch_crypto_price(symbol)
+            else:
+                # Regular stock - use existing stock_fetcher
+                fetcher = create_stock_fetcher(symbol)
+                if not fetcher:
+                    logger.error(f"No suitable fetcher found for symbol: {symbol}")
+                    return None
+                price_data = await fetcher.fetch_price(symbol)
             
             if not price_data:
                 return None
@@ -269,6 +285,116 @@ class PriceManager:
             
         except Exception as e:
             logger.error(f"Error fetching and storing price for {symbol}: {e}")
+            return None
+    
+    async def _fetch_currency_price(self, symbol: str) -> Optional[dict[str, Any]]:
+        """Fetch currency price using currency_service - prices in ILS terms for ILS-based portfolio"""
+        try:
+            # Extract currency code from FX:USD format
+            currency_code = symbol[3:]  # Remove "FX:" prefix
+            
+            # Get the rate in ILS terms (ILS is the base currency for this portfolio)
+            if currency_code == "ILS":
+                # For ILS, return 1.0 as it's the base currency
+                rate = 1.0
+            else:
+                # Get exchange rate from this currency to ILS
+                rate = await currency_service.get_exchange_rate(currency_code, "ILS")
+                if rate is None:
+                    logger.error(f"Failed to get {currency_code}/ILS exchange rate")
+                    return None
+            
+            # Get symbol mapping from database to use yfinance symbol for historical data
+            symbol_doc = await self._get_symbol_mapping(symbol)
+            yfinance_symbol = symbol_doc.get("yfinance_symbol", f"{currency_code}ILS=X") if symbol_doc else f"{currency_code}ILS=X"
+            
+            return {
+                "symbol": symbol,
+                "price": float(rate),
+                "currency": "ILS",  # All currency rates are in ILS for ILS-based portfolio
+                "market": "CURRENCY",
+                "source": "currency_service",
+                "fetched_at": datetime.utcnow(),
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "yfinance_symbol": yfinance_symbol,  # For historical data
+                "change_percent": 0.0  # Currency service doesn't provide change %
+            }
+            
+        except Exception as e:
+            logger.error(f"Error fetching currency price for {symbol}: {e}")
+            return None
+    
+    async def _fetch_crypto_price(self, symbol: str) -> Optional[dict[str, Any]]:
+        """Fetch crypto price using Finnhub with BINANCE: prefix"""
+        try:
+            if not settings.finnhub_api_key:
+                logger.error("Finnhub API key not configured for crypto")
+                return None
+            
+            # Get symbol mapping from database to use correct Finnhub format
+            symbol_doc = await self._get_symbol_mapping(symbol)
+            finnhub_symbol = symbol_doc.get("finnhub_symbol") if symbol_doc else None
+            
+            if not finnhub_symbol:
+                # Fallback: convert BTC-USD to BINANCE:BTCUSDT format
+                crypto_code = symbol.split("-")[0]
+                finnhub_symbol = f"BINANCE:{crypto_code}USDT"
+                logger.warning(f"No mapping found for {symbol}, using fallback: {finnhub_symbol}")
+            
+            # Fetch from Finnhub with the correct format
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://finnhub.io/api/v1/quote",
+                    params={"symbol": finnhub_symbol, "token": settings.finnhub_api_key},
+                    timeout=10.0
+                )
+                response.raise_for_status()
+                
+                data = response.json()
+                current_price = data.get("c")
+                
+                if current_price is None or current_price == 0:
+                    logger.warning(f"No price data available for crypto symbol: {finnhub_symbol}")
+                    return None
+                
+                return {
+                    "symbol": symbol,
+                    "price": float(current_price),
+                    "currency": "USD",  # Crypto prices are in USD
+                    "market": "CRYPTO",
+                    "source": "finnhub",
+                    "fetched_at": datetime.utcnow(),
+                    "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "previous_close": data.get("pc"),
+                    "change": data.get("d"),
+                    "change_percent": data.get("dp", 0.0),
+                    "high": data.get("h"),
+                    "low": data.get("l"),
+                    "open": data.get("o"),
+                    "finnhub_symbol": finnhub_symbol  # Store the actual symbol used
+                }
+                
+        except Exception as e:
+            logger.error(f"Error fetching crypto price for {symbol}: {e}")
+            return None
+    
+    async def _get_symbol_mapping(self, symbol: str) -> Optional[dict[str, Any]]:
+        """Get symbol mapping from symbols collection for yfinance/finnhub routing"""
+        try:
+            from core.database import db_manager
+            
+            # Ensure db_manager is connected
+            if not hasattr(db_manager, '_database') or db_manager._database is None:
+                await db_manager.connect("vestika")
+            
+            # Get the symbols collection 
+            collection = db_manager.get_collection("symbols")
+            symbol_doc = await collection.find_one({"symbol": symbol})
+            
+            return symbol_doc
+            
+        except Exception as e:
+            logger.error(f"Error getting symbol mapping for {symbol}: {e}")
             return None
     
     async def _update_tracking(self, symbol: str) -> None:

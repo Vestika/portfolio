@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, HoldingTags, TagDefinition, TagLibrary, TagType, TagValue } from './types';
+import { SecurityHolding, HoldingsTableData, TagDefinition, TagLibrary, TagType, TagValue } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
@@ -9,7 +9,12 @@ import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
 import EarningsCalendar from './components/EarningsCalendar';
 import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
+import { Card, CardContent } from './components/ui/card';
+import { Button } from './components/ui/button';
+import { Switch } from './components/ui/switch';
+import { Separator } from './components/ui/separator';
 import TagAPI from './utils/tag-api';
+import PortfolioAPI from './utils/portfolio-api';
 import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
 
 import {
@@ -28,6 +33,10 @@ import {
   Users,
   Plus,
   Calendar,
+  Filter,
+  X,
+  Layers,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
 
 import israelFlag from './assets/israel-flag.svg';
@@ -192,7 +201,8 @@ const MiniChart: React.FC<{
       formatter: function(this: unknown) {
         const point = (this as { point: { index: number; y: number } }).point;
         const date = new Date(data[point.index].date);
-        const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+        // For forex symbols (FX:) and legacy USD, show base currency
+        const displayCurrency = symbol === 'USD' || symbol.startsWith('FX:') ? baseCurrency : currency;
         const priceChange = point.index > 0 ? point.y - data[point.index - 1].price : 0;
         const priceChangePercent = point.index > 0 ? ((priceChange / data[point.index - 1].price) * 100) : 0;
 
@@ -298,7 +308,8 @@ const MiniChart: React.FC<{
         
         if (point) {
           const date = new Date(point.date);
-          const displayCurrency = symbol === 'USD' ? baseCurrency : currency;
+          // For forex symbols (FX:) and legacy USD, show base currency
+          const displayCurrency = symbol === 'USD' || symbol.startsWith('FX:') ? baseCurrency : currency;
           
           // Calculate daily change if not the first point
           let dailyChange = 0;
@@ -443,11 +454,91 @@ const SortableHeader: React.FC<{
   </div>
 );
 
+const GroupHeader: React.FC<{
+  groupName: string;
+  holdings: SecurityHolding[];
+  baseCurrency: string;
+  isValueVisible: boolean;
+  colSpan: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ groupName, holdings, baseCurrency, isValueVisible, colSpan, isExpanded, onToggle }) => {
+  const totalValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+  const holdingsCount = holdings.length;
+
+  return (
+    <tr 
+      className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-b-2 border-purple-400/30 hover:from-purple-500/15 hover:to-blue-500/15 transition-all cursor-pointer"
+      onClick={onToggle}
+    >
+      <td colSpan={colSpan} className="px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-6 h-6">
+              {isExpanded ? (
+                <ChevronDown size={20} className="text-purple-400" />
+              ) : (
+                <ChevronRight size={20} className="text-purple-400" />
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-purple-500/20 rounded-md">
+                <Layers size={16} className="text-purple-400" />
+              </div>
+              <span className="text-base font-semibold text-purple-200">{groupName}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/20 rounded-md border border-purple-400/30">
+              <span className="text-xs text-gray-400">Holdings:</span>
+              <span className="text-sm font-semibold text-purple-300">{holdingsCount}</span>
+            </div>
+            {isValueVisible && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/20 rounded-md border border-purple-400/30">
+                <span className="text-xs text-gray-400">Total Value:</span>
+                <span className="text-sm font-semibold text-purple-300">
+                  {Math.round(totalValue).toLocaleString()} {baseCurrency}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isLoading = false }) => {
   const [sortConfig, setSortConfig] = useState<{
     key: keyof SecurityHolding | 'percent_change';
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
+
+  // Clean symbol display function (same logic as AccountSelector)
+  const getDisplaySymbol = (symbol: string) => {
+    let displaySymbol = symbol;
+    
+    // Remove exchange prefixes for clean display
+    if (displaySymbol.toUpperCase().startsWith('NYSE:')) {
+      return displaySymbol.substring(5); // Remove "NYSE:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('NASDAQ:')) {
+      return displaySymbol.substring(7); // Remove "NASDAQ:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('TASE:')) {
+      return displaySymbol.substring(5); // Remove "TASE:"
+    }
+    if (displaySymbol.toUpperCase().startsWith('FX:')) {
+      return displaySymbol.substring(3); // Remove "FX:" for clean currency display
+    }
+    
+    // For crypto symbols, remove -USD suffix for cleaner display
+    if (displaySymbol.endsWith('-USD')) {
+      return displaySymbol.replace('-USD', '');
+    }
+    
+    return displaySymbol;
+  };
 
   // Get real earnings data from context
   const { getEarningsBySymbol, getPercentChange } = usePortfolioData();
@@ -459,10 +550,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       holdings: data.holdings.map(holding => {
         const earningsData = getEarningsBySymbol(holding.symbol);
         if (earningsData && earningsData.length > 0) {
-          console.log(`📅 [HOLDINGS TABLE] Adding real earnings data for ${holding.symbol}:`, {
-            earningsCount: earningsData.length,
-            sampleEarnings: earningsData.slice(0, 2)
-          });
           return {
             ...holding,
             earnings_calendar: earningsData
@@ -475,6 +562,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [expandedEarnings, setExpandedEarnings] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [chartTooltipData, setChartTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const [earningsTooltipData, setEarningsTooltipData] = useState<{ x: number; y: number; content: string; visible: boolean } | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -521,101 +609,40 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [isGroupedByTag, setIsGroupedByTag] = useState(false);
 
   // Tag management state
-  const [structuredTags, setStructuredTags] = useState<Record<string, HoldingTags>>({});
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
 
   // Get tags and quotes from context (no more API calls needed!)
-  const { getUserTagLibrary, getHoldingTagsBySymbol, refreshAllPortfoliosData } = usePortfolioData();
-  
-  console.log('🏷️ [HOLDINGS TABLE] Component initialized - checking tag utilities availability');
+  const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData, updateCustomCharts, selectedPortfolioId } = usePortfolioData();
 
-  // Load tags from context instead of API calls
+  // Load tag library from context (tags are already in holding.tags from computedData)
   useEffect(() => {
-    console.log('🏷️ [HOLDINGS TABLE] === DEBUGGING TAGS LOADING ===');
-    console.log('🏷️ [HOLDINGS TABLE] Holdings data received:', {
-      totalHoldings: dataWithRealEarnings.holdings.length,
-      sampleHolding: dataWithRealEarnings.holdings[0],
-      holdingsWithTagsObjects: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-      firstHoldingWithTags: dataWithRealEarnings.holdings.find(h => h.tags && Object.keys(h.tags).length > 0),
-      allHoldingSymbols: dataWithRealEarnings.holdings.map(h => h.symbol)
-    });
-    
     try {
-      // Get tag library from context with comprehensive debugging
-      console.log('📚 [HOLDINGS TABLE] Calling getUserTagLibrary()...');
       const library = getUserTagLibrary();
       
-      console.log('📚 [HOLDINGS TABLE] Tag library result:', {
-        libraryExists: !!library,
-        libraryType: typeof library,
-        libraryKeys: library ? Object.keys(library) : 'No library',
-        hasTagDefinitions: !!(library?.tag_definitions),
-        tagDefinitionsCount: library?.tag_definitions ? Object.keys(library.tag_definitions).length : 0,
-        tagDefinitionsSample: library?.tag_definitions ? Object.keys(library.tag_definitions).slice(0, 3) : 'No definitions',
-        rawLibrary: library
-      });
-      
-      // Set tag library (needed for add tag functionality)
       if (library && typeof library === 'object') {
         setTagLibrary(library);
-        console.log('✅ [HOLDINGS TABLE] Tag library set successfully');
       } else {
-        console.log('⚠️ [HOLDINGS TABLE] Using fallback tag library');
         setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
       }
-      
-      // Get structured holding tags from context for all symbols
-      console.log('🏷️ [HOLDINGS TABLE] Loading structured tags from context...');
-      const tagsMap: Record<string, HoldingTags> = {};
-      
-      dataWithRealEarnings.holdings.forEach((holding, index) => {
-        console.log(`🔍 [HOLDINGS TABLE] Checking tags for holding ${index + 1}/${dataWithRealEarnings.holdings.length}: ${holding.symbol}`);
-        
-        const holdingTags = getHoldingTagsBySymbol(holding.symbol);
-        console.log(`   Context result for ${holding.symbol}:`, {
-          found: !!holdingTags,
-          hasTagsObject: !!(holdingTags?.tags),
-          tagNames: holdingTags?.tags ? Object.keys(holdingTags.tags) : 'No tags'
-        });
-        
-        if (holdingTags && typeof holdingTags === 'object') {
-          tagsMap[holding.symbol] = holdingTags;
-        }
-      });
-      
-      setStructuredTags(tagsMap);
-      
-      console.log('✅ [HOLDINGS TABLE] === TAGS LOADING SUMMARY ===');
-      console.log('📊 [HOLDINGS TABLE] Final tags state:', {
-        tagLibrarySet: !!tagLibrary,
-        tagDefinitionsAvailable: Object.keys(tagLibrary?.tag_definitions || {}).length,
-        structuredTagsLoaded: Object.keys(tagsMap).length,
-        structuredTagSymbols: Object.keys(tagsMap),
-        willShowAddButton: Object.keys(library?.tag_definitions || {}).length > 0,
-        holdingsWithDirectTags: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).length,
-        holdingsWithDirectTagsSample: dataWithRealEarnings.holdings.filter(h => h.tags && Object.keys(h.tags).length > 0).map(h => ({
-          symbol: h.symbol,
-          tags: Object.keys(h.tags || {})
-        }))
-      });
-      
     } catch (error) {
-      console.error('❌ [HOLDINGS TABLE] Error loading tags from context:', error);
+      console.error('Error loading tag library:', error);
       setTagLibrary({ user_id: '', tag_definitions: {}, template_tags: {} });
-      setStructuredTags({});
     }
-  }, [data.holdings, getUserTagLibrary, getHoldingTagsBySymbol]);
+  }, [getUserTagLibrary, allPortfoliosData?.user_tag_library]);
 
-  // Handle tag updates (refresh all data to get updated tags)
+  // Tags are loaded from context and refreshed when needed (after edits)
+  // No automatic refresh on focus/visibility to avoid unnecessary API calls
+
+  // Handle tag updates (refresh only tags - lightweight and fast!)
   const handleTagsUpdated = async () => {
     try {
-      console.log('🏷️ [HOLDINGS TABLE] Tag updated - refreshing all portfolios data to get latest tags');
-      await refreshAllPortfoliosData();
+      await refreshTagsOnly();
     } catch (error) {
-      console.error('Error refreshing data after tag update:', error);
+      console.error('Error refreshing tags after update:', error);
     }
   };
 
@@ -639,8 +666,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       // Apply tag filter if active
       let matchesTag = true;
       if (tagFilter) {
-        const holdingTags = structuredTags[holding.symbol];
-        matchesTag = holdingTags && Object.keys(holdingTags.tags).includes(tagFilter);
+        // Use holding.tags (fresh from context) instead of structuredTags (stale local state)
+        matchesTag = holding.tags && Object.keys(holding.tags).includes(tagFilter);
       }
 
       return matchesSymbol && matchesType && matchesTag;
@@ -684,6 +711,39 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     return ((holding.total_value / total) * 100).toFixed(1);
   };
 
+  // Group holdings by tag value when grouping is enabled
+  const groupedHoldings = useMemo(() => {
+    if (!isGroupedByTag || !tagFilter) {
+      return null;
+    }
+
+    const groups: Record<string, SecurityHolding[]> = {};
+    
+    filteredAndSortedHoldings.forEach(holding => {
+      // Get the tag value for this holding (tags should be TagValue objects at runtime)
+      const tagValue = holding.tags?.[tagFilter] as any;
+      let groupKey = 'Uncategorized';
+      
+      if (tagValue && typeof tagValue === 'object') {
+        // Handle ENUM tags
+        if ('enum_value' in tagValue && tagValue.enum_value) {
+          groupKey = tagValue.enum_value as string;
+        } 
+        // Handle BOOLEAN tags
+        else if ('boolean_value' in tagValue) {
+          groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+        }
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(holding);
+    });
+
+    return groups;
+  }, [isGroupedByTag, tagFilter, filteredAndSortedHoldings]);
+
   const handleRemoveTag = async (symbol: string, tagName: string) => {
     try {
       await TagAPI.removeHoldingTag(symbol, tagName);
@@ -715,59 +775,168 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     }
   };
 
-  const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
-    const structuredTag = structuredTags?.[holding.symbol];
+  // Check if a chart already exists for the current tag filter
+  const existingChart = useMemo(() => {
+    if (!tagFilter || !allPortfoliosData?.custom_charts) return null;
     
+    return allPortfoliosData.custom_charts.find(chart => 
+      chart.tag_name === tagFilter &&
+      (!chart.portfolio_id || chart.portfolio_id === selectedPortfolioId)
+    );
+  }, [tagFilter, allPortfoliosData?.custom_charts, selectedPortfolioId]);
+
+  // Handler for removing a custom chart
+  const handleRemoveChart = async () => {
+    if (!existingChart) return;
+
+    console.log('🗑️ [REMOVE CHART] Removing chart:', existingChart);
+
+    try {
+      // Delete from backend
+      await PortfolioAPI.deleteCustomChart(existingChart.chart_id);
+      console.log('🗑️ [REMOVE CHART] Chart deleted from backend');
+
+      // Update context immediately
+      const updatedCharts = (allPortfoliosData?.custom_charts || []).filter(
+        chart => chart.chart_id !== existingChart.chart_id
+      );
+      updateCustomCharts(updatedCharts);
+
+      console.log('🗑️ [REMOVE CHART] Complete! Chart removed instantly.');
+    } catch (error) {
+      console.error('🗑️ [REMOVE CHART] Error removing chart:', error);
+    }
+  };
+
+  // Handler for creating a custom chart from tag groupings
+  const handleCreateChart = async () => {
+    console.log('🎨 [CREATE CHART] Button clicked!');
+    console.log('🎨 [CREATE CHART] tagFilter:', tagFilter);
+    console.log('🎨 [CREATE CHART] tagLibrary:', tagLibrary);
+    
+    if (!tagFilter) {
+      console.warn('🎨 [CREATE CHART] Missing tagFilter');
+      return;
+    }
+
+    const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
+    if (!tagDefinition) {
+      console.warn('🎨 [CREATE CHART] Tag definition not found for:', tagFilter);
+      return;
+    }
+
+    console.log('🎨 [CREATE CHART] Tag definition found:', tagDefinition);
+
+    try {
+      // Calculate groups on-the-fly from filtered holdings
+      const groups: Record<string, SecurityHolding[]> = {};
+      
+      filteredAndSortedHoldings.forEach(holding => {
+        const tagValue = holding.tags?.[tagFilter] as any;
+        let groupKey = 'Uncategorized';
+        
+        if (tagValue && typeof tagValue === 'object') {
+          // Handle ENUM tags
+          if ('enum_value' in tagValue && tagValue.enum_value) {
+            groupKey = tagValue.enum_value as string;
+          } 
+          // Handle BOOLEAN tags
+          else if ('boolean_value' in tagValue) {
+            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+          }
+        }
+        
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(holding);
+      });
+
+      console.log('🎨 [CREATE CHART] Groups calculated:', groups);
+
+      // Calculate chart data from groups
+      const totalValue = filteredAndSortedHoldings.reduce((sum, h) => sum + h.total_value, 0);
+      console.log('🎨 [CREATE CHART] Total value:', totalValue);
+      
+      const chartData = Object.entries(groups).map(([groupName, holdings]) => {
+        const groupValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+        const percentage = totalValue > 0 ? (groupValue / totalValue) * 100 : 0;
+        
+        return {
+          label: groupName,
+          value: Math.round(groupValue * 100) / 100,
+          percentage: Math.round(percentage * 100) / 100
+        };
+      }).sort((a, b) => b.value - a.value);
+
+      console.log('🎨 [CREATE CHART] Chart data calculated:', chartData);
+
+      // Create chart title
+      const chartTitle = `${tagDefinition.display_name} Distribution`;
+      console.log('🎨 [CREATE CHART] Chart title:', chartTitle);
+
+      const requestData = {
+        chart_title: chartTitle,
+        tag_name: tagFilter,
+        portfolio_id: selectedPortfolioId || undefined,
+        chart_data: chartData,
+        chart_total: Math.round(totalValue * 100) / 100
+      };
+      
+      console.log('🎨 [CREATE CHART] Sending request:', requestData);
+
+      // Save chart to backend
+      const response = await PortfolioAPI.createCustomChart(requestData);
+      console.log('🎨 [CREATE CHART] Chart created successfully:', response);
+
+      // Update context directly - instant update!
+      console.log('🎨 [CREATE CHART] Updating context with new chart...');
+      const newChart = {
+        chart_id: response.chart_id,
+        chart_title: response.chart_title,
+        tag_name: response.tag_name,
+        portfolio_id: response.portfolio_id,
+        chart_data: requestData.chart_data, // Use the data we already calculated
+        chart_total: requestData.chart_total
+      };
+      const updatedCharts = [
+        ...(allPortfoliosData?.custom_charts || []),
+        newChart
+      ];
+      updateCustomCharts(updatedCharts);
+
+      // Show success message
+      console.log('🎨 [CREATE CHART] Complete! Chart added instantly.');
+    } catch (error) {
+      console.error('🎨 [CREATE CHART] Error creating chart:', error);
+    }
+  };
+
+  // Toggle group expansion
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
+  };
+
+  const renderTags = (holding: SecurityHolding, showManagementControls: boolean = true) => {
     // Get tags from holding data (should contain merged tags from context)
     const tagsToDisplay = holding.tags;
     
-    // Debug tag display process  
-    if (tagsToDisplay && Object.keys(tagsToDisplay).length > 0) {
-      const hasProperStructure = Object.values(tagsToDisplay).every(tag => 
-        typeof tag === 'object' && tag !== null && 'tag_type' in tag
-      );
-      
-      console.log(`🏷️ [HOLDINGS TABLE] Processing tags for ${holding.symbol}:`, {
-        tagCount: Object.keys(tagsToDisplay).length,
-        tagNames: Object.keys(tagsToDisplay),
-        hasProperTagValueStructure: hasProperStructure,
-        sampleTag: Object.values(tagsToDisplay)[0],
-        willShowTagDisplay: hasProperStructure
-      });
-      
-      if (!hasProperStructure) {
-        console.log(`⚠️ [HOLDINGS TABLE] Tags for ${holding.symbol} have incorrect structure:`, tagsToDisplay);
-      }
-    } else {
-      console.log(`🔍 [HOLDINGS TABLE] No tags to display for ${holding.symbol}:`, {
-        holdingHasTags: !!(holding.tags && Object.keys(holding.tags).length > 0),
-        holdingTagsType: typeof holding.tags,
-        holdingTagsValue: holding.tags
-      });
-    }
-    
-    // Safely get user defined tags with multiple null checks and debugging
+    // Get user defined tags
     let userDefinedTags: TagDefinition[] = [];
-    console.log(`🔧 [HOLDINGS TABLE] Processing tag library for ${holding.symbol}:`, {
-      hasTagLibrary: !!tagLibrary,
-      tagLibraryType: typeof tagLibrary,
-      hasTagDefinitions: !!(tagLibrary?.tag_definitions),
-      tagDefinitionsType: typeof tagLibrary?.tag_definitions,
-      tagDefinitionsCount: tagLibrary?.tag_definitions ? Object.keys(tagLibrary.tag_definitions).length : 0
-    });
-    
     try {
-      if (tagLibrary && 
-          typeof tagLibrary === 'object' && 
-          tagLibrary.tag_definitions && 
-          typeof tagLibrary.tag_definitions === 'object') {
+      if (tagLibrary?.tag_definitions && typeof tagLibrary.tag_definitions === 'object') {
         userDefinedTags = Object.values(tagLibrary.tag_definitions);
-        console.log(`✅ [HOLDINGS TABLE] Found ${userDefinedTags.length} user defined tags for add button`);
-      } else {
-        console.log(`⚠️ [HOLDINGS TABLE] Tag library structure invalid for add button - no user defined tags available`);
       }
     } catch (e) {
-      console.error('❌ [HOLDINGS TABLE] Error processing tag library:', e);
+      console.error('Error processing tag library:', e);
       userDefinedTags = [];
     }
 
@@ -781,14 +950,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           Object.entries(tagsToDisplay).forEach(([tagName, tagValue]) => {
             if (typeof tagValue === 'object' && tagValue !== null && 'tag_type' in tagValue) {
               properTagValues[tagName] = tagValue as TagValue;
-            } else {
-              console.log(`⚠️ [HOLDINGS TABLE] Skipping invalid tag for ${holding.symbol}: ${tagName}`, tagValue);
             }
           });
           
           if (Object.keys(properTagValues).length === 0) return null;
-          
-          console.log(`✅ [HOLDINGS TABLE] Rendering ${Object.keys(properTagValues).length} valid tags for ${holding.symbol}`);
           
           return (
             <TagDisplay
@@ -805,21 +970,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
         {(() => {
           const shouldShowAddButton = showManagementControls && userDefinedTags.length > 0;
-          console.log(`🔧 [HOLDINGS TABLE] Add tag button decision for ${holding.symbol}:`, {
-            showManagementControls,
-            userDefinedTagsLength: userDefinedTags.length,
-            shouldShowAddButton,
-            userDefinedTagsSample: userDefinedTags.slice(0, 2).map(tag => tag.name)
-          });
           
-          if (!shouldShowAddButton) {
-            console.log(`❌ [HOLDINGS TABLE] NOT showing add button for ${holding.symbol} - missing requirements`);
-            return null;
-          }
+          if (!shouldShowAddButton) return null;
           
-          console.log(`✅ [HOLDINGS TABLE] Showing add button for ${holding.symbol}`);
+          // Create a stable key based on symbol and current tags to force dropdown re-render when tags change
+          const dropdownKey = `${holding.symbol}-${holding.tags ? Object.keys(holding.tags).sort().join(',') : 'notags'}`;
+          
           return (
-            <Select onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
+            <Select key={dropdownKey} onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
               <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
                 <Plus size={14} className="text-gray-400 hover:text-blue-400" />
               </SelectTrigger>
@@ -828,7 +986,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 <p className="text-xs text-gray-400 mb-2 px-2">Add tag to {holding.symbol}:</p>
                 {userDefinedTags.map((tagDef) => {
                   // Don't show tags that are already assigned
-                  const isAlreadyAssigned = structuredTag && structuredTag.tags[tagDef.name];
+                  // Use holding.tags (fresh from context) instead of stale local state
+                  const isAlreadyAssigned = holding.tags && holding.tags[tagDef.name];
                   if (isAlreadyAssigned) return null;
 
                   return (
@@ -844,7 +1003,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </SelectItem>
                   );
                 })}
-                {userDefinedTags.filter(tagDef => !(structuredTag && structuredTag.tags[tagDef.name])).length === 0 && (
+                {userDefinedTags.filter(tagDef => !(holding.tags && holding.tags[tagDef.name])).length === 0 && (
                   <div className="px-2 py-3 text-xs text-gray-500 text-center">
                     All your tags are already assigned
                   </div>
@@ -867,27 +1026,116 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     <div className="w-full">
       {/* Title and Toggle Header */}
       <div className="flex items-center justify-between px-0 py-3 mb-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-h-[56px]">
           <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
 
-          {/* Tag Filter Indicator */}
-          {tagFilter && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-400/30 rounded-md">
-              <span className="text-sm text-blue-200">
-                Filtered by: <span className="font-medium">{tagFilter.replace(/_/g, ' ')}</span>
-                <span className="text-xs ml-1 opacity-75">
-                  ({filteredAndSortedHoldings.length} of {dataWithRealEarnings.holdings.length})
-                </span>
-              </span>
-              <button
-                onClick={() => setTagFilter(null)}
-                className="text-blue-300 hover:text-blue-100 transition-colors"
-                title="Clear filter"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          {/* Tag Filter Indicator - Enhanced Action Menu */}
+          {tagFilter && (() => {
+            // Get the tag definition to check if it's groupable (ENUM or BOOLEAN types)
+            const tagDefinition = tagLibrary?.tag_definitions[tagFilter];
+            const isGroupable = tagDefinition?.tag_type === TagType.ENUM || tagDefinition?.tag_type === TagType.BOOLEAN;
+            
+            console.log('🎨 [TAG FILTER UI] Rendering tag filter bar', {
+              tagFilter,
+              tagDefinition,
+              isGroupable,
+              tagType: tagDefinition?.tag_type
+            });
+            
+            return (
+              <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-400/30 shadow-lg backdrop-blur-sm">
+                <CardContent className="p-2.5">
+                  <div className="flex items-center gap-3">
+                    {/* Filter Info */}
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 bg-blue-500/20 rounded-md">
+                        <Filter size={14} className="text-blue-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-gray-400 leading-tight">Filtering by</span>
+                        <span className="text-xs font-semibold text-blue-200 leading-tight">
+                          {tagFilter.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <div className="px-1.5 py-0.5 bg-blue-500/20 rounded-md border border-blue-400/30">
+                        <span className="text-[10px] font-medium text-blue-300">
+                          {filteredAndSortedHoldings.length} / {dataWithRealEarnings.holdings.length}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <Separator orientation="vertical" className="h-6 bg-blue-400/20" />
+                    
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {isGroupable && (
+                        <>
+                          <div className="flex items-center gap-1.5">
+                            <Layers size={12} className="text-gray-400" />
+                            <span className="text-[10px] text-gray-300">Group by value</span>
+                            <Switch
+                              checked={isGroupedByTag}
+                              onCheckedChange={setIsGroupedByTag}
+                              className="scale-[0.65]"
+                            />
+                          </div>
+                          <Separator orientation="vertical" className="h-5 bg-blue-400/20" />
+                          
+                          {existingChart ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                console.log('🗑️ [BUTTON] Remove Chart button clicked!');
+                                handleRemoveChart();
+                              }}
+                              className="h-6 px-2 text-[10px] text-red-300 hover:text-red-100 hover:bg-red-500/10"
+                              title={`Remove chart "${existingChart.chart_title}"`}
+                            >
+                              <X size={12} />
+                              Remove Chart
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                console.log('🎨 [BUTTON] Create Chart button clicked!');
+                                handleCreateChart();
+                              }}
+                              className="h-6 px-2 text-[10px] text-green-300 hover:text-green-100 hover:bg-green-500/10"
+                              title="Create a chart from this tag grouping"
+                            >
+                              <PieChartIcon size={12} />
+                              Create Chart
+                            </Button>
+                          )}
+                          <Separator orientation="vertical" className="h-5 bg-blue-400/20" />
+                        </>
+                      )}
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setTagFilter(null);
+                          setIsGroupedByTag(false);
+                        }}
+                        className="h-6 px-2 text-[10px] text-red-300 hover:text-red-100 hover:bg-red-500/10"
+                      >
+                        <X size={12} />
+                        Clear Filter
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         {/* View Toggle */}
@@ -985,7 +1233,364 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedHoldings.map((holding) => (
+              {groupedHoldings ? (
+                // Render grouped view
+                Object.entries(groupedHoldings).map(([groupName, groupHoldings]) => (
+                  <React.Fragment key={`group-${groupName}`}>
+                    <GroupHeader
+                      groupName={groupName}
+                      holdings={groupHoldings}
+                      baseCurrency={dataWithRealEarnings.base_currency}
+                      isValueVisible={isValueVisible}
+                      colSpan={isValueVisible ? 11 : 9}
+                      isExpanded={expandedGroups.has(groupName)}
+                      onToggle={() => toggleGroup(groupName)}
+                    />
+                    {expandedGroups.has(groupName) && groupHoldings.map((holding) => (
+                      <React.Fragment key={holding.symbol}>
+                        <tr
+                          className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
+                          onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
+                        >
+                          <td className="px-2 md:px-4">
+                            {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                              <div className="flex items-center justify-center">
+                                {expandedRow === holding.symbol ? (
+                                  <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
+                                ) : (
+                                  <ChevronRight size={18} className="text-gray-400 hover:text-blue-400 transition-colors cursor-pointer" />
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
+                          <td className="px-2 md:px-4 font-medium text-blue-400">
+                            <div className="flex items-center gap-2">
+                              {/* Logo image */}
+                              {(() => {
+                                const logoUrl = getLogoUrl(holding);
+                                const isUsFlag = logoUrl === usFlag;
+                                const isFlag = logoUrl === israelFlag || isUsFlag;
+                                if (logoUrl) {
+                                  return (
+                                    <img
+                                      src={logoUrl}
+                                      alt={holding.symbol + ' logo'}
+                                      className={
+                                        isFlag
+                                          ? 'w-5 h-5 rounded-full object-cover mr-1 transition-transform duration-200 hover:scale-150'
+                                          : 'w-5 h-5 rounded-full bg-white object-contain border border-gray-300/40 mr-1 transition-transform duration-200 hover:scale-150'
+                                      }
+                                      onError={e => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                  );
+                                }
+                                return null;
+                              })()}
+                              <span>{getDisplaySymbol(holding.symbol)}</span>
+                              {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                                <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
+                                  {holding.account_breakdown.length}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
+                          <td className="px-2 md:px-4 text-sm hidden md:table-cell">
+                            {renderTags(holding, true)}
+                          </td>
+                          <td className="px-2 md:px-4 text-right text-sm text-gray-200">
+                            {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                            <span className="text-xs text-gray-400 ml-1">
+                              {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
+                            </span>
+                          </td>
+                          <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                            {(() => {
+                              const percentChange = getPercentChange(holding.symbol);
+                              const isPositive = percentChange > 0;
+                              const isNeutral = percentChange === 0;
+                              
+                              return (
+                                <span className={`font-medium ${
+                                  isNeutral ? 'text-gray-400' : 
+                                  isPositive ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                  {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          {isValueVisible && (
+                            <>
+                              <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                                {Math.round(holding.total_units).toLocaleString()}
+                              </td>
+                              <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
+                                {Math.round(holding.total_value).toLocaleString()}
+                                <span className="text-xs text-gray-400 ml-1 hidden md:inline">
+                                  ({calculatePercentage(holding)}%)
+                                </span>
+                              </td>
+                            </>
+                          )}
+                          <td className="px-2 md:px-4 hidden md:table-cell">
+                            {holding.earnings_calendar && holding.earnings_calendar.length > 0 ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const date = new Date(nextEarnings.date);
+                                      const today = new Date();
+                                      const diffTime = date.getTime() - today.getTime();
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      
+                                      const tooltipContent = `
+                                        <div style="padding: 4px;">
+                                          <div style="font-weight: 600; margin-bottom: 4px;">${date.toLocaleDateString('en-US', { 
+                                            weekday: 'long',
+                                            month: 'long', 
+                                            day: 'numeric',
+                                            year: 'numeric'
+                                          })}</div>
+                                          <div style="font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 2px;">
+                                            Q${nextEarnings.quarter} Earnings
+                                          </div>
+                                          <div style="font-size: 11px; color: #93c5fd;">
+                                            ${diffDays === 1 ? 'Tomorrow' : 
+                                              diffDays === 0 ? 'Today' : 
+                                              `in ${diffDays} days`}
+                                          </div>
+                                        </div>
+                                      `;
+                                      
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setEarningsTooltipData({
+                                        x: rect.left + rect.width / 2,
+                                        y: rect.top - 10,
+                                        content: tooltipContent,
+                                        visible: true
+                                      });
+                                    }
+                                  }
+                                }}
+                                onMouseLeave={() => {
+                                  setEarningsTooltipData(null);
+                                }}
+                                className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                              >
+                                <Calendar size={16} />
+                                <div className="text-xs text-gray-300">
+                                  {(() => {
+                                    const upcomingEarnings = holding.earnings_calendar
+                                      .filter(earning => new Date(earning.date) > new Date())
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    if (upcomingEarnings.length > 0) {
+                                      const nextEarnings = upcomingEarnings[0];
+                                      const date = new Date(nextEarnings.date);
+                                      const today = new Date();
+                                      const diffTime = date.getTime() - today.getTime();
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      
+                                      return (
+                                        <span className="text-xs font-medium text-blue-300">
+                                          {diffDays === 1 ? 'Tomorrow' : 
+                                           diffDays === 0 ? 'Today' : 
+                                           `in ${diffDays} days`}
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span className="text-xs text-gray-500">
+                                          No upcoming
+                                        </span>
+                                      );
+                                    }
+                                  })()}
+                                </div>
+                              </button>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <span className="text-xs text-gray-600">-</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 md:px-4 hidden md:table-cell">
+                            {(() => {
+                              const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                              const isCurrency = holding.symbol.startsWith('FX:');
+                              const isCrypto = holding.symbol.endsWith('-USD');
+                              const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                              
+                              const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;
+                              
+                              return shouldShowChart ? (
+                                <MiniChart 
+                                  data={holding.historical_prices} 
+                                  symbol={holding.symbol} 
+                                  currency={holding.original_currency} 
+                                  baseCurrency={dataWithRealEarnings.base_currency}
+                                  onTooltipShow={setChartTooltipData}
+                                  onTooltipHide={() => setChartTooltipData(null)}
+                                />
+                              ) : null;
+                            })()}
+                          </td>
+                        </tr>
+                        {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                          <tr>
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                              <AccountBreakdownRow
+                                accountBreakdown={holding.account_breakdown}
+                                baseCurrency={dataWithRealEarnings.base_currency}
+                                isValueVisible={isValueVisible}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {expandedEarnings === holding.symbol && holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                          <tr>
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                              <EarningsCalendar
+                                earningsData={holding.earnings_calendar}
+                                symbol={holding.symbol}
+                                compact={false}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {expandedRow === holding.symbol && isMobile && (
+                          <tr className="bg-gray-800/50 md:hidden">
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-bold text-gray-400">Name</p>
+                                  <p>{holding.name}</p>
+                                </div>
+                                <div>
+                                  <p className="font-bold text-gray-400">Performance</p>
+                                  <p>
+                                    {(() => {
+                                      const percentChange = getPercentChange(holding.symbol);
+                                      const isPositive = percentChange > 0;
+                                      const isNeutral = percentChange === 0;
+                                      
+                                      return (
+                                        <span className={`font-medium ${
+                                          isNeutral ? 'text-gray-400' : 
+                                          isPositive ? 'text-green-400' : 'text-red-400'
+                                        }`}>
+                                          {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
+                                        </span>
+                                      );
+                                    })()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-bold text-gray-400">Tags</p>
+                                  <div>{renderTags(holding, true)}</div>
+                                </div>
+                                {isValueVisible && (
+                                  <div>
+                                    <p className="font-bold text-gray-400">Units</p>
+                                    <p>{Math.round(holding.total_units).toLocaleString()}</p>
+                                  </div>
+                                )}
+                                {holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
+                                  <div className="col-span-2">
+                                    <p className="font-bold text-gray-400 mb-2">Earnings</p>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedEarnings(expandedEarnings === holding.symbol ? null : holding.symbol);
+                                      }}
+                                      className="flex items-center gap-2 mb-2 text-blue-400 hover:text-blue-300 transition-colors bg-transparent border-none p-2 rounded hover:bg-blue-500/10 w-full"
+                                      title={(() => {
+                                        if (holding.earnings_calendar && holding.earnings_calendar.length > 0) {
+                                          const upcomingEarnings = holding.earnings_calendar
+                                            .filter(earning => new Date(earning.date) > new Date())
+                                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                          
+                                          if (upcomingEarnings.length > 0) {
+                                            const nextEarnings = upcomingEarnings[0];
+                                            const date = new Date(nextEarnings.date);
+                                            return `Next earnings: ${date.toLocaleDateString('en-US', { 
+                                              weekday: 'long',
+                                              month: 'long', 
+                                              day: 'numeric',
+                                              year: 'numeric'
+                                            })} Q${nextEarnings.quarter}`;
+                                          } else {
+                                            return "No upcoming earnings";
+                                          }
+                                        }
+                                        return "View earnings calendar";
+                                      })()}
+                                    >
+                                      <Calendar 
+                                        size={14} 
+                                        className="text-blue-400 bg-transparent"
+                                      />
+                                      <span className="text-sm text-gray-300">
+                                        {(() => {
+                                          const upcomingEarnings = holding.earnings_calendar
+                                            .filter(earning => new Date(earning.date) > new Date())
+                                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                          
+                                          if (upcomingEarnings.length > 0) {
+                                            const nextEarnings = upcomingEarnings[0];
+                                            const today = new Date();
+                                            const date = new Date(nextEarnings.date);
+                                            const diffTime = date.getTime() - today.getTime();
+                                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                            
+                                            return (
+                                              <span className="text-gray-300">
+                                                Reports {diffDays === 1 ? '(tomorrow)' : 
+                                                         diffDays === 0 ? '(today)' : 
+                                                         `(in ${diffDays} days)`}
+                                              </span>
+                                            );
+                                          } else {
+                                            return (
+                                              <span className="text-gray-400">
+                                                No upcoming earnings
+                                              </span>
+                                            );
+                                          }
+                                        })()}
+                                      </span>
+                                    </button>
+                                    <EarningsCalendar
+                                      earningsData={holding.earnings_calendar}
+                                      symbol={holding.symbol}
+                                      compact={true}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
+                ))
+              ) : (
+                // Render ungrouped view (normal list)
+                filteredAndSortedHoldings.map((holding) => (
                 <React.Fragment key={holding.symbol}>
                   <tr
                     className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
@@ -1028,7 +1633,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           }
                           return null;
                         })()}
-                        <span>{holding.symbol}</span>
+                        <span>{getDisplaySymbol(holding.symbol)}</span>
                         {holding.account_breakdown && holding.account_breakdown.length > 1 && (
                           <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-400/30">
                             {holding.account_breakdown.length}
@@ -1042,7 +1647,9 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
-                      <span className="text-xs text-gray-400 ml-1">{holding.original_currency}</span>
+                      <span className="text-xs text-gray-400 ml-1">
+                        {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
+                      </span>
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
                       {(() => {
@@ -1130,19 +1737,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           <Calendar size={16} />
                           <div className="text-xs text-gray-300">
                             {(() => {
-                              // Debug logging
-                              console.log(`🔍 [EARNINGS] Processing ${holding.symbol}:`, {
-                                hasEarnings: !!holding.earnings_calendar,
-                                earningsCount: holding.earnings_calendar?.length || 0,
-                                earningsDates: holding.earnings_calendar?.map(e => e.date) || []
-                              });
-                              
                               // Find the next upcoming earnings date
                               const upcomingEarnings = holding.earnings_calendar
                                 .filter(earning => new Date(earning.date) > new Date())
                                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                              
-                              console.log(`📅 [EARNINGS] ${holding.symbol} upcoming:`, upcomingEarnings.length);
                               
                               if (upcomingEarnings.length > 0) {
                                 const nextEarnings = upcomingEarnings[0];
@@ -1176,18 +1774,27 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       )}
                     </td>
                     <td className="px-2 md:px-4 hidden md:table-cell">
-                      {/* Show 7-day trend for non-base currency holdings, and USD/ILS exchange rate trend for USD holdings */}
-                      {(holding.symbol !== dataWithRealEarnings.base_currency || 
-                        (holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS')) ? (
-                        <MiniChart 
-                          data={holding.historical_prices} 
-                          symbol={holding.symbol} 
-                          currency={holding.original_currency} 
-                          baseCurrency={dataWithRealEarnings.base_currency}
-                          onTooltipShow={setChartTooltipData}
-                          onTooltipHide={() => setChartTooltipData(null)}
-                        />
-                      ) : null}
+                      {/* Show 7-day trend for currencies, crypto, and non-base currency holdings */}
+                      {(() => {
+                        const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                        const isCurrency = holding.symbol.startsWith('FX:');
+                        const isCrypto = holding.symbol.endsWith('-USD');
+                        const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                        
+                        // Show chart for: currencies, crypto, non-base currencies, or legacy USD
+                        const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;
+                        
+                        return shouldShowChart ? (
+                          <MiniChart 
+                            data={holding.historical_prices} 
+                            symbol={holding.symbol} 
+                            currency={holding.original_currency} 
+                            baseCurrency={dataWithRealEarnings.base_currency}
+                            onTooltipShow={setChartTooltipData}
+                            onTooltipHide={() => setChartTooltipData(null)}
+                          />
+                        ) : null;
+                      })()}
                     </td>
                   </tr>
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
@@ -1327,7 +1934,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>

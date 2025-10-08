@@ -26,6 +26,7 @@ import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { UserProfileProvider } from './contexts/UserProfileContext';
 import { PopupManager } from './components/PopupManager';
+// Removed floating feedback widget in favor of top bar modal
 import { signOutUser } from './firebase';
 import {
   PortfolioMetadata,

@@ -24,6 +24,9 @@ from .endpoints.news import router as news_router
 from .endpoints.ibkr import router as ibkr_router
 from .endpoints.files import router as files_router
 from .endpoints.notifications import router as notifications_router
+from .endpoints.custom_charts import router as custom_charts_router
+from .endpoints.real_estate import router as real_estate_router
+from .endpoints.feedback import router as feedback_router
 
 logger = logging.Logger(__name__)
 
@@ -69,28 +72,40 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")
 
-        # Try to connect to database (optional)
+        # Try to test database connection (optional)
         try:
-            await db_manager.connect("vestika")
-            logger.info("Database connected successfully")
+            test_db = await db_manager.get_database("vestika")
+            # Test the connection by attempting to list collections
+            await test_db.list_collection_names()
+            logger.info("Database connection tested successfully")
 
-            # Auto-populate symbols if data is older than 1 month
+            # Auto-populate symbols if data is older than 1 month OR collection is empty
             try:
                 logger.info("Checking symbols data age...")
-                from populate_symbols import is_symbols_data_stale, populate_symbols
+                from populate_symbols import is_symbols_data_stale, populate_symbols, symbols_collection_exists
                 
-                if await is_symbols_data_stale(max_age_days=30):
-                    logger.info("Symbols data is stale, starting population...")
+                # Check if symbols collection exists at all
+                collection_exists = await symbols_collection_exists()
+                is_stale = await is_symbols_data_stale(max_age_days=30)
+                
+                if not collection_exists or is_stale:
+                    if not collection_exists:
+                        logger.info("Symbols collection is empty, forcing full population...")
+                        force_populate = True  # Force when collection is empty
+                    else:
+                        logger.info("Symbols data is stale, starting population...")
+                        force_populate = False  # Use checksum logic when data exists
                     
                     # First run cleanup to remove any existing duplicates
-                    try:
-                        from populate_symbols import cleanup_duplicate_symbols
-                        cleanup_result = await cleanup_duplicate_symbols()
-                        logger.info(f"Pre-population cleanup: removed {cleanup_result['duplicates_removed']} duplicates")
-                    except Exception as cleanup_err:
-                        logger.warning(f"Pre-population cleanup failed: {cleanup_err}")
+                    if collection_exists:  # Only cleanup if collection exists
+                        try:
+                            from populate_symbols import cleanup_duplicate_symbols
+                            cleanup_result = await cleanup_duplicate_symbols()
+                            logger.info(f"Pre-population cleanup: removed {cleanup_result['duplicates_removed']} duplicates")
+                        except Exception as cleanup_err:
+                            logger.warning(f"Pre-population cleanup failed: {cleanup_err}")
                     
-                    result = await populate_symbols(force=False)  # Only update if needed
+                    result = await populate_symbols(force=force_populate)
                     logger.info(f"Symbol population completed: {result['total_symbols']} total symbols")
                     if result['updated_types']:
                         logger.info(f"Updated symbol types: {result['updated_types']}")
@@ -121,8 +136,14 @@ async def shutdown_event():
     """Clean up resources on application shutdown"""
     try:
         logger.info("Shutting down Portfolio API...")
+        
         # Clean up the closing price service
         await closing_price_service.cleanup()
+        
+        # Clean up database connections
+        await db_manager.disconnect()
+        logger.info("Database connections closed")
+        
         logger.info("Portfolio API shutdown completed successfully")
     except Exception as e:
         logger.warning(f"Error during shutdown: {e}")
@@ -139,6 +160,9 @@ app.include_router(news_router)
 app.include_router(ibkr_router)
 app.include_router(files_router)
 app.include_router(notifications_router)
+app.include_router(custom_charts_router)
+app.include_router(real_estate_router)
+app.include_router(feedback_router)
 
 # Mount static files for uploaded profile images
 import os

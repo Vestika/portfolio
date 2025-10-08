@@ -20,6 +20,7 @@ from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
 from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
+from services.closing_price.price_manager import PriceManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,37 @@ def invalidate_portfolio_cache(portfolio_id: str):
     keys_to_remove = [key for key in calculator_cache.keys() if key.startswith(f"{portfolio_id}:")]
     for key in keys_to_remove:
         del calculator_cache[key]
+
+def determine_security_type_and_currency(symbol: str) -> tuple[str, str]:
+    """
+    Determine the security type and currency based on symbol format.
+    
+    Returns:
+        tuple: (security_type, currency)
+    
+    Examples:
+        FX:USD -> ('cash', 'USD')
+        FX:GBP -> ('cash', 'GBP')
+        BTC-USD -> ('crypto', 'USD')
+        ETH-USD -> ('crypto', 'USD')
+        629014 -> ('bond', 'ILS')  # TASE numeric
+        AAPL -> ('stock', 'USD')
+    """
+    # Handle forex symbols (FX:XXX format)
+    if symbol.startswith('FX:'):
+        currency_code = symbol[3:]  # Extract currency after FX:
+        return ('cash', currency_code)
+    
+    # Handle crypto symbols (XXX-USD format)
+    if symbol.endswith('-USD') and not symbol.startswith('FX:'):
+        return ('crypto', 'USD')
+    
+    # Handle TASE numeric symbols
+    if symbol.isdigit() or (symbol.replace('.', '').replace('TA', '').isdigit()):
+        return ('bond', 'ILS')
+    
+    # Default to stock with USD currency
+    return ('stock', 'USD')
 
 # Request/Response models
 class BreakdownRequest:
@@ -285,7 +317,9 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
                 }
                 
                 # Prepare historical price task (don't await yet!)
-                historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today))
+                # Pass the portfolio's base currency for forex lookups
+                portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
+                historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
                 symbol_securities[symbol] = security
         
         current_prices_time = time.time() - current_prices_start
@@ -309,6 +343,9 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
             
             if symbol == 'USD':
                 currency_symbols.append(symbol)
+            elif symbol.startswith('FX:'):
+                # FX: symbols are forex currencies - handle separately for proper yfinance lookup
+                currency_symbols.append(symbol)
             elif hasattr(security, 'security_type') and security.security_type == SecurityType.CASH:
                 currency_symbols.append(symbol)
             elif symbol.isdigit():
@@ -329,10 +366,11 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
         remaining_tasks = []
         remaining_symbols = []
         
+        portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
         for symbol in tase_symbols + currency_symbols:
             security = symbol_lookup[symbol]
             price_info = first_calculator.calc_holding_value(security, 1)
-            remaining_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today))
+            remaining_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
             remaining_symbols.append(symbol)
         
         if remaining_tasks:
@@ -824,10 +862,13 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
     return historical_data
 
 
-async def fetch_historical_prices(symbol: str, security, original_price: float, seven_days_ago: date, today: date) -> list:
+async def fetch_historical_prices(symbol: str, security, original_price: float, seven_days_ago: date, today: date, base_currency: str = 'ILS') -> list:
     """
     Fetch real 7-day historical prices for any symbol using the original logic.
     Handles currencies, TASE symbols, and regular stocks with proper fallbacks.
+    
+    Args:
+        base_currency: The portfolio's base currency (e.g., 'USD', 'ILS') for forex rate lookups
     """
     historical_prices = []
     
@@ -859,9 +900,10 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                 # Handle yfinance DataFrame properly for FX data
                 for dt in prices.index:
                     price = prices.loc[dt]
+                    price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
                     historical_prices.append({
                         "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                        "price": float(price)
+                        "price": price_value
                     })
                 logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} USD/ILS exchange rate points for {symbol}")
             else:
@@ -874,6 +916,113 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         "price": original_price  # Use the current exchange rate as fallback
                     })
             
+        elif symbol.startswith('FX:'):
+            # Handle new FX: currency symbols with dynamic yfinance symbol lookup
+            currency_code = symbol[3:]  # Remove FX: prefix
+            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for currency symbol: {symbol} ({currency_code})")
+            
+            # Special case: if currency matches base currency, return 1.0 (no conversion)
+            if currency_code == base_currency:
+                logger.info(f"📊 [FETCH HISTORICAL] Currency {currency_code} matches base currency, returning 1.0 for all dates")
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    historical_prices.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": 1.0
+                    })
+            else:
+                # Determine the correct yfinance symbol based on portfolio's base currency
+                try:
+                    # For USD-based portfolios: directly fetch XXXUSD=X (e.g., GBPUSD=X)
+                    if base_currency == 'USD':
+                        yfinance_symbol = f"{currency_code}USD=X"
+                        logger.info(f"📊 [FETCH HISTORICAL] USD-based portfolio: using {yfinance_symbol}")
+                    
+                    # For ILS-based portfolios: convert through USD (yfinance doesn't have XXXILS pairs)
+                    elif base_currency == 'ILS':
+                        # Special case for USD → ILS: direct pair exists
+                        if currency_code == 'USD':
+                            yfinance_symbol = "USDILS=X"
+                            logger.info(f"📊 [FETCH HISTORICAL] ILS-based portfolio: fetching direct pair {yfinance_symbol}")
+                        else:
+                            # For other currencies: fetch XXX→USD, then multiply by USD→ILS
+                            logger.info(f"📊 [FETCH HISTORICAL] ILS-based portfolio: converting {currency_code} through USD")
+                            yfinance_symbol = f"{currency_code}USD=X"  # Will need USD→ILS separately
+                    
+                    # For other base currencies: try direct pair
+                    else:
+                        yfinance_symbol = f"{currency_code}{base_currency}=X"
+                        logger.info(f"📊 [FETCH HISTORICAL] {base_currency}-based portfolio: using {yfinance_symbol}")
+                    
+                    def fetch_fx_sync():
+                        """Synchronous FX fetching for new FX: symbols"""
+                        return yf.download(yfinance_symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                    
+                    loop = asyncio.get_event_loop()
+                    try:
+                        data = await asyncio.wait_for(
+                            loop.run_in_executor(None, fetch_fx_sync),
+                            timeout=5.0  # 5 second timeout for FX calls
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {yfinance_symbol} - using fallback")
+                        data = None
+                        
+                    if data is not None and not data.empty:
+                        prices = data["Close"].dropna().round(6)  # High precision for exchange rates
+                        logger.info(f"📈 [FETCH HISTORICAL] Raw yfinance data shape: {data.shape}, Close prices: {len(prices)}")
+                        
+                        # For ILS-based portfolios with non-USD currencies, multiply by USD→ILS rate
+                        if base_currency == 'ILS' and currency_code != 'USD':
+                            logger.info(f"🔄 [FETCH HISTORICAL] Fetching USDILS=X to convert {currency_code}USD to {currency_code}ILS")
+                            
+                            def fetch_usdils_sync():
+                                return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                            
+                            try:
+                                usdils_data = await asyncio.wait_for(
+                                    loop.run_in_executor(None, fetch_usdils_sync),
+                                    timeout=5.0
+                                )
+                                
+                                if usdils_data is not None and not usdils_data.empty:
+                                    usdils_prices = usdils_data["Close"].dropna().round(6)
+                                    logger.info(f"✅ [FETCH HISTORICAL] Got USDILS rates: {len(usdils_prices)} points")
+                                    
+                                    # Multiply XXX→USD by USD→ILS to get XXX→ILS
+                                    for dt in prices.index:
+                                        if dt in usdils_prices.index:
+                                            xxxusd_price = prices.loc[dt]
+                                            usdils_price = usdils_prices.loc[dt]
+                                            xxxusd_rate = float(xxxusd_price.iloc[0]) if hasattr(xxxusd_price, 'iloc') else float(xxxusd_price)
+                                            usdils_rate = float(usdils_price.iloc[0]) if hasattr(usdils_price, 'iloc') else float(usdils_price)
+                                            xxxils_rate = xxxusd_rate * usdils_rate
+                                            historical_prices.append({
+                                                "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                                "price": round(xxxils_rate, 4)
+                                            })
+                                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} {currency_code}→ILS price points (via USD)")
+                                else:
+                                    logger.error(f"❌ [FETCH HISTORICAL] Could not fetch USDILS=X for conversion")
+                            except Exception as usdils_error:
+                                logger.error(f"❌ [FETCH HISTORICAL] Error fetching USDILS=X: {usdils_error}")
+                        else:
+                            # Direct rate (USD-based portfolio or USD→ILS direct)
+                            for dt in prices.index:
+                                price = prices.loc[dt]
+                                price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
+                                historical_prices.append({
+                                    "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                    "price": price_value
+                                })
+                            logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} FX price points for {yfinance_symbol}")
+                    else:
+                        logger.error(f"❌ [FETCH HISTORICAL] No yfinance FX data for ticker: {yfinance_symbol}")
+                        logger.error(f"   This usually means yfinance doesn't have this currency pair available")
+                        
+                except Exception as e:
+                    logger.error(f"❌ [FETCH HISTORICAL] Error fetching FX data for {symbol}: {e}")
+                
         elif security.security_type == SecurityType.CASH:
             # Handle other currency holdings using exchange rates
             from_currency = symbol
@@ -912,9 +1061,10 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                     # Handle yfinance DataFrame properly
                     for dt in prices.index:
                         price = prices.loc[dt]
+                        price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
                         historical_prices.append({
                             "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                            "price": float(price)
+                            "price": price_value
                         })
                     logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} FX price points for {ticker}")
                 else:
@@ -952,9 +1102,10 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                     # Handle yfinance DataFrame properly for stock data
                     for dt in prices.index:
                         price = prices.loc[dt]
+                        price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
                         historical_prices.append({
                             "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                            "price": float(price)
+                            "price": price_value
                         })
                     logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} stock price points for {symbol}")
                 else:
@@ -1221,6 +1372,145 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# NEW: Minimal raw portfolios endpoint for frontend-side calculation
+@router.get("/portfolios/raw")
+async def get_raw_portfolios(user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return raw portfolio documents for the authenticated user with minimal shaping:
+    - portfolios: Record[portfolio_id, { portfolio_metadata, accounts }]
+    - global_securities: flattened securities with minimal fields
+    This avoids prices/historical/logos to let the frontend calculate.
+    """
+    try:
+        collection = db_manager.get_collection("portfolios")
+        docs = await collection.find({"user_id": user.id}).to_list(None)
+
+        portfolios: dict[str, Any] = {}
+        global_securities: dict[str, Any] = {}
+
+        for doc in docs or []:
+            pid = str(doc.get("_id"))
+            portfolio_name = doc.get("portfolio_name") or doc.get("config", {}).get("user_name", pid)
+            base_currency = (doc.get("config", {}).get("base_currency") or "USD")
+            user_name = doc.get("config", {}).get("user_name") or "User"
+
+            # Accounts: pass through holdings minimally
+            accounts = []
+            for acc in (doc.get("accounts") or []):
+                acc_name = acc.get("name") or acc.get("account_name") or ""
+                props = acc.get("properties") or acc.get("account_properties") or {}
+                owners = props.get("owners") or ["me"]
+                acc_type = props.get("type") or "bank-account"
+                holdings = [
+                    {
+                        "symbol": h.get("symbol"),
+                        "units": h.get("units", 0),
+                        "original_currency": None,
+                        "security_type": None,
+                        "security_name": h.get("symbol"),
+                    }
+                    for h in (acc.get("holdings") or [])
+                    if h.get("symbol")
+                ]
+
+                accounts.append({
+                    "account_name": acc_name,
+                    "account_type": acc_type,
+                    "owners": owners,
+                    "holdings": holdings,
+                    "rsu_plans": acc.get("rsu_plans", []),
+                    "espp_plans": acc.get("espp_plans", []),
+                    "options_plans": acc.get("options_plans", []),
+                    "rsu_vesting_data": [],
+                    "account_cash": {},
+                    "account_properties": props,
+                })
+
+            # securities
+            for sym, sec in (doc.get("securities") or {}).items():
+                global_securities[sym] = {
+                    "symbol": sym,
+                    "name": sec.get("name", sym),
+                    "security_type": (sec.get("type") or sec.get("security_type") or "stock"),
+                    "currency": sec.get("currency", base_currency),
+                }
+
+            portfolios[pid] = {
+                "portfolio_metadata": {
+                    "portfolio_id": pid,
+                    "portfolio_name": portfolio_name,
+                    "base_currency": base_currency,
+                    "user_name": user_name,
+                },
+                "accounts": accounts,
+                "computation_timestamp": datetime.utcnow().isoformat(),
+            }
+
+        # default portfolio id
+        default_portfolio_id = None
+        try:
+            user_prefs_collection = db_manager.get_collection("user_preferences")
+            user_prefs_doc = await user_prefs_collection.find_one({"user_id": user.id})
+            default_portfolio_id = user_prefs_doc.get("default_portfolio_id") if user_prefs_doc else None
+        except Exception:
+            default_portfolio_id = None
+
+        return {
+            "portfolios": portfolios,
+            "global_securities": global_securities,
+            "user_preferences": {
+                "preferred_currency": "USD",
+                "default_portfolio_id": default_portfolio_id,
+            },
+            "computation_timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# NEW: Minimal batch prices endpoint to support frontend calculation
+class BatchPricesRequest(BaseModel):
+    symbols: list[str]
+    base_currency: Optional[str] = "USD"
+    fresh: Optional[bool] = False
+
+
+@router.post("/prices/batch")
+async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return latest prices for a list of symbols. Also attempts to include original
+    currency if known from `symbols` collection; falls back to USD.
+    Response shape: { prices: { [symbol]: { price, currency } } }
+    """
+    try:
+        symbols = [s.upper() for s in (req.symbols or []) if isinstance(s, str) and s]
+        manager = PriceManager()
+        results = await manager.get_prices(symbols, fresh=bool(req.fresh))
+
+        # Resolve currencies from symbols collection where possible
+        currency_by_symbol: dict[str, str] = {}
+        try:
+            sym_col = db_manager.get_collection("symbols")
+            cursor = sym_col.find({"symbol": {"$in": symbols}}, {"symbol": 1, "currency": 1})
+            async for row in cursor:
+                currency_by_symbol[row.get("symbol")] = row.get("currency") or "USD"
+        except Exception:
+            pass
+
+        prices: dict[str, Any] = {}
+        for pr in results:
+            sym = pr.symbol
+            prices[sym] = {
+                "price": pr.price,
+                "currency": currency_by_symbol.get(sym, pr.currency or "USD"),
+                "last_updated": (pr.fetched_at.isoformat() if hasattr(pr, "fetched_at") and pr.fetched_at else datetime.utcnow().isoformat())
+            }
+
+        return {"prices": prices, "base_currency": req.base_currency or "USD", "count": len(prices)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/autocomplete")
 async def get_autocomplete_data(user=Depends(get_current_user)) -> dict[str, Any]:
     """
@@ -1330,10 +1620,12 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         for holding in request.holdings:
             symbol = holding.get('symbol')
             if symbol and symbol not in portfolio_data['securities']:
+                # Determine security type and currency based on symbol format
+                security_type, currency = determine_security_type_and_currency(symbol)
                 portfolio_data['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
-                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
+                    'type': security_type,
+                    'currency': currency
                 }
 
         # Add securities for options plans
@@ -1448,10 +1740,12 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         for holding in request.holdings:
             symbol = holding.get('symbol')
             if symbol and symbol not in doc['securities']:
+                # Determine security type and currency based on symbol format
+                security_type, currency = determine_security_type_and_currency(symbol)
                 doc['securities'][symbol] = {
                     'name': symbol,
-                    'type': 'bond' if str.isnumeric(symbol) else 'stock',  # Default type
-                    'currency': 'ILS' if str.isnumeric(symbol) else 'USD'  # Default currency
+                    'type': security_type,
+                    'currency': currency
                 }
 
         # Add securities for options plans

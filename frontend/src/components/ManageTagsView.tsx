@@ -6,6 +6,7 @@ import { Tags, Plus, Edit, Trash2, Users, BarChart3 } from 'lucide-react';
 import { TagDefinition, TagLibrary, HoldingTags, TagType } from '../types';
 import TagDefinitionManager from './TagDefinitionManager';
 import TagAPI from '../utils/tag-api';
+import { usePortfolioData } from '../contexts/PortfolioDataContext';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: {
@@ -46,6 +47,7 @@ const TAG_TYPE_INFO = {
 };
 
 export function ManageTagsView() {
+  const { refreshTagsOnly, updateCustomCharts, allPortfoliosData } = usePortfolioData();
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [allHoldingTags, setAllHoldingTags] = useState<HoldingTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,8 @@ export function ManageTagsView() {
     try {
       await TagAPI.createTagDefinition(tagDefinition);
       await loadData();
+      // Update global context so tags are immediately available everywhere
+      await refreshTagsOnly();
       setDefinitionManager({ isOpen: false });
     } catch (error) {
       console.error('Error creating tag definition:', error);
@@ -86,13 +90,21 @@ export function ManageTagsView() {
   };
 
   const handleDeleteTagDefinition = async (tagName: string) => {
-    if (!confirm(`Are you sure you want to delete the tag definition "${tagName}"? This will remove the tag from all holdings.`)) {
+    if (!confirm(`Are you sure you want to delete the tag definition "${tagName}"? This will remove the tag from all holdings and any associated charts.`)) {
       return;
     }
 
     try {
       await TagAPI.deleteTagDefinition(tagName);
       await loadData();
+      // Update global context so deleted tags are removed everywhere
+      await refreshTagsOnly();
+      
+      // Remove any charts associated with this tag
+      const updatedCharts = (allPortfoliosData?.custom_charts || []).filter(
+        chart => chart.tag_name !== tagName
+      );
+      updateCustomCharts(updatedCharts);
     } catch (error) {
       console.error('Error deleting tag definition:', error);
     }

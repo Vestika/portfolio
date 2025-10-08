@@ -47,6 +47,14 @@ export interface AllPortfoliosData {
   user_tag_library: any; // TagLibrary type from backend
   all_holding_tags: Record<string, any>; // HoldingTags by symbol
   all_options_vesting: Record<string, Record<string, any>>; // portfolio_id -> account_name -> vesting data
+  custom_charts?: Array<{
+    chart_id: string;
+    chart_title: string;
+    tag_name: string;
+    portfolio_id?: string;
+    chart_data: Array<{ label: string; value: number; percentage: number }>;
+    chart_total: number;
+  }>;
   user_preferences: {
     preferred_currency: string;
     default_portfolio_id: string | null;
@@ -169,6 +177,8 @@ interface PortfolioDataContextType {
   // Actions
   loadAllPortfoliosData: () => Promise<void>;
   refreshAllPortfoliosData: () => Promise<void>;
+  refreshTagsOnly: () => Promise<void>;
+  updateCustomCharts: (charts: any[]) => void;
   
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
@@ -224,6 +234,20 @@ interface PortfolioDataProviderProps {
 
 export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ children }) => {
   console.log('🏗️ [PORTFOLIO PROVIDER] Initializing PortfolioDataProvider (bulletproof version)');
+  const resolveFrontendCalc = (): boolean => {
+    try {
+      const fromEnv = (import.meta as any)?.env?.VITE_FRONTEND_CALC;
+      const fromLS = typeof window !== 'undefined' ? window.localStorage.getItem('FRONTEND_CALC') : null;
+      const fromQS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('frontend_calc') : null;
+      const raw = ((fromQS ?? fromLS ?? fromEnv) ?? '').toString().trim().toLowerCase();
+      const enabled = raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+      console.log('🧪 [PORTFOLIO CONTEXT] FRONTEND_CALC resolved:', { fromEnv, fromLS, fromQS, raw, enabled });
+      return enabled;
+    } catch {
+      return false;
+    }
+  };
+  const FRONTEND_CALC = resolveFrontendCalc();
   
   // State for ALL portfolios data
   const [allPortfoliosData, setAllPortfoliosData] = useState<AllPortfoliosData | null>(null);
@@ -269,14 +293,133 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     setError(null);
 
     try {
-      // Fetch both endpoints in parallel for maximum performance
-      const [portfolioResponse, autocompleteResponse] = await Promise.all([
-        api.get(`/portfolios/complete-data`),
-        api.get(`/autocomplete`)
-      ]);
+      // Use frontend-side calculation flow when enabled
+      if (FRONTEND_CALC) {
+        console.log('🧪 [PORTFOLIO CONTEXT] FRONTEND_CALC enabled - using /portfolios/raw + /prices/batch');
+        const [rawResp, autocompleteResponse] = await Promise.all([
+          api.get(`/portfolios/raw`),
+          api.get(`/autocomplete`)
+        ]);
 
-      const portfolioData: AllPortfoliosData = portfolioResponse.data;
-      const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
+        const raw = rawResp.data as any;
+        const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
+
+        // Determine base currency to convert prices into (use default portfolio base or first portfolio)
+        const portfolioIds: string[] = Object.keys(raw?.portfolios || {});
+        const defaultId: string | null = raw?.user_preferences?.default_portfolio_id || null;
+        const selectedId: string | null = (defaultId && portfolioIds.includes(defaultId)) ? defaultId : (portfolioIds[0] || null);
+        const targetBaseCurrency: string = (selectedId && raw.portfolios[selectedId]?.portfolio_metadata?.base_currency) || 'USD';
+
+        // Gather all unique symbols across all portfolios
+        const allSymbolsSet = new Set<string>();
+        portfolioIds.forEach(pid => {
+          const accounts = raw.portfolios[pid]?.accounts || [];
+          accounts.forEach((acc: any) => {
+            (acc.holdings || []).forEach((h: any) => {
+              if (h?.symbol) allSymbolsSet.add(String(h.symbol).toUpperCase());
+            });
+          });
+        });
+        const allSymbols = Array.from(allSymbolsSet);
+
+        // Fetch latest prices for all symbols
+        const pricesResp = allSymbols.length > 0
+          ? await api.post(`/prices/batch`, { symbols: allSymbols, base_currency: targetBaseCurrency, fresh: false })
+          : { data: { prices: {} } };
+
+        const pricesData = (pricesResp.data?.prices || {}) as Record<string, { price: number; currency?: string; last_updated?: string }>;
+
+        // Simple FX map with sensible defaults for USD/ILS (minimal change for quick testing)
+        const fxByPair: Record<string, { rate: number }> = {
+          'USDUSD': { rate: 1 },
+          'ILSILS': { rate: 1 },
+          'USDILS': { rate: 3.4 },
+          'ILSUSD': { rate: 1 / 3.4 },
+        };
+
+        const convertToBase = (value: number, fromCurrency?: string): number => {
+          const from = (fromCurrency || '').toUpperCase();
+          const base = (targetBaseCurrency || '').toUpperCase();
+          if (!Number.isFinite(value)) return 0;
+          if (!from || from === base) return value;
+          const fx = fxByPair[`${from}${base}`];
+          return fx && fx.rate > 0 ? value * fx.rate : value;
+        };
+
+        // Build global_current_prices in target base currency, retaining original_price
+        const global_current_prices: Record<string, any> = {};
+        Object.entries(pricesData).forEach(([sym, pr]) => {
+          const originalPrice = pr?.price ?? 0;
+          const originalCurrency = (pr?.currency || targetBaseCurrency).toUpperCase();
+          const converted = convertToBase(originalPrice, originalCurrency);
+          global_current_prices[sym] = {
+            price: converted,
+            original_price: originalPrice,
+            currency: originalCurrency,
+            last_updated: pr?.last_updated || new Date().toISOString()
+          };
+        });
+
+        const portfolioData: AllPortfoliosData = {
+          portfolios: raw?.portfolios || {},
+          global_securities: raw?.global_securities || {},
+          global_current_prices,
+          global_historical_prices: {},
+          global_logos: {},
+          global_earnings_data: {},
+          user_tag_library: raw?.user_preferences ? { tag_definitions: {}, template_tags: {} } : { tag_definitions: {}, template_tags: {} },
+          all_holding_tags: {},
+          all_options_vesting: {},
+          user_preferences: raw?.user_preferences || { preferred_currency: targetBaseCurrency, default_portfolio_id: selectedId },
+          computation_timestamp: new Date().toISOString(),
+        } as any;
+
+        // Log and set
+        const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
+        console.log('✅ [PORTFOLIO CONTEXT] ALL data (frontend calc) loaded successfully:', {
+          portfoliosCount: Object.keys(portfolioData.portfolios).length,
+          portfolioIds,
+          globalSecurities: Object.keys(portfolioData.global_securities || {}).length,
+          globalCurrentPrices: Object.keys(portfolioData.global_current_prices || {}).length,
+          globalHistoricalPrices: Object.keys(portfolioData.global_historical_prices || {}).length,
+          autocompleteData: autocompleteDataResponse.total_symbols,
+          historicalPriceSeries: totalHistoricalSeries,
+          defaultPortfolio: portfolioData.user_preferences.default_portfolio_id,
+          timestamp: portfolioData.computation_timestamp,
+        });
+
+        setAllPortfoliosData(portfolioData);
+        setAutocompleteData(autocompleteDataResponse.autocomplete_data);
+
+        // Auto-select portfolio and accounts
+        if (portfolioIds.length > 0) {
+          const portfolioToSelect = selectedId || portfolioIds[0];
+          console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting portfolio after load (frontend calc):', portfolioToSelect);
+          setSelectedPortfolioId(portfolioToSelect);
+          setTimeout(() => {
+            const portfolio = portfolioData.portfolios[portfolioToSelect];
+            if (portfolio?.accounts) {
+              const accountNames = portfolio.accounts.map((acc: any) => acc.account_name);
+              console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting accounts after load (frontend calc):', accountNames);
+              setSelectedAccountNames(accountNames);
+            }
+          }, 50);
+        }
+      } else {
+        // Existing backend aggregation path (default)
+        // Fetch endpoints in parallel for maximum performance
+        const [portfolioResponse, autocompleteResponse, customChartsResponse] = await Promise.all([
+          api.get(`/portfolios/complete-data`),
+          api.get(`/autocomplete`),
+          api.get(`/user/custom-charts`).catch(() => ({ data: [] })) // Gracefully handle if endpoint fails
+        ]);
+
+        const portfolioData: AllPortfoliosData = portfolioResponse.data;
+        const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
+        const customCharts = customChartsResponse.data || [];
+        
+        // Add custom charts to portfolio data
+        portfolioData.custom_charts = customCharts;
       
       // Calculate total historical price series (now global)
       const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
@@ -314,40 +457,30 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         timestamp: portfolioData.computation_timestamp,
         sampleHoldingTag: Object.values(portfolioData.all_holding_tags || {})[0] || 'No holding tags found'
       });
-      
-      // Debug a sample holding tag structure
-      if (portfolioData.all_holding_tags && Object.keys(portfolioData.all_holding_tags).length > 0) {
-        const sampleSymbol = Object.keys(portfolioData.all_holding_tags)[0];
-        const sampleHoldingTag = portfolioData.all_holding_tags[sampleSymbol];
-        console.log(`🏷️ [PORTFOLIO CONTEXT] Sample holding tag structure for ${sampleSymbol}:`, {
-          hasTagsObject: !!(sampleHoldingTag.tags),
-          tagNames: Object.keys(sampleHoldingTag.tags || {}),
-          sampleTagValue: sampleHoldingTag.tags ? Object.values(sampleHoldingTag.tags)[0] : 'No tags'
-        });
-      }
 
-      // Set both portfolio data and autocomplete data
-      setAllPortfoliosData(portfolioData);
-      setAutocompleteData(autocompleteDataResponse.autocomplete_data);
-      
-      // Auto-select portfolio and accounts after data loads
-      if (portfolioData.portfolios && Object.keys(portfolioData.portfolios).length > 0) {
-        const portfolioIds = Object.keys(portfolioData.portfolios);
-        const defaultId = portfolioData.user_preferences?.default_portfolio_id;
-        const portfolioToSelect = (defaultId && portfolioIds.includes(defaultId)) ? defaultId : portfolioIds[0];
+        // Set both portfolio data and autocomplete data
+        setAllPortfoliosData(portfolioData);
+        setAutocompleteData(autocompleteDataResponse.autocomplete_data);
         
-        console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting portfolio after load:', portfolioToSelect);
-        setSelectedPortfolioId(portfolioToSelect);
-        
-        // Auto-select all accounts for the selected portfolio
-        setTimeout(() => {
-          const portfolio = portfolioData.portfolios[portfolioToSelect];
-          if (portfolio?.accounts) {
-            const accountNames = portfolio.accounts.map((acc: any) => acc.account_name);
-            console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting accounts after load:', accountNames);
-            setSelectedAccountNames(accountNames);
-          }
-        }, 50);
+        // Auto-select portfolio and accounts after data loads
+        if (portfolioData.portfolios && Object.keys(portfolioData.portfolios).length > 0) {
+          const portfolioIds = Object.keys(portfolioData.portfolios);
+          const defaultId = portfolioData.user_preferences?.default_portfolio_id;
+          const portfolioToSelect = (defaultId && portfolioIds.includes(defaultId)) ? defaultId : portfolioIds[0];
+          
+          console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting portfolio after load:', portfolioToSelect);
+          setSelectedPortfolioId(portfolioToSelect);
+          
+          // Auto-select all accounts for the selected portfolio
+          setTimeout(() => {
+            const portfolio = portfolioData.portfolios[portfolioToSelect];
+            if (portfolio?.accounts) {
+              const accountNames = portfolio.accounts.map((acc: any) => acc.account_name);
+              console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting accounts after load:', accountNames);
+              setSelectedAccountNames(accountNames);
+            }
+          }, 50);
+        }
       }
       
     } catch (err: any) {
@@ -364,6 +497,46 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     console.log('🔄 [PORTFOLIO CONTEXT] Refreshing all portfolios and autocomplete data');
     await loadAllPortfoliosData();
   }, [loadAllPortfoliosData]);
+
+  // Refresh only tags (lightweight, no loading state)
+  const refreshTagsOnly = useCallback(async () => {
+    if (!allPortfoliosData) {
+      return;
+    }
+    
+    try {
+      // Fetch updated tags in parallel
+      const [tagLibraryResponse, holdingTagsResponse] = await Promise.all([
+        api.get(`/tags/library`),
+        api.get(`/holdings/tags`)
+      ]);
+
+      const updatedTagLibrary = tagLibraryResponse.data;
+      const updatedHoldingTagsList = holdingTagsResponse.data;
+
+      // Convert holding tags array to map by symbol
+      const updatedHoldingTagsMap: Record<string, any> = {};
+      updatedHoldingTagsList.forEach((holdingTags: any) => {
+        if (holdingTags.symbol) {
+          updatedHoldingTagsMap[holdingTags.symbol] = holdingTags;
+        }
+      });
+
+      // Update only the tags in the existing data
+      setAllPortfoliosData(prevData => {
+        if (!prevData) return prevData;
+        
+        return {
+          ...prevData,
+          user_tag_library: updatedTagLibrary,
+          all_holding_tags: updatedHoldingTagsMap
+        };
+      });
+    } catch (error: any) {
+      console.error('Error refreshing tags:', error);
+      // Don't throw - just log the error, UI will continue working with old tags
+    }
+  }, [allPortfoliosData]);
 
   // Current portfolio data in legacy format (bulletproof version)
   const currentPortfolioData = useMemo((): CompletePortfolioData | null => {
@@ -490,6 +663,19 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         chart_data: symbolData.slice(0, 20) // Top 20
       }
     ];
+    
+    // Add custom charts for the selected portfolio from allPortfoliosData
+    const customCharts = allPortfoliosData?.custom_charts?.filter((chart: any) => 
+      !chart.portfolio_id || chart.portfolio_id === selectedPortfolioId
+    ) || [];
+    
+    customCharts.forEach((customChart: any) => {
+      filteredAggregations.push({
+        chart_title: customChart.chart_title,
+        chart_total: customChart.chart_total,
+        chart_data: customChart.chart_data
+      });
+    });
 
     // Create properly aggregated holdings table (no duplicates)
     const allHoldings = Object.entries(holdingValues).map(([symbol, data]) => {
@@ -497,33 +683,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       const holdingTags = allPortfoliosData?.all_holding_tags?.[symbol];
       const priceData = allPortfoliosData?.global_current_prices?.[symbol];
 
-      // Get tags from MongoDB holding tags only (security tags removed from global_securities)
+      // Get tags from MongoDB holding tags (security tags removed from global_securities)
       let combinedTags: Record<string, any> = {};
       
       // Use holding-specific tags (complex TagValue structures from MongoDB)
       if (holdingTags?.tags && typeof holdingTags.tags === 'object') {
-        console.log(`🏷️ [PORTFOLIO CONTEXT] MongoDB holding tags for ${symbol}:`, {
-          tagNames: Object.keys(holdingTags.tags),
-          sampleTag: Object.keys(holdingTags.tags)[0] ? {
-            name: Object.keys(holdingTags.tags)[0],
-            structure: holdingTags.tags[Object.keys(holdingTags.tags)[0]]
-          } : 'No tags'
-        });
-        
-        // Use MongoDB holding tags (they have the proper TagValue structure)
         combinedTags = { ...holdingTags.tags };
-      }
-      
-      // Log final result
-      if (Object.keys(combinedTags).length > 0) {
-        console.log(`✅ [PORTFOLIO CONTEXT] Combined tags for ${symbol}:`, {
-          tagCount: Object.keys(combinedTags).length,
-          tagNames: Object.keys(combinedTags),
-          tagSources: {
-            fromMongoDB: holdingTags?.tags ? Object.keys(holdingTags.tags).length : 0
-          },
-          sampleTagStructure: Object.values(combinedTags)[0]
-        });
       }
 
       // Calculate prices and values dynamically
@@ -669,37 +834,25 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [allPortfoliosData]);
 
-  // Tags utilities with error handling and debugging
+  // Tags utilities with error handling
   const getUserTagLibrary = useCallback(() => {
     try {
       const library = allPortfoliosData?.user_tag_library;
       if (!library) {
-        console.log('🏷️ [PORTFOLIO CONTEXT] No tag library available, using empty fallback');
         return { user_id: '', tag_definitions: {}, template_tags: {} };
       }
-      
-      // Only log when we actually have tag definitions
-      if (library.tag_definitions && Object.keys(library.tag_definitions).length > 0) {
-        console.log('✅ [PORTFOLIO CONTEXT] Tag library loaded with definitions:', Object.keys(library.tag_definitions));
-      }
-      
       return library;
     } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getUserTagLibrary:', error);
+      console.error('Error in getUserTagLibrary:', error);
       return { user_id: '', tag_definitions: {}, template_tags: {} };
     }
   }, [allPortfoliosData]);
 
   const getHoldingTagsBySymbol = useCallback((symbol: string) => {
     try {
-      const result = allPortfoliosData?.all_holding_tags?.[symbol];
-      // Only log for symbols that have tags to reduce noise
-      if (result && result.tags && Object.keys(result.tags).length > 0) {
-        console.log(`🏷️ [PORTFOLIO CONTEXT] Found holding tags for ${symbol}:`, Object.keys(result.tags));
-      }
-      return result;
+      return allPortfoliosData?.all_holding_tags?.[symbol];
     } catch (error) {
-      console.error('❌ [PORTFOLIO CONTEXT] Error in getHoldingTagsBySymbol:', error);
+      console.error('Error in getHoldingTagsBySymbol:', error);
       return undefined;
     }
   }, [allPortfoliosData]);
@@ -778,6 +931,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     }
   }, [autocompleteData]);
 
+  // Update custom charts without refetching all data
+  const updateCustomCharts = useCallback((charts: any[]) => {
+    setAllPortfoliosData(prevData => {
+      if (!prevData) return prevData;
+      return {
+        ...prevData,
+        custom_charts: charts
+      };
+    });
+  }, []);
+
   const value: PortfolioDataContextType = {
     allPortfoliosData,
     autocompleteData,
@@ -792,6 +956,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     computedData,
     loadAllPortfoliosData,
     refreshAllPortfoliosData,
+    refreshTagsOnly,
+    updateCustomCharts,
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,

@@ -31,19 +31,49 @@ maya = Maya()
 
 # Currencies and crypto - keep these hardcoded as they're standards
 CURRENCIES = [
-    {"symbol": "USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar"]},
-    {"symbol": "ILS", "name": "Israeli New Shekel", "search_terms": ["shekel", "ils", "nis", "israeli shekel"]},
-    {"symbol": "EUR", "name": "Euro", "search_terms": ["euro", "eur", "european euro"]},
-    {"symbol": "GBP", "name": "British Pound Sterling", "search_terms": ["gbp", "pound", "sterling", "british pound"]},
-    {"symbol": "JPY", "name": "Japanese Yen", "search_terms": ["yen", "japanese yen", "jpy"]},
-    {"symbol": "CAD", "name": "Canadian Dollar", "search_terms": ["canadian dollar", "cad"]},
-    {"symbol": "AUD", "name": "Australian Dollar", "search_terms": ["australian dollar", "aud"]},
-    {"symbol": "CHF", "name": "Swiss Franc", "search_terms": ["swiss franc", "chf"]},
-    {"symbol": "CNY", "name": "Chinese Yuan", "search_terms": ["yuan", "chinese yuan", "renminbi"]},
-    {"symbol": "BTC", "name": "Bitcoin", "search_terms": ["bitcoin", "btc", "crypto"]},
-    {"symbol": "ETH", "name": "Ethereum", "search_terms": ["ethereum", "eth", "crypto"]},
-    {"symbol": "ADA", "name": "Cardano", "search_terms": ["cardano", "ada", "crypto"]},
-    {"symbol": "SOL", "name": "Solana", "search_terms": ["solana", "sol", "crypto"]},
+    # Major Currencies (using FX: prefix to avoid stock symbol conflicts)
+    # yfinance symbols: Use correct format for ILS-based portfolio (USDILS=X = 1 USD in ILS terms)
+    {"symbol": "FX:USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar", "united states dollar"], "yfinance_symbol": "USDILS=X"},
+    {"symbol": "FX:EUR", "name": "Euro", "search_terms": ["euro", "eur", "european euro"], "yfinance_symbol": "EURILS=X"},
+    {"symbol": "FX:GBP", "name": "British Pound Sterling", "search_terms": ["gbp", "pound", "sterling", "british pound"], "yfinance_symbol": "GBPILS=X"},
+    {"symbol": "FX:JPY", "name": "Japanese Yen", "search_terms": ["yen", "japanese yen", "jpy"], "yfinance_symbol": "JPYILS=X"},
+    {"symbol": "FX:CHF", "name": "Swiss Franc", "search_terms": ["swiss franc", "chf", "franc"], "yfinance_symbol": "CHFILS=X"},
+    {"symbol": "FX:CAD", "name": "Canadian Dollar", "search_terms": ["canadian dollar", "cad"], "yfinance_symbol": "CADILS=X"},
+    {"symbol": "FX:AUD", "name": "Australian Dollar", "search_terms": ["australian dollar", "aud"], "yfinance_symbol": "AUDILS=X"},
+    {"symbol": "FX:NZD", "name": "New Zealand Dollar", "search_terms": ["new zealand dollar", "nzd"], "yfinance_symbol": "NZDILS=X"},
+    {"symbol": "FX:CNY", "name": "Chinese Yuan", "search_terms": ["yuan", "chinese yuan", "renminbi", "cny"], "yfinance_symbol": "CNYILS=X"},
+    {"symbol": "FX:KRW", "name": "South Korean Won", "search_terms": ["won", "korean won", "krw"], "yfinance_symbol": "KRWILS=X"},
+    {"symbol": "FX:INR", "name": "Indian Rupee", "search_terms": ["rupee", "indian rupee", "inr"], "yfinance_symbol": "INRILS=X"},
+    {"symbol": "FX:BRL", "name": "Brazilian Real", "search_terms": ["real", "brazilian real", "brl"], "yfinance_symbol": "BRLILS=X"},
+    {"symbol": "FX:RUB", "name": "Russian Ruble", "search_terms": ["ruble", "russian ruble", "rub"], "yfinance_symbol": "RUBILS=X"},
+    {"symbol": "FX:SEK", "name": "Swedish Krona", "search_terms": ["krona", "swedish krona", "sek"], "yfinance_symbol": "SEKILS=X"},
+    {"symbol": "FX:NOK", "name": "Norwegian Krone", "search_terms": ["krone", "norwegian krone", "nok"], "yfinance_symbol": "NOKILS=X"},
+    {"symbol": "FX:MXN", "name": "Mexican Peso", "search_terms": ["peso", "mexican peso", "mxn"], "yfinance_symbol": "MXNILS=X"},
+    {"symbol": "FX:SGD", "name": "Singapore Dollar", "search_terms": ["singapore dollar", "sgd"], "yfinance_symbol": "SGDILS=X"},
+    {"symbol": "FX:HKD", "name": "Hong Kong Dollar", "search_terms": ["hong kong dollar", "hkd"], "yfinance_symbol": "HKDILS=X"},
+    {"symbol": "FX:ILS", "name": "Israeli New Shekel", "search_terms": ["shekel", "ils", "nis", "israeli shekel"], "yfinance_symbol": "ILS=X"},
+    
+    # Major Cryptocurrencies (clean names and search terms, marked with category)
+    {"symbol": "BTC-USD", "name": "Bitcoin", "search_terms": ["bitcoin", "btc"], "yfinance_symbol": "BTC-USD", "finnhub_symbol": "BINANCE:BTCUSDT", "category": "crypto"},
+    {"symbol": "ETH-USD", "name": "Ethereum", "search_terms": ["ethereum", "eth"], "yfinance_symbol": "ETH-USD", "finnhub_symbol": "BINANCE:ETHUSDT", "category": "crypto"},
+    {"symbol": "USDT-USD", "name": "Tether", "search_terms": ["tether", "usdt"], "yfinance_symbol": "USDT-USD", "finnhub_symbol": "BINANCE:USDTUSDT", "category": "crypto"},
+    {"symbol": "BNB-USD", "name": "Binance Coin", "search_terms": ["binance coin", "bnb"], "yfinance_symbol": "BNB-USD", "finnhub_symbol": "BINANCE:BNBUSDT", "category": "crypto"},
+    {"symbol": "USDC-USD", "name": "USD Coin", "search_terms": ["usd coin", "usdc"], "yfinance_symbol": "USDC-USD", "finnhub_symbol": "BINANCE:USDCUSDT", "category": "crypto"},
+    {"symbol": "XRP-USD", "name": "Ripple", "search_terms": ["ripple", "xrp"], "yfinance_symbol": "XRP-USD", "finnhub_symbol": "BINANCE:XRPUSDT", "category": "crypto"},
+    {"symbol": "ADA-USD", "name": "Cardano", "search_terms": ["cardano", "ada"], "yfinance_symbol": "ADA-USD", "finnhub_symbol": "BINANCE:ADAUSDT", "category": "crypto"},
+    {"symbol": "DOGE-USD", "name": "Dogecoin", "search_terms": ["dogecoin", "doge"], "yfinance_symbol": "DOGE-USD", "finnhub_symbol": "BINANCE:DOGEUSDT", "category": "crypto"},
+    {"symbol": "SOL-USD", "name": "Solana", "search_terms": ["solana", "sol"], "yfinance_symbol": "SOL-USD", "finnhub_symbol": "BINANCE:SOLUSDT", "category": "crypto"},
+    {"symbol": "TRX-USD", "name": "TRON", "search_terms": ["tron", "trx"], "yfinance_symbol": "TRX-USD", "finnhub_symbol": "BINANCE:TRXUSDT", "category": "crypto"},
+    {"symbol": "MATIC-USD", "name": "Polygon", "search_terms": ["polygon", "matic"], "yfinance_symbol": "MATIC-USD", "finnhub_symbol": "BINANCE:MATICUSDT", "category": "crypto"},
+    {"symbol": "LTC-USD", "name": "Litecoin", "search_terms": ["litecoin", "ltc"], "yfinance_symbol": "LTC-USD", "finnhub_symbol": "BINANCE:LTCUSDT", "category": "crypto"},
+    {"symbol": "SHIB-USD", "name": "Shiba Inu", "search_terms": ["shiba inu", "shib"], "yfinance_symbol": "SHIB-USD", "finnhub_symbol": "BINANCE:SHIBUSDT", "category": "crypto"},
+    {"symbol": "AVAX-USD", "name": "Avalanche", "search_terms": ["avalanche", "avax"], "yfinance_symbol": "AVAX-USD", "finnhub_symbol": "BINANCE:AVAXUSDT", "category": "crypto"},
+    {"symbol": "DOT-USD", "name": "Polkadot", "search_terms": ["polkadot", "dot"], "yfinance_symbol": "DOT-USD", "finnhub_symbol": "BINANCE:DOTUSDT", "category": "crypto"},
+    {"symbol": "UNI-USD", "name": "Uniswap", "search_terms": ["uniswap", "uni"], "yfinance_symbol": "UNI-USD", "finnhub_symbol": "BINANCE:UNIUSDT", "category": "crypto"},
+    {"symbol": "LINK-USD", "name": "Chainlink", "search_terms": ["chainlink", "link"], "yfinance_symbol": "LINK-USD", "finnhub_symbol": "BINANCE:LINKUSDT", "category": "crypto"},
+    {"symbol": "ATOM-USD", "name": "Cosmos", "search_terms": ["cosmos", "atom"], "yfinance_symbol": "ATOM-USD", "finnhub_symbol": "BINANCE:ATOMUSDT", "category": "crypto"},
+    {"symbol": "XLM-USD", "name": "Stellar", "search_terms": ["stellar", "xlm"], "yfinance_symbol": "XLM-USD", "finnhub_symbol": "BINANCE:XLMUSDT", "category": "crypto"},
+    {"symbol": "VET-USD", "name": "VeChain", "search_terms": ["vechain", "vet"], "yfinance_symbol": "VET-USD", "finnhub_symbol": "BINANCE:VETUSDT", "category": "crypto"},
 ]
 
 def calculate_checksum(data: List[Dict[str, Any]]) -> str:
@@ -107,6 +137,10 @@ async def should_update_symbol_type(symbol_type: str, new_checksum: str) -> bool
 async def symbols_collection_exists() -> bool:
     """Check if symbols collection has any data"""
     try:
+        # Ensure db_manager is connected
+        if not hasattr(db_manager, '_database') or db_manager._database is None:
+            await db_manager.connect("vestika")
+            
         collection = db_manager.get_collection("symbols")
         count = await collection.count_documents({"is_active": True}, limit=1)
         return count > 0
@@ -448,9 +482,9 @@ async def populate_symbol_type(symbol_type: str, force: bool = False) -> Dict[st
         elif symbol_type == "TASE":
             raw_data = await fetch_tase_securities()
         elif symbol_type == "CURRENCY":
-            raw_data = [c for c in CURRENCIES if not any("crypto" in term for term in c["search_terms"])]
+            raw_data = [c for c in CURRENCIES if c.get("category") != "crypto"]
         elif symbol_type == "CRYPTO":
-            raw_data = [c for c in CURRENCIES if any("crypto" in term for term in c["search_terms"])]
+            raw_data = [c for c in CURRENCIES if c.get("category") == "crypto"]
         else:
             raise ValueError(f"Unknown symbol type: {symbol_type}")
         
@@ -514,15 +548,32 @@ async def populate_symbol_type(symbol_type: str, force: bool = False) -> Dict[st
             for currency_data in raw_data:
                 target_symbol_type = SymbolType.CRYPTO if symbol_type == "CRYPTO" else SymbolType.CURRENCY
                 
+                # Extract base currency from symbol (FX:USD -> USD, BTC-USD -> USD)
+                base_symbol = currency_data["symbol"]
+                if symbol_type == "CURRENCY":
+                    # For currencies in ILS-based portfolio, all currency prices are in ILS
+                    currency_code = "ILS"  # All currency prices are in ILS base
+                elif symbol_type == "CRYPTO" and "-USD" in base_symbol:
+                    currency_code = "USD"  # Crypto prices are in USD
+                else:
+                    currency_code = base_symbol  # Fallback
+                
                 symbol_doc = {
                     "symbol": currency_data["symbol"],
                     "name": currency_data["name"],
                     "symbol_type": target_symbol_type.value,
-                    "currency": currency_data["symbol"],
+                    "currency": currency_code,
                     "search_terms": currency_data["search_terms"],
                     "market": "CURRENCY" if symbol_type == "CURRENCY" else "CRYPTO",
                     "is_active": True
                 }
+                
+                # Add symbol mapping for price fetching (if available)
+                if "yfinance_symbol" in currency_data:
+                    symbol_doc["yfinance_symbol"] = currency_data["yfinance_symbol"]
+                if "finnhub_symbol" in currency_data:
+                    symbol_doc["finnhub_symbol"] = currency_data["finnhub_symbol"]
+                    
                 symbols_to_insert.append(symbol_doc)
         
         # Insert symbols
