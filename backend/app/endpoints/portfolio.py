@@ -1194,7 +1194,7 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
                     d = dt.date() if hasattr(dt, "date") else datetime.strptime(str(dt), "%Y-%m-%d").date()
                     # Round to 4 decimal places for currencies, 2 for stocks
                     precision = 4 if "=" in request.symbol else 2
-                    available[d] = float(round(prices.loc[dt], precision))
+                    available[d] = float(round(prices.loc[dt].iloc[0], precision))
             except Exception:
                 # If any unexpected structure, leave available empty to fall back to nulls
                 available = {}

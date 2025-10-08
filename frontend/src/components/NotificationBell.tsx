@@ -54,13 +54,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors relative"
+        className="p-1.5 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors relative w-8 h-8 flex items-center justify-center"
         disabled={isLoading}
       >
         {unreadCount > 0 ? (
-          <BellRing size={20} className="text-yellow-400" />
+          <BellRing size={18} className="text-yellow-400" />
         ) : (
-          <Bell size={20} />
+          <Bell size={18} />
         )}
         
         {/* Unread count badge */}
