@@ -7,9 +7,10 @@ import { Info, PieChart } from 'lucide-react';
 
 interface ESPPViewProps {
   esppPlans: ESPPPlan[];
+  isValueVisible?: boolean;
 }
 
-const ESPPView: React.FC<ESPPViewProps> = ({ esppPlans }) => {
+const ESPPView: React.FC<ESPPViewProps> = ({ esppPlans, isValueVisible = true }) => {
 
   if (esppPlans.length === 0) {
     return (
@@ -36,7 +37,7 @@ const ESPPView: React.FC<ESPPViewProps> = ({ esppPlans }) => {
   const plan = esppPlans[0];
 
   return (
-    <ESPPAnalysis plan={plan} />
+    <ESPPAnalysis plan={plan} isValueVisible={isValueVisible} />
   );
 };
 

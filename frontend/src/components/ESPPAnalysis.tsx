@@ -8,9 +8,10 @@ import api from '../utils/api';
 
 interface ESPPAnalysisProps {
   plan: ESPPPlan;
+  isValueVisible?: boolean;
 }
 
-const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
+const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan, isValueVisible = true }) => {
   const [calculation, setCalculation] = useState<ESPPCalculationResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -96,6 +97,20 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
     }).format(amount);
   };
 
+  const formatCurrencyWithVisibility = (amount: number, currency: 'USD' | 'ILS' = 'USD') => {
+    if (!isValueVisible) {
+      return '••••••';
+    }
+    return formatCurrency(amount, currency);
+  };
+
+  const formatNumberWithVisibility = (num: number, decimals: number = 2) => {
+    if (!isValueVisible) {
+      return '••••';
+    }
+    return formatNumber(num, decimals);
+  };
+
   const formatNumber = (num: number, decimals: number = 2) => {
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: decimals,
@@ -137,7 +152,7 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 <div>
                   <div className="text-xs text-muted-foreground">Monthly Contribution</div>
-                  <div className="font-semibold text-sm">{formatCurrency(calculation.monthlyContribution, 'ILS')}</div>
+                  <div className="font-semibold text-sm">{formatCurrencyWithVisibility(calculation.monthlyContribution, 'ILS')}</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Stock Discount</div>
@@ -145,7 +160,7 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Purchase Price</div>
-                  <div className="font-semibold text-sm">{formatCurrency(calculation.discountedStockPrice, 'USD')}</div>
+                  <div className="font-semibold text-sm">{formatCurrencyWithVisibility(calculation.discountedStockPrice, 'USD')}</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Plan Progress</div>
@@ -158,17 +173,17 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <div className="text-2xl font-bold text-blue-400">
-                  {formatCurrency(calculation.totalSharesValueILS, 'ILS')}
+                  {formatCurrencyWithVisibility(calculation.totalSharesValueILS, 'ILS')}
                 </div>
                 <div className="text-sm text-muted-foreground">Current Value</div>
                 <div className="text-xs text-muted-foreground">
-                  {formatCurrency(calculation.totalSharesValue, 'USD')}
+                  {formatCurrencyWithVisibility(calculation.totalSharesValue, 'USD')}
                 </div>
               </div>
               
               <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                 <div className={`text-2xl font-bold ${isGain ? 'text-green-400' : 'text-red-400'}`}>
-                  {isGain ? '+' : ''}{formatCurrency(calculation.totalGainLossILS, 'ILS')}
+                  {isGain ? '+' : ''}{formatCurrencyWithVisibility(calculation.totalGainLossILS, 'ILS')}
                 </div>
                 <div className="text-sm text-muted-foreground">Total Gain/Loss</div>
                 <div className={`text-xs ${isGain ? 'text-green-400' : 'text-red-400'}`}>
@@ -178,7 +193,7 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
               
               <div className="text-center p-4 bg-pink-50 dark:bg-pink-900/20 rounded-lg">
                 <div className="text-2xl font-bold text-pink-400">
-                  {calculation.purchases.reduce((total, purchase) => total + Math.floor(purchase.sharesPurchased), 0)}
+                  {formatNumberWithVisibility(calculation.purchases.reduce((total, purchase) => total + Math.floor(purchase.sharesPurchased), 0), 0)}
                 </div>
                 <div className="text-sm text-muted-foreground">Shares Owned</div>
                 <div className="text-xs text-muted-foreground">
@@ -245,16 +260,16 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
                                   {purchase.purchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </div>
                                 <div className="text-slate-300 dark:text-slate-200">
-                                  {Math.floor(purchase.sharesPurchased)} shares @ {formatCurrency(purchase.purchasePrice, 'USD')}
+                                  {formatNumberWithVisibility(Math.floor(purchase.sharesPurchased), 0)} shares @ {formatCurrencyWithVisibility(purchase.purchasePrice, 'USD')}
                                 </div>
                                 <div className="text-slate-300 dark:text-slate-200">
-                                  Invested: {formatCurrency(contributionAmountILS, 'ILS')}
+                                  Invested: {formatCurrencyWithVisibility(contributionAmountILS, 'ILS')}
                                 </div>
                                 <div className="text-slate-300 dark:text-slate-200">
-                                  Current: {formatCurrency(currentValueILS, 'ILS')}
+                                  Current: {formatCurrencyWithVisibility(currentValueILS, 'ILS')}
                                 </div>
                                 <div className={`text-xs font-semibold ${purchase.gainLoss >= 0 ? 'text-emerald-400 dark:text-emerald-300' : 'text-red-400 dark:text-red-300'}`}>
-                                  {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrency(gainLossILS, 'ILS')} ({purchase.gainLossPercentage.toFixed(1)}%)
+                                  {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrencyWithVisibility(gainLossILS, 'ILS')} ({purchase.gainLossPercentage.toFixed(1)}%)
                                 </div>
                               </div>
                               {/* Arrow */}
@@ -281,13 +296,13 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
                                 {calculation.nextPurchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                               </div>
                               <div className="text-slate-300 dark:text-slate-200">
-                                Money waiting: {formatCurrency(calculation.pendingContributionILS, 'ILS')}
+                                Money waiting: {formatCurrencyWithVisibility(calculation.pendingContributionILS, 'ILS')}
                               </div>
                               <div className="text-slate-300 dark:text-slate-200">
-                                Estimated shares: {Math.floor(calculation.pendingShares)}
+                                Estimated shares: {formatNumberWithVisibility(Math.floor(calculation.pendingShares), 0)}
                               </div>
                               <div className="text-slate-300 dark:text-slate-200">
-                                Price: {formatCurrency(calculation.discountedStockPrice, 'USD')} per share
+                                Price: {formatCurrencyWithVisibility(calculation.discountedStockPrice, 'USD')} per share
                               </div>
                               <div className="text-slate-300 dark:text-slate-200">
                                 {calculation.monthsSinceLastPurchase} months accumulated
@@ -347,20 +362,20 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan }) => {
                               {purchase.purchaseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {Math.floor(purchase.sharesPurchased)} shares @ {formatCurrency(purchase.purchasePrice, 'USD')}
+                              {formatNumberWithVisibility(Math.floor(purchase.sharesPurchased), 0)} shares @ {formatCurrencyWithVisibility(purchase.purchasePrice, 'USD')}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <div className="font-medium">
-                              {formatCurrency(currentValueILS, 'ILS')}
+                              {formatCurrencyWithVisibility(currentValueILS, 'ILS')}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {formatCurrency(purchase.currentValue, 'USD')}
+                              {formatCurrencyWithVisibility(purchase.currentValue, 'USD')}
                             </div>
                             <div className={`text-sm font-semibold ${purchase.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrency(gainLossILS, 'ILS')}
+                              {purchase.gainLoss >= 0 ? '+' : ''}{formatCurrencyWithVisibility(gainLossILS, 'ILS')}
                             </div>
                             <div className={`text-xs ${purchase.gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {purchase.gainLoss >= 0 ? '+' : ''}{purchase.gainLossPercentage.toFixed(1)}%

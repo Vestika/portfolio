@@ -236,6 +236,7 @@ export function PortfolioView({
               <div key={`espp-${symbol}`} className="col-span-1 md:col-span-2">
                 <ESPPView 
                   esppPlans={plans.map(({ plan }) => plan)}
+                  isValueVisible={isValueVisible}
                 />
               </div>
             ));
