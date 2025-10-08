@@ -142,14 +142,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     }
   }, [user, fetchNotifications]);
 
-  // Fetch notifications on mount and when user changes
+  // Fetch notifications on mount and when user changes (login or page refresh)
   useEffect(() => {
     if (user) {
       fetchNotifications();
-      
-      // Set up polling for new notifications every 30 seconds
-      const interval = setInterval(fetchNotifications, 30000);
-      return () => clearInterval(interval);
     } else {
       setNotifications([]);
       setUnreadCount(0);
