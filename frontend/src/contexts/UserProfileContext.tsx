@@ -83,7 +83,7 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
       setError(null);
       console.log('🔄 [UserProfileContext] Loading profile for authenticated user:', user.uid);
       
-      const response = await api.get('/profile/');
+      const response = await api.get('/profile');
       setProfile(response.data);
       console.log('🔄 [UserProfileContext] Profile loaded successfully:', response.data);
     } catch (err: any) {
