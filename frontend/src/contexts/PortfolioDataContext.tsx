@@ -312,15 +312,23 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
         // Gather all unique symbols across all portfolios
         const allSymbolsSet = new Set<string>();
+        const currencyNeededSet = new Set<string>();
         portfolioIds.forEach(pid => {
           const accounts = raw.portfolios[pid]?.accounts || [];
           accounts.forEach((acc: any) => {
             (acc.holdings || []).forEach((h: any) => {
               if (h?.symbol) allSymbolsSet.add(String(h.symbol).toUpperCase());
+              const sec = raw?.global_securities?.[String(h.symbol).toUpperCase()];
+              if (sec?.currency) currencyNeededSet.add(String(sec.currency).toUpperCase());
             });
           });
         });
-        const allSymbols = Array.from(allSymbolsSet);
+        // Ensure base currency included for conversion and dedupe
+        currencyNeededSet.add(String(targetBaseCurrency).toUpperCase());
+        const allSymbols = Array.from(new Set<string>([
+          ...Array.from(allSymbolsSet),
+          ...Array.from(currencyNeededSet),
+        ]));
 
         // Fetch latest prices for all symbols
         const pricesResp = allSymbols.length > 0
@@ -329,21 +337,15 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
         const pricesData = (pricesResp.data?.prices || {}) as Record<string, { price: number; currency?: string; last_updated?: string }>;
 
-        // Simple FX map with sensible defaults for USD/ILS (minimal change for quick testing)
-        const fxByPair: Record<string, { rate: number }> = {
-          'USDUSD': { rate: 1 },
-          'ILSILS': { rate: 1 },
-          'USDILS': { rate: 3.4 },
-          'ILSUSD': { rate: 1 / 3.4 },
-        };
-
+        // Convert using dynamic FX from /prices/batch: price for a currency code key represents 1 unit in base
         const convertToBase = (value: number, fromCurrency?: string): number => {
           const from = (fromCurrency || '').toUpperCase();
           const base = (targetBaseCurrency || '').toUpperCase();
           if (!Number.isFinite(value)) return 0;
           if (!from || from === base) return value;
-          const fx = fxByPair[`${from}${base}`];
-          return fx && fx.rate > 0 ? value * fx.rate : value;
+          const fxEntry = pricesData[from];
+          const rate = fxEntry?.price;
+          return typeof rate === 'number' && rate > 0 ? value * rate : value;
         };
 
         // Build global_current_prices in target base currency, retaining original_price
