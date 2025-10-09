@@ -50,7 +50,7 @@ class ProfileResponse(BaseModel):
     updated_at: datetime
 
 # Profile endpoints
-@router.get("/", response_model=ProfileResponse)
+@router.get("", response_model=ProfileResponse)
 async def get_user_profile(user=Depends(get_current_user)) -> ProfileResponse:
     """
     Get the user's profile information.
@@ -81,7 +81,7 @@ async def get_user_profile(user=Depends(get_current_user)) -> ProfileResponse:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/", response_model=ProfileResponse)
+@router.put("", response_model=ProfileResponse)
 async def update_user_profile(
     request: ProfileUpdateRequest, 
     user=Depends(get_current_user)
