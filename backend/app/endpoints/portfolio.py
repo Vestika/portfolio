@@ -18,6 +18,7 @@ from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
 from services.closing_price.price_manager import PriceManager
+from services.closing_price.currency_service import currency_service
 from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
 from services.closing_price.price_manager import PriceManager
@@ -1486,13 +1487,24 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
     try:
         symbols = [s.upper() for s in (req.symbols or []) if isinstance(s, str) and s]
         manager = PriceManager()
-        results = await manager.get_prices(symbols, fresh=bool(req.fresh))
+
+        # Define supported ISO currency codes. Extend as needed.
+        supported_currencies = {
+            'USD','ILS','EUR','GBP','JPY','AUD','CAD','CHF','CNY','HKD','SEK','NOK','DKK','ZAR','NZD','INR','BRL','MXN','SGD'
+        }
+
+        # Split into currency symbols and stock symbols
+        currency_symbols: list[str] = [s for s in symbols if s in supported_currencies]
+        stock_symbols: list[str] = [s for s in symbols if s not in supported_currencies]
+
+        # Fetch stock prices as before
+        results = await manager.get_prices(stock_symbols, fresh=bool(req.fresh))
 
         # Resolve currencies from symbols collection where possible
         currency_by_symbol: dict[str, str] = {}
         try:
             sym_col = db_manager.get_collection("symbols")
-            cursor = sym_col.find({"symbol": {"$in": symbols}}, {"symbol": 1, "currency": 1})
+            cursor = sym_col.find({"symbol": {"$in": stock_symbols}}, {"symbol": 1, "currency": 1})
             async for row in cursor:
                 currency_by_symbol[row.get("symbol")] = row.get("currency") or "USD"
         except Exception:
@@ -1506,6 +1518,30 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                 "currency": currency_by_symbol.get(sym, pr.currency or "USD"),
                 "last_updated": (pr.fetched_at.isoformat() if hasattr(pr, "fetched_at") and pr.fetched_at else datetime.utcnow().isoformat())
             }
+
+        # Handle currency symbols by returning 1 unit in their own currency and marking currency code
+        # Frontend will convert using base currency logic
+        base_currency = (req.base_currency or "USD").upper()
+        for cur in currency_symbols:
+            if cur == base_currency:
+                prices[cur] = {
+                    "price": 1.0,
+                    "currency": cur,
+                    "last_updated": datetime.utcnow().isoformat()
+                }
+            else:
+                # Try real-time FX rate cur->base via currency_service; fallback to 1
+                try:
+                    rate = await currency_service.get_exchange_rate(cur, base_currency)
+                except Exception:
+                    rate = None
+                # We return price in base currency for 1 unit of the currency
+                converted = float(rate) if (rate and rate > 0) else 1.0
+                prices[cur] = {
+                    "price": converted,
+                    "currency": cur,
+                    "last_updated": datetime.utcnow().isoformat()
+                }
 
         return {"prices": prices, "base_currency": req.base_currency or "USD", "count": len(prices)}
     except Exception as e:
