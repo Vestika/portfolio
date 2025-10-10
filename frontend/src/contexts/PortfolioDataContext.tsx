@@ -330,10 +330,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
         // Fetch latest prices for all symbols
         const pricesResp = allSymbols.length > 0
-          ? await api.post(`/prices/batch`, { symbols: allSymbols, base_currency: targetBaseCurrency, fresh: false })
-          : { data: { prices: {} } };
+          ? await api.post(`/prices/batch`, {
+              symbols: allSymbols,
+              base_currency: targetBaseCurrency,
+              fresh: false,
+              include_historical: true,
+              days: 7,
+            })
+          : { data: { prices: {}, historical: {} } };
 
-        const pricesData = (pricesResp.data?.prices || {}) as Record<string, { price: number; currency?: string; last_updated?: string }>;
+        const pricesData = (pricesResp.data?.prices || {}) as Record<string, { price: number; currency?: string; last_updated?: string; change_percent?: number }>;
+        const histData = (pricesResp.data?.historical || {}) as Record<string, Array<{ date: string; price: number }>>;
 
         // Convert using dynamic FX from /prices/batch: price for a currency code key represents 1 unit in base
         const convertToBase = (value: number, fromCurrency?: string): number => {
@@ -360,11 +367,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           };
         });
 
+        // Attach historical series for stocks and currencies
+        const global_historical_prices: Record<string, Array<{ date: string; price: number }>> = {};
+        Object.entries(histData).forEach(([sym, series]) => {
+          global_historical_prices[sym] = Array.isArray(series) ? series : [];
+        });
+
         const portfolioData: AllPortfoliosData = {
           portfolios: raw?.portfolios || {},
           global_securities: raw?.global_securities || {},
           global_current_prices,
-          global_historical_prices: {},
+          global_historical_prices,
           global_logos: {},
           global_earnings_data: {},
           user_tag_library: raw?.user_preferences ? { tag_definitions: {}, template_tags: {} } : { tag_definitions: {}, template_tags: {} },
