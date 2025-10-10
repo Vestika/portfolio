@@ -828,49 +828,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     console.log('🎨 [CREATE CHART] Tag definition found:', tagDefinition);
 
     try {
-      // Calculate groups on-the-fly from filtered holdings
-      const groups: Record<string, SecurityHolding[]> = {};
-      
-      filteredAndSortedHoldings.forEach(holding => {
-        const tagValue = holding.tags?.[tagFilter] as any;
-        let groupKey = 'Uncategorized';
-        
-        if (tagValue && typeof tagValue === 'object') {
-          // Handle ENUM tags
-          if ('enum_value' in tagValue && tagValue.enum_value) {
-            groupKey = tagValue.enum_value as string;
-          } 
-          // Handle BOOLEAN tags
-          else if ('boolean_value' in tagValue) {
-            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
-          }
-        }
-        
-        if (!groups[groupKey]) {
-          groups[groupKey] = [];
-        }
-        groups[groupKey].push(holding);
-      });
-
-      console.log('🎨 [CREATE CHART] Groups calculated:', groups);
-
-      // Calculate chart data from groups
-      const totalValue = filteredAndSortedHoldings.reduce((sum, h) => sum + h.total_value, 0);
-      console.log('🎨 [CREATE CHART] Total value:', totalValue);
-      
-      const chartData = Object.entries(groups).map(([groupName, holdings]) => {
-        const groupValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
-        const percentage = totalValue > 0 ? (groupValue / totalValue) * 100 : 0;
-        
-        return {
-          label: groupName,
-          value: Math.round(groupValue * 100) / 100,
-          percentage: Math.round(percentage * 100) / 100
-        };
-      }).sort((a, b) => b.value - a.value);
-
-      console.log('🎨 [CREATE CHART] Chart data calculated:', chartData);
-
       // Create chart title
       const chartTitle = `${tagDefinition.display_name} Distribution`;
       console.log('🎨 [CREATE CHART] Chart title:', chartTitle);
@@ -878,14 +835,12 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       const requestData = {
         chart_title: chartTitle,
         tag_name: tagFilter,
-        portfolio_id: selectedPortfolioId || undefined,
-        chart_data: chartData,
-        chart_total: Math.round(totalValue * 100) / 100
+        portfolio_id: selectedPortfolioId || undefined
       };
       
       console.log('🎨 [CREATE CHART] Sending request:', requestData);
 
-      // Save chart to backend
+      // Save chart definition to backend (data will be calculated dynamically)
       const response = await PortfolioAPI.createCustomChart(requestData);
       console.log('🎨 [CREATE CHART] Chart created successfully:', response);
 
@@ -895,9 +850,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
         chart_id: response.chart_id,
         chart_title: response.chart_title,
         tag_name: response.tag_name,
-        portfolio_id: response.portfolio_id,
-        chart_data: requestData.chart_data, // Use the data we already calculated
-        chart_total: requestData.chart_total
+        portfolio_id: response.portfolio_id
       };
       const updatedCharts = [
         ...(allPortfoliosData?.custom_charts || []),
