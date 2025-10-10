@@ -1621,6 +1621,8 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                         continue
             except Exception:
                 historical = {}
+            finally:
+                pass
 
         # If change_percent missing for a stock, compute from historical last 2 points
         for sym, meta in prices.items():
@@ -1637,6 +1639,118 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
             "historical": historical,
             "base_currency": req.base_currency or "USD",
             "count": len(prices)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class HistoricalPricesRequest(BaseModel):
+    symbols: list[str]
+    base_currency: Optional[str] = "USD"
+    days: Optional[int] = 7
+
+
+@router.post("/prices/historical")
+async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Return 7-day historical series and 1-day change percent for symbols.
+    Splits by type: stocks via yfinance/pymaya, currencies via yfinance pairs.
+    """
+    try:
+        symbols = [s.upper() for s in (req.symbols or []) if isinstance(s, str) and s]
+        from datetime import date, timedelta
+        today = date.today()
+        start = today - timedelta(days=max(1, int(req.days or 7)))
+
+        # Define supported ISO currency codes. Extend as needed.
+        supported_currencies = {
+            'USD','ILS','EUR','GBP','JPY','AUD','CAD','CHF','CNY','HKD','SEK','NOK','DKK','ZAR','NZD','INR','BRL','MXN','SGD'
+        }
+
+        base_currency = (req.base_currency or "USD").upper()
+        currency_symbols = [s for s in symbols if s in supported_currencies]
+        stock_symbols = [s for s in symbols if s not in supported_currencies]
+
+        historical: dict[str, list[dict[str, Any]]] = {}
+        change_percent: dict[str, float] = {}
+
+        # Stocks via yfinance batch (alpha) and pymaya (numeric/TASE)
+        y_symbols = [s for s in stock_symbols if s.isalpha()]
+        tase_symbols = [s for s in stock_symbols if s.isdigit()]
+
+        if y_symbols:
+            try:
+                yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
+                for sym, series in yf_hist.items():
+                    historical[sym] = series
+            except Exception:
+                pass
+
+        if tase_symbols:
+            for sym in tase_symbols:
+                try:
+                    price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
+                    series: list[dict[str, Any]] = []
+                    for entry in reversed(price_history):
+                        if entry.get('TradeDate') and entry.get('SellPrice'):
+                            series.append({
+                                "date": entry.get('TradeDate'),
+                                "price": float(entry.get('SellPrice')) / 100
+                            })
+                    if series:
+                        historical[sym] = series
+                except Exception:
+                    continue
+
+        # FX series using yfinance pair CURBASE=X; treat base as flat 1.0
+        for cur in currency_symbols:
+            try:
+                if cur == base_currency:
+                    seq = []
+                    for i in range(int(req.days or 7), 0, -1):
+                        day = today - timedelta(days=i)
+                        seq.append({"date": day.strftime("%Y-%m-%d"), "price": 1.0})
+                    historical[cur] = seq
+                else:
+                    pair = f"{cur}{base_currency}=X"
+                    def fetch_fx_sync():
+                        import yfinance as _yf
+                        return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                    loop = asyncio.get_event_loop()
+                    try:
+                        data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        data = None
+                    if data is not None and not data.empty and 'Close' in data.columns:
+                        prices_series = data['Close'].dropna()
+                        seq: list[dict[str, Any]] = []
+                        for dt in prices_series.index:
+                            price_val = prices_series.loc[dt]
+                            seq.append({
+                                "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                "price": float(price_val)
+                            })
+                        if seq:
+                            historical[cur] = seq
+            except Exception:
+                continue
+
+        # Compute 1-day change percent where possible
+        for sym, series in historical.items():
+            if len(series) >= 2:
+                y, t = series[-2]['price'], series[-1]['price']
+                try:
+                    if y and t and y != 0:
+                        change_percent[sym] = ((t - y) / y) * 100
+                except Exception:
+                    continue
+
+        return {
+            "historical": historical,
+            "change_percent": change_percent,
+            "base_currency": base_currency
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -294,13 +294,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       // Use frontend-side calculation flow when enabled
       if (FRONTEND_CALC) {
         console.log('🧪 [PORTFOLIO CONTEXT] FRONTEND_CALC enabled - using /portfolios/raw + /prices/batch');
-        const [rawResp, autocompleteResponse] = await Promise.all([
-          api.get(`/portfolios/raw`),
-          api.get(`/autocomplete`)
-        ]);
+        // Kick off raw and autocomplete together, but handle raw ASAP
+        const rawReq = api.get(`/portfolios/raw`);
+        const autocompleteReq = api.get(`/autocomplete`).catch(() => ({ data: { autocomplete_data: [], total_symbols: 0, computation_timestamp: new Date().toISOString() } }));
 
+        const rawResp = await rawReq;
         const raw = rawResp.data as any;
-        const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
 
         // Determine base currency to convert prices into (use default portfolio base or first portfolio)
         const portfolioIds: string[] = Object.keys(raw?.portfolios || {});
@@ -328,19 +327,27 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           ...Array.from(currencyNeededSet),
         ]));
 
-        // Fetch latest prices for all symbols
-        const pricesResp = allSymbols.length > 0
-          ? await api.post(`/prices/batch`, {
-              symbols: allSymbols,
-              base_currency: targetBaseCurrency,
-              fresh: false,
-              include_historical: true,
-              days: 7,
-            })
-          : { data: { prices: {}, historical: {} } };
+        // Kick off prices and historical in parallel (don't wait for historical)
+        let pricesPromise: Promise<any> | null = null;
+        let historicalPromise: Promise<any> | null = null;
+        if (allSymbols.length > 0) {
+          pricesPromise = api.post(`/prices/batch`, {
+            symbols: allSymbols,
+            base_currency: targetBaseCurrency,
+            fresh: false,
+            include_historical: false,
+          });
+          historicalPromise = api.post(`/prices/historical`, {
+            symbols: Array.from(allSymbolsSet),
+            base_currency: targetBaseCurrency,
+            days: 7,
+          });
+        }
+
+        // Await prices first for fast render
+        const pricesResp = pricesPromise ? await pricesPromise : { data: { prices: {} } };
 
         const pricesData = (pricesResp.data?.prices || {}) as Record<string, { price: number; currency?: string; last_updated?: string; change_percent?: number }>;
-        const histData = (pricesResp.data?.historical || {}) as Record<string, Array<{ date: string; price: number }>>;
 
         // Convert using dynamic FX from /prices/batch: price for a currency code key represents 1 unit in base
         const convertToBase = (value: number, fromCurrency?: string): number => {
@@ -367,17 +374,11 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           };
         });
 
-        // Attach historical series for stocks and currencies
-        const global_historical_prices: Record<string, Array<{ date: string; price: number }>> = {};
-        Object.entries(histData).forEach(([sym, series]) => {
-          global_historical_prices[sym] = Array.isArray(series) ? series : [];
-        });
-
         const portfolioData: AllPortfoliosData = {
           portfolios: raw?.portfolios || {},
           global_securities: raw?.global_securities || {},
           global_current_prices,
-          global_historical_prices,
+          global_historical_prices: {},
           global_logos: {},
           global_earnings_data: {},
           user_tag_library: raw?.user_preferences ? { tag_definitions: {}, template_tags: {} } : { tag_definitions: {}, template_tags: {} },
@@ -387,22 +388,16 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           computation_timestamp: new Date().toISOString(),
         } as any;
 
-        // Log and set
-        const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
-        console.log('✅ [PORTFOLIO CONTEXT] ALL data (frontend calc) loaded successfully:', {
-          portfoliosCount: Object.keys(portfolioData.portfolios).length,
-          portfolioIds,
-          globalSecurities: Object.keys(portfolioData.global_securities || {}).length,
-          globalCurrentPrices: Object.keys(portfolioData.global_current_prices || {}).length,
-          globalHistoricalPrices: Object.keys(portfolioData.global_historical_prices || {}).length,
-          autocompleteData: autocompleteDataResponse.total_symbols,
-          historicalPriceSeries: totalHistoricalSeries,
-          defaultPortfolio: portfolioData.user_preferences.default_portfolio_id,
-          timestamp: portfolioData.computation_timestamp,
-        });
-
+        // Set base data first
         setAllPortfoliosData(portfolioData);
-        setAutocompleteData(autocompleteDataResponse.autocomplete_data);
+        // Await autocomplete now and set when ready (doesn't block pricing)
+        try {
+          const autocompleteResponse = await autocompleteReq;
+          const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
+          setAutocompleteData(autocompleteDataResponse.autocomplete_data);
+        } catch {
+          setAutocompleteData([]);
+        }
 
         // Auto-select portfolio and accounts
         if (portfolioIds.length > 0) {
@@ -417,6 +412,27 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
               setSelectedAccountNames(accountNames);
             }
           }, 50);
+        }
+
+        // Merge background historical when ready
+        if (historicalPromise) {
+          historicalPromise
+            .then((histResp) => {
+              const histData = (histResp?.data?.historical || {}) as Record<string, Array<{ date: string; price: number }>>;
+              setAllPortfoliosData(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  global_historical_prices: {
+                    ...(prev.global_historical_prices || {}),
+                    ...histData,
+                  }
+                } as AllPortfoliosData;
+              });
+            })
+            .catch((e) => {
+              console.warn('⚠️ [PORTFOLIO CONTEXT] Historical fetch failed (background):', e);
+            });
         }
       } else {
         // Existing backend aggregation path (default)
@@ -433,43 +449,54 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         
         // Add custom charts to portfolio data
         portfolioData.custom_charts = customCharts;
-      
-      // Calculate total historical price series (now global)
-      const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
 
-      // Check for duplicates in autocomplete data (one-time global check)
-      if (autocompleteDataResponse.autocomplete_data && autocompleteDataResponse.autocomplete_data.length > 0) {
-        const symbolCounts = new Map<string, number>();
-        autocompleteDataResponse.autocomplete_data.forEach(symbol => {
-          const key = `${symbol.symbol}-${symbol.symbol_type}`;
-          symbolCounts.set(key, (symbolCounts.get(key) || 0) + 1);
-        });
-        const duplicates = Array.from(symbolCounts.entries()).filter(([, count]) => count > 1);
-        if (duplicates.length > 0) {
-          console.warn(`⚠️ [PORTFOLIO CONTEXT] Found ${duplicates.length} duplicate symbols in backend data - this should be fixed at the backend level`);
-        } else {
-          console.log(`✅ [PORTFOLIO CONTEXT] Autocomplete data verified clean - no duplicates found`);
+        // Calculate total historical price series (now global)
+        const totalHistoricalSeries = Object.keys(portfolioData.global_historical_prices || {}).length;
+
+        // Check for duplicates in autocomplete data (one-time global check)
+        if (autocompleteDataResponse.autocomplete_data && autocompleteDataResponse.autocomplete_data.length > 0) {
+          const symbolCounts = new Map<string, number>();
+          autocompleteDataResponse.autocomplete_data.forEach(symbol => {
+            const key = `${symbol.symbol}-${symbol.symbol_type}`;
+            symbolCounts.set(key, (symbolCounts.get(key) || 0) + 1);
+          });
+          const duplicates = Array.from(symbolCounts.entries()).filter(([, count]) => count > 1);
+          if (duplicates.length > 0) {
+            console.warn(`⚠️ [PORTFOLIO CONTEXT] Found ${duplicates.length} duplicate symbols in backend data - this should be fixed at the backend level`);
+          } else {
+            console.log(`✅ [PORTFOLIO CONTEXT] Autocomplete data verified clean - no duplicates found`);
+          }
         }
-      }
 
-      console.log('✅ [PORTFOLIO CONTEXT] ALL data loaded successfully:', {
-        portfoliosCount: Object.keys(portfolioData.portfolios).length,
-        portfolioIds: Object.keys(portfolioData.portfolios),
-        globalSecurities: Object.keys(portfolioData.global_securities).length,
-        globalCurrentPrices: Object.keys(portfolioData.global_current_prices || {}).length,
-        globalHistoricalPrices: Object.keys(portfolioData.global_historical_prices || {}).length,
-        globalEarningsData: Object.keys(portfolioData.global_earnings_data || {}).length,
-        earningsSymbols: Object.keys(portfolioData.global_earnings_data || {}),
-        userTagLibrary: Object.keys(portfolioData.user_tag_library?.tag_definitions || {}).length,
-        holdingTags: Object.keys(portfolioData.all_holding_tags || {}).length,
-        holdingTagsSymbols: Object.keys(portfolioData.all_holding_tags || {}),
-        optionsVesting: Object.keys(portfolioData.all_options_vesting || {}).length,
-        autocompleteData: autocompleteDataResponse.total_symbols, // NEW: Log autocomplete data count
-        historicalPriceSeries: totalHistoricalSeries,
-        defaultPortfolio: portfolioData.user_preferences.default_portfolio_id,
-        timestamp: portfolioData.computation_timestamp,
-        sampleHoldingTag: Object.values(portfolioData.all_holding_tags || {})[0] || 'No holding tags found'
-      });
+        console.log('✅ [PORTFOLIO CONTEXT] ALL data loaded successfully:', {
+          portfoliosCount: Object.keys(portfolioData.portfolios).length,
+          portfolioIds: Object.keys(portfolioData.portfolios),
+          globalSecurities: Object.keys(portfolioData.global_securities).length,
+          globalCurrentPrices: Object.keys(portfolioData.global_current_prices || {}).length,
+          globalHistoricalPrices: Object.keys(portfolioData.global_historical_prices || {}).length,
+          globalEarningsData: Object.keys(portfolioData.global_earnings_data || {}).length,
+          earningsSymbols: Object.keys(portfolioData.global_earnings_data || {}),
+          userTagLibrary: Object.keys(portfolioData.user_tag_library?.tag_definitions || {}).length,
+          holdingTags: Object.keys(portfolioData.all_holding_tags || {}).length,
+          holdingTagsSymbols: Object.keys(portfolioData.all_holding_tags || {}),
+          optionsVesting: Object.keys(portfolioData.all_options_vesting || {}).length,
+          autocompleteData: autocompleteDataResponse.total_symbols, // NEW: Log autocomplete data count
+          historicalPriceSeries: totalHistoricalSeries,
+          defaultPortfolio: portfolioData.user_preferences.default_portfolio_id,
+          timestamp: portfolioData.computation_timestamp,
+          sampleHoldingTag: Object.values(portfolioData.all_holding_tags || {})[0] || 'No holding tags found'
+        });
+        
+        // Debug a sample holding tag structure
+        if (portfolioData.all_holding_tags && Object.keys(portfolioData.all_holding_tags).length > 0) {
+          const sampleSymbol = Object.keys(portfolioData.all_holding_tags)[0];
+          const sampleHoldingTag = portfolioData.all_holding_tags[sampleSymbol];
+          console.log(`🏷️ [PORTFOLIO CONTEXT] Sample holding tag structure for ${sampleSymbol}:`, {
+            hasTagsObject: !!(sampleHoldingTag.tags),
+            tagNames: Object.keys(sampleHoldingTag.tags || {}),
+            sampleTagValue: sampleHoldingTag.tags ? Object.values(sampleHoldingTag.tags)[0] : 'No tags'
+          });
+        }
 
         // Set both portfolio data and autocomplete data
         setAllPortfoliosData(portfolioData);
