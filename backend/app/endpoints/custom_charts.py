@@ -12,25 +12,17 @@ from core.database import db_manager
 router = APIRouter(prefix="/user/custom-charts", tags=["custom-charts"])
 
 # Request/Response models
-class ChartDataItem(BaseModel):
-    label: str
-    value: float
-    percentage: float
-
 class CreateCustomChartRequest(BaseModel):
     chart_title: str
     tag_name: str
     portfolio_id: Optional[str] = None
-    chart_data: List[ChartDataItem]
-    chart_total: float
+    # Note: chart_data and chart_total are calculated dynamically in frontend, not stored
 
 class CustomChartResponse(BaseModel):
     chart_id: str
     chart_title: str
     tag_name: str
     portfolio_id: Optional[str] = None
-    chart_data: List[ChartDataItem]
-    chart_total: float
     created_at: str
     updated_at: str
 
@@ -39,18 +31,16 @@ async def create_custom_chart(
     request: CreateCustomChartRequest,
     user=Depends(get_current_user)
 ) -> CustomChartResponse:
-    """Create a new custom chart"""
+    """Create a new custom chart definition (data calculated dynamically in frontend)"""
     try:
         collection = db_manager.get_collection("custom_charts")
         
-        # Create chart document
+        # Create chart document - only store definition, not data
         chart_doc = {
             "user_id": user.id,
             "chart_title": request.chart_title,
             "tag_name": request.tag_name,
             "portfolio_id": request.portfolio_id,
-            "chart_data": [item.dict() for item in request.chart_data],
-            "chart_total": request.chart_total,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -62,8 +52,6 @@ async def create_custom_chart(
             chart_title=request.chart_title,
             tag_name=request.tag_name,
             portfolio_id=request.portfolio_id,
-            chart_data=request.chart_data,
-            chart_total=request.chart_total,
             created_at=chart_doc["created_at"].isoformat(),
             updated_at=chart_doc["updated_at"].isoformat()
         )
@@ -76,7 +64,7 @@ async def get_custom_charts(
     portfolio_id: Optional[str] = None,
     user=Depends(get_current_user)
 ) -> List[CustomChartResponse]:
-    """Get all custom charts for the current user"""
+    """Get all custom chart definitions for the current user (data calculated dynamically)"""
     try:
         collection = db_manager.get_collection("custom_charts")
         
@@ -92,8 +80,6 @@ async def get_custom_charts(
                 chart_title=doc["chart_title"],
                 tag_name=doc["tag_name"],
                 portfolio_id=doc.get("portfolio_id"),
-                chart_data=[ChartDataItem(**item) for item in doc["chart_data"]],
-                chart_total=doc["chart_total"],
                 created_at=doc["created_at"].isoformat(),
                 updated_at=doc["updated_at"].isoformat()
             ))

@@ -52,8 +52,6 @@ export interface AllPortfoliosData {
     chart_title: string;
     tag_name: string;
     portfolio_id?: string;
-    chart_data: Array<{ label: string; value: number; percentage: number }>;
-    chart_total: number;
   }>;
   user_preferences: {
     preferred_currency: string;
@@ -665,19 +663,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         chart_data: symbolData.slice(0, 20) // Top 20
       }
     ];
-    
-    // Add custom charts for the selected portfolio from allPortfoliosData
-    const customCharts = allPortfoliosData?.custom_charts?.filter((chart: any) => 
-      !chart.portfolio_id || chart.portfolio_id === selectedPortfolioId
-    ) || [];
-    
-    customCharts.forEach((customChart: any) => {
-      filteredAggregations.push({
-        chart_title: customChart.chart_title,
-        chart_total: customChart.chart_total,
-        chart_data: customChart.chart_data
-      });
-    });
 
     // Create properly aggregated holdings table (no duplicates)
     const allHoldings = Object.entries(holdingValues).map(([symbol, data]) => {
@@ -739,6 +724,69 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         })
       };
     }).sort((a, b) => b.total_value - a.total_value);
+
+    // Add custom charts for the selected portfolio - calculated dynamically!
+    const customCharts = allPortfoliosData?.custom_charts?.filter((chart: any) => 
+      !chart.portfolio_id || chart.portfolio_id === selectedPortfolioId
+    ) || [];
+    
+    customCharts.forEach((customChart: any) => {
+      // Recalculate chart data from current holdings based on tag
+      const tagName = customChart.tag_name;
+      const tagLibrary = allPortfoliosData?.user_tag_library;
+      const tagDefinition = tagLibrary?.tag_definitions?.[tagName];
+      
+      if (!tagDefinition) {
+        console.warn(`Tag definition not found for custom chart: ${tagName}`);
+        return;
+      }
+
+      // Group holdings by tag value
+      const groups: Record<string, typeof allHoldings[0][]> = {};
+      
+      allHoldings.forEach(holding => {
+        const tagValue = holding.tags?.[tagName] as any;
+        let groupKey = 'Uncategorized';
+        
+        if (tagValue && typeof tagValue === 'object') {
+          // Handle ENUM tags
+          if ('enum_value' in tagValue && tagValue.enum_value) {
+            groupKey = tagValue.enum_value as string;
+          } 
+          // Handle BOOLEAN tags
+          else if ('boolean_value' in tagValue) {
+            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+          }
+        }
+        
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(holding);
+      });
+
+      // Calculate current values
+      const chartTotal = Object.values(groups).reduce((sum, holdings) => 
+        sum + holdings.reduce((groupSum, h) => groupSum + h.total_value, 0), 0
+      );
+      
+      const chartData = Object.entries(groups).map(([groupName, holdings]) => {
+        const groupValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+        const percentage = chartTotal > 0 ? (groupValue / chartTotal) * 100 : 0;
+        
+        return {
+          label: groupName,
+          value: Math.round(groupValue * 100) / 100,
+          percentage: Math.round(percentage * 100) / 100
+        };
+      }).sort((a, b) => b.value - a.value);
+
+      filteredAggregations.push({
+        chart_title: customChart.chart_title,
+        chart_total: Math.round(chartTotal * 100) / 100,
+        chart_data: chartData
+      });
+    });
 
     // Calculate tags summary
     const holdingsWithTags = allHoldings.filter(h => h.tags && Object.keys(h.tags).length > 0);

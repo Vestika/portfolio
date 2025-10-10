@@ -5,24 +5,14 @@ export interface CustomChart {
   chart_title: string;
   tag_name: string;
   portfolio_id?: string;
-  chart_data: ChartData[];
-  chart_total: number;
   created_at: string;
   updated_at: string;
-}
-
-export interface ChartData {
-  label: string;
-  value: number;
-  percentage: number;
 }
 
 export interface CreateChartRequest {
   chart_title: string;
   tag_name: string;
   portfolio_id?: string;
-  chart_data: ChartData[];
-  chart_total: number;
 }
 
 class PortfolioAPI {
