@@ -32,8 +32,8 @@ maya = Maya()
 # Currencies and crypto - keep these hardcoded as they're standards
 CURRENCIES = [
     # Major Currencies (using FX: prefix to avoid stock symbol conflicts)
-    # yfinance symbols: Use correct format for ILS-based portfolio (USDILS=X = 1 USD in ILS terms)
-    {"symbol": "FX:USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar", "united states dollar"], "yfinance_symbol": "USDILS=X"},
+    # yfinance symbols: Use correct format for ILS-based portfolio (ILS=X = 1 USD in ILS terms)
+    {"symbol": "FX:USD", "name": "United States Dollar", "search_terms": ["dollar", "usd", "us dollar", "united states dollar"], "yfinance_symbol": "ILS=X"},
     {"symbol": "FX:EUR", "name": "Euro", "search_terms": ["euro", "eur", "european euro"], "yfinance_symbol": "EURILS=X"},
     {"symbol": "FX:GBP", "name": "British Pound Sterling", "search_terms": ["gbp", "pound", "sterling", "british pound"], "yfinance_symbol": "GBPILS=X"},
     {"symbol": "FX:JPY", "name": "Japanese Yen", "search_terms": ["yen", "japanese yen", "jpy"], "yfinance_symbol": "JPYILS=X"},

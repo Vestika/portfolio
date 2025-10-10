@@ -17,7 +17,6 @@ from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
-from services.closing_price.price_manager import PriceManager
 from services.closing_price.currency_service import currency_service
 from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
@@ -883,7 +882,7 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             
             def fetch_usd_ils_sync():
                 """Synchronous USD/ILS FX fetching to run in thread pool for true parallelism"""
-                return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                return yf.download("ILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
             
             # Run the blocking yfinance call in a separate thread with timeout
             loop = asyncio.get_event_loop()
@@ -943,7 +942,7 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                     elif base_currency == 'ILS':
                         # Special case for USD → ILS: direct pair exists
                         if currency_code == 'USD':
-                            yfinance_symbol = "USDILS=X"
+                            yfinance_symbol = "ILS=X"
                             logger.info(f"📊 [FETCH HISTORICAL] ILS-based portfolio: fetching direct pair {yfinance_symbol}")
                         else:
                             # For other currencies: fetch XXX→USD, then multiply by USD→ILS
@@ -975,10 +974,10 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         
                         # For ILS-based portfolios with non-USD currencies, multiply by USD→ILS rate
                         if base_currency == 'ILS' and currency_code != 'USD':
-                            logger.info(f"🔄 [FETCH HISTORICAL] Fetching USDILS=X to convert {currency_code}USD to {currency_code}ILS")
+                            logger.info(f"🔄 [FETCH HISTORICAL] Fetching ILS=X to convert {currency_code}USD to {currency_code}ILS")
                             
                             def fetch_usdils_sync():
-                                return yf.download("USDILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                                return yf.download("ILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                             
                             try:
                                 usdils_data = await asyncio.wait_for(
@@ -1004,9 +1003,9 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                                             })
                                     logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} {currency_code}→ILS price points (via USD)")
                                 else:
-                                    logger.error(f"❌ [FETCH HISTORICAL] Could not fetch USDILS=X for conversion")
+                                    logger.error(f"❌ [FETCH HISTORICAL] Could not fetch ILS=X for conversion")
                             except Exception as usdils_error:
-                                logger.error(f"❌ [FETCH HISTORICAL] Error fetching USDILS=X: {usdils_error}")
+                                logger.error(f"❌ [FETCH HISTORICAL] Error fetching ILS=X: {usdils_error}")
                         else:
                             # Direct rate (USD-based portfolio or USD→ILS direct)
                             for dt in prices.index:
@@ -1142,14 +1141,14 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
     """
     Return price for a symbol at specific dates.
 
-    - Accepts: { "symbol": "AAPL" or "USDILS=X", "dates": ["YYYY-MM-DD", ...] }
+    - Accepts: { "symbol": "AAPL" or "ILS=X", "dates": ["YYYY-MM-DD", ...] }
     - Returns: { "symbol": "AAPL", "prices": { "YYYY-MM-DD": float | null } }
 
     Implementation details:
     - Performs a single batched yfinance download across min..max requested dates
     - Maps each requested date to the closest available market date (prefer same/previous day, otherwise closest)
     - On errors/timeouts, returns null for the affected dates
-    - Supports both regular stocks (AAPL) and currency pairs (USDILS=X)
+    - Supports both regular stocks (AAPL) and currency pairs (ILS=X)
     """
     try:
         if not request.dates:
@@ -1195,7 +1194,9 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
                     d = dt.date() if hasattr(dt, "date") else datetime.strptime(str(dt), "%Y-%m-%d").date()
                     # Round to 4 decimal places for currencies, 2 for stocks
                     precision = 4 if "=" in request.symbol else 2
-                    available[d] = float(round(prices.loc[dt].iloc[0], precision))
+                    price_value = prices.loc[dt]
+                    price_float = float(price_value.iloc[0]) if hasattr(price_value, 'iloc') else float(price_value)
+                    available[d] = round(price_float, precision)
             except Exception:
                 # If any unexpected structure, leave available empty to fall back to nulls
                 available = {}
@@ -1225,7 +1226,7 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
 
         # Determine currency info based on symbol
         if "=" in request.symbol:
-            # Currency pair like USDILS=X
+            # Currency pair like ILS=X
             base_currency = request.symbol.split("=")[0][:3]
             quote_currency = request.symbol.split("=")[0][3:]
         else:
@@ -1257,7 +1258,7 @@ async def get_usd_ils_by_dates(request: USDILSByDatesRequest, user=Depends(get_c
     Legacy endpoint for USD/ILS rates. Use /prices/by-dates instead.
     """
     # Delegate to the generic endpoint
-    generic_request = PricesByDatesRequest(symbol="USDILS=X", dates=request.dates)
+    generic_request = PricesByDatesRequest(symbol="ILS=X", dates=request.dates)
     return await get_prices_by_dates(generic_request, user)
 
 

@@ -29,19 +29,26 @@ const ESPPAnalysis: React.FC<ESPPAnalysisProps> = ({ plan, isValueVisible = true
 
       const startDate = new Date(longestPeriod.start_date);
       const endDate = new Date(longestPeriod.end_date);
-      const totalMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+      const today = new Date();
+      // Cap end date to today - we can't fetch prices for future dates
+      const effectiveEndDate = endDate > today ? today : endDate;
+      
+      const totalMonths = (effectiveEndDate.getFullYear() - startDate.getFullYear()) * 12 + (effectiveEndDate.getMonth() - startDate.getMonth());
       const purchaseDates: string[] = [];
       for (let m = 6; m <= totalMonths; m += 6) {
         const d = new Date(startDate);
         d.setMonth(d.getMonth() + m);
-        purchaseDates.push(d.toISOString().split('T')[0]);
+        // Only add dates that are not in the future
+        if (d <= today) {
+          purchaseDates.push(d.toISOString().split('T')[0]);
+        }
       }
 
       let fxByDate: Record<string, number> | undefined = undefined;
       try {
         if (purchaseDates.length > 0) {
           const resp = await api.post('/prices/by-dates', { 
-            symbol: 'USDILS=X', 
+            symbol: 'ILS=X', 
             dates: purchaseDates 
           });
           fxByDate = resp.data?.prices || undefined;
