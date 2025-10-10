@@ -1475,6 +1475,8 @@ class BatchPricesRequest(BaseModel):
     symbols: list[str]
     base_currency: Optional[str] = "USD"
     fresh: Optional[bool] = False
+    include_historical: Optional[bool] = True
+    days: Optional[int] = 7
 
 
 @router.post("/prices/batch")
@@ -1516,7 +1518,8 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
             prices[sym] = {
                 "price": pr.price,
                 "currency": currency_by_symbol.get(sym, pr.currency or "USD"),
-                "last_updated": (pr.fetched_at.isoformat() if hasattr(pr, "fetched_at") and pr.fetched_at else datetime.utcnow().isoformat())
+                "last_updated": (pr.fetched_at.isoformat() if hasattr(pr, "fetched_at") and pr.fetched_at else datetime.utcnow().isoformat()),
+                "change_percent": getattr(pr, 'change_percent', None)
             }
 
         # Handle currency symbols by returning 1 unit in their own currency and marking currency code
@@ -1543,7 +1546,97 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                     "last_updated": datetime.utcnow().isoformat()
                 }
 
-        return {"prices": prices, "base_currency": req.base_currency or "USD", "count": len(prices)}
+        # Optionally include simple historical series for last N days
+        historical: dict[str, list[dict[str, Any]]] = {}
+        if req.include_historical:
+            try:
+                from datetime import date, timedelta
+                today = date.today()
+                start = today - timedelta(days=max(1, int(req.days or 7)))
+
+                # Fetch historical for US-like symbols via yfinance in batches where possible
+                y_symbols = [s for s in stock_symbols if s.isalpha()]
+                tase_symbols = [s for s in stock_symbols if s.isdigit()]
+
+                # yfinance batch fetch for alpha symbols
+                if y_symbols:
+                    try:
+                        # Reuse existing helper to benefit from batching logic
+                        yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
+                        for sym, series in yf_hist.items():
+                            historical[sym] = series
+                    except Exception:
+                        pass
+
+                # TASE historical via pymaya
+                if tase_symbols:
+                    for sym in tase_symbols:
+                        try:
+                            price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
+                            series: list[dict[str, Any]] = []
+                            for entry in reversed(price_history):
+                                if entry.get('TradeDate') and entry.get('SellPrice'):
+                                    series.append({
+                                        "date": entry.get('TradeDate'),
+                                        "price": float(entry.get('SellPrice')) / 100
+                                    })
+                            if series:
+                                historical[sym] = series
+                        except Exception:
+                            continue
+
+                # FX historical using yfinance pair ticker CURBASE=X
+                for cur in currency_symbols:
+                    try:
+                        if cur == base_currency:
+                            # Flat 1.0 series
+                            series = []
+                            for i in range(int(req.days or 7), 0, -1):
+                                day = today - timedelta(days=i)
+                                series.append({"date": day.strftime("%Y-%m-%d"), "price": 1.0})
+                            historical[cur] = series
+                        else:
+                            pair = f"{cur}{base_currency}=X"
+                            def fetch_fx_sync():
+                                import yfinance as _yf
+                                return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
+                            loop = asyncio.get_event_loop()
+                            try:
+                                data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
+                            except asyncio.TimeoutError:
+                                data = None
+                            if data is not None and not data.empty and 'Close' in data.columns:
+                                prices_series = data['Close'].dropna()
+                                series: list[dict[str, Any]] = []
+                                for dt in prices_series.index:
+                                    price_val = prices_series.loc[dt]
+                                    series.append({
+                                        "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
+                                        "price": float(price_val)
+                                    })
+                                if series:
+                                    historical[cur] = series
+                    except Exception:
+                        continue
+            except Exception:
+                historical = {}
+
+        # If change_percent missing for a stock, compute from historical last 2 points
+        for sym, meta in prices.items():
+            if meta.get('change_percent') is None and historical.get(sym) and len(historical[sym]) >= 2:
+                y, t = historical[sym][-2]['price'], historical[sym][-1]['price']
+                try:
+                    if y and t and y != 0:
+                        meta['change_percent'] = ((t - y) / y) * 100
+                except Exception:
+                    pass
+
+        return {
+            "prices": prices,
+            "historical": historical,
+            "base_currency": req.base_currency or "USD",
+            "count": len(prices)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
