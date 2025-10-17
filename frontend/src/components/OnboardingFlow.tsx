@@ -32,6 +32,7 @@ import {
 import api from '../utils/api';
 import logo from '../assets/logo.png';
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
+import { SymbolSuggestion } from '../hooks/useSymbolAutocomplete';
 
 interface OnboardingFlowProps {
   user: User;
@@ -47,6 +48,36 @@ interface AccountType {
   icon: React.ReactNode;
   popular?: boolean;
 }
+
+const formatSymbolOnSelect = (suggestion: SymbolSuggestion): string => {
+  let finalSymbol = suggestion.symbol;
+
+  // For currencies and crypto, keep the full symbol to avoid conflicts
+  if (suggestion.symbol_type === 'currency' || suggestion.symbol_type === 'crypto') {
+    finalSymbol = suggestion.symbol.toUpperCase();
+  }
+  // For stock symbols, remove exchange prefixes
+  else {
+    if (finalSymbol.toUpperCase().startsWith('NYSE:')) {
+      finalSymbol = finalSymbol.substring(5);
+    }
+    if (finalSymbol.toUpperCase().startsWith('NASDAQ:')) {
+      finalSymbol = finalSymbol.substring(7);
+    }
+    if (finalSymbol.toUpperCase().startsWith('TASE:')) {
+      finalSymbol = finalSymbol.substring(5);
+    }
+    
+    // For TASE symbols, extract only the number part
+    if (suggestion.symbol_type === 'tase' && finalSymbol.includes('.')) {
+      const parts = finalSymbol.split('.');
+      finalSymbol = parts[0];
+    }
+    
+    finalSymbol = finalSymbol.toUpperCase();
+  }
+  return finalSymbol;
+};
 
 const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreated }) => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
@@ -178,23 +209,26 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
   };
 
   // Holdings management functions
-  const updateHolding = (index: number, field: 'symbol' | 'units', value: string) => {
-    const normalizedValue = field === 'symbol' ? value.toUpperCase() : value;
-    const updatedHoldings = newAccount.holdings.map((holding, i) => 
-      i === index ? { ...holding, [field]: normalizedValue } : holding
+  const handleHoldingSymbolSelect = (index: number, suggestion: SymbolSuggestion) => {
+    const finalSymbol = formatSymbolOnSelect(suggestion);
+    const updatedHoldings = newAccount.holdings.map((holding, i) =>
+      i === index ? { ...holding, symbol: finalSymbol } : holding
     );
-    
-    // Auto-remove empty rows (except if it would leave us with no rows)
-    const filteredHoldings = updatedHoldings.filter((holding) => {
-      if (holding.symbol.trim() || holding.units.trim()) return true;
-      const nonEmptyCount = updatedHoldings.filter(h => h.symbol.trim() || h.units.trim()).length;
-      return nonEmptyCount === 0;
-    });
-    
-    // Ensure we always have at least one row
-    const finalHoldings = filteredHoldings.length > 0 ? filteredHoldings : [{ symbol: '', units: '' }];
-    
-    setNewAccount({ ...newAccount, holdings: finalHoldings });
+
+    setNewAccount(prev => ({ ...prev, holdings: updatedHoldings }));
+
+    // Add new row when user selects from autocomplete dropdown
+    if (index === newAccount.holdings.length - 1) {
+      setTimeout(() => addNewRowIfNeeded(updatedHoldings, index), 10);
+    }
+    setEditingSymbolIndex(null); // Exit edit mode after selection
+  };
+
+  const updateHoldingUnits = (index: number, value: string) => {
+    const updatedHoldings = newAccount.holdings.map((holding, i) =>
+      i === index ? { ...holding, units: value } : holding
+    );
+    setNewAccount({ ...newAccount, holdings: updatedHoldings });
   };
 
   const removeHolding = (index: number) => {
@@ -687,35 +721,10 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                               <SymbolAutocomplete
                                 placeholder="e.g., AAPL"
                                 value={holding.symbol}
-                                onChange={(value) => updateHolding(index, 'symbol', value)}
-                                onSelection={(value) => {
-                                  updateHolding(index, 'symbol', value);
-                                  if (index === newAccount.holdings.length - 1) {
-                                    setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index), 10);
-                                  }
-                                  setEditingSymbolIndex(null);
-                                }}
+                                onSelect={(suggestion) => handleHoldingSymbolSelect(index, suggestion)}
+                                onClose={() => setEditingSymbolIndex(null)}
                                 className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') {
-                                    setEditingSymbolIndex(null);
-                                  } else if (e.key === 'Tab' || e.key === 'Enter') {
-                                    if (holding.symbol.trim() && index === newAccount.holdings.length - 1) {
-                                      setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index), 10);
-                                    }
-                                    setEditingSymbolIndex(null);
-                                    handleKeyDown(e, index, 'symbol');
-                                  } else {
-                                    handleKeyDown(e, index, 'symbol');
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  const value = e.target.value.trim();
-                                  if (value && index === newAccount.holdings.length - 1) {
-                                    setTimeout(() => addNewRowIfNeeded(newAccount.holdings, index), 10);
-                                  }
-                                  setEditingSymbolIndex(null);
-                                }}
+                                onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
                                 ref={(el) => {
                                   holdingRefs.current[`${index}-symbol`] = el;
                                   if (el) setTimeout(() => el.focus(), 10);
@@ -749,7 +758,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                             type="number"
                             step="1"
                             value={holding.units}
-                            onChange={(e) => updateHolding(index, 'units', e.target.value)}
+                            onChange={(e) => updateHoldingUnits(index, e.target.value)}
                             className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto text-white placeholder:text-gray-400"
                             onKeyDown={(e) => handleKeyDown(e, index, 'units')}
                             ref={(el) => holdingRefs.current[`${index}-units`] = el}
