@@ -4,25 +4,23 @@ import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 
 interface AutocompleteProps {
-  placeholder?: string;
   value: string;
-  onChange: (value: string) => void;
-  onSelection?: (value: string) => void; // Called specifically when a suggestion is selected
-  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  onSelect: (suggestion: SymbolSuggestion) => void;
+  onClose: () => void;
+  placeholder?: string;
   className?: string;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps>(({
   placeholder = "e.g., AAPL",
   value,
-  onChange,
-  onSelection,
+  onSelect,
+  onClose,
   onKeyDown,
-  onBlur,
   className
 }, ref) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true); // Default to open when rendered
   const [inputValue, setInputValue] = useState(value);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement>(null);
@@ -36,15 +34,15 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
 
   // Debounced search
   useEffect(() => {
-    if (inputValue.trim() && open) {
+    if (inputValue.trim()) {
       const timer = setTimeout(() => {
         fetchSuggestions(inputValue.trim());
       }, 150);
       return () => clearTimeout(timer);
-    } else if (!inputValue.trim()) {
+    } else {
       clearSuggestions();
     }
-  }, [inputValue, open, fetchSuggestions, clearSuggestions]);
+  }, [inputValue, fetchSuggestions, clearSuggestions]);
 
   // Reset highlighted index when suggestions change
   useEffect(() => {
@@ -53,58 +51,13 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
 
   const handleInputChange = (newValue: string) => {
     setInputValue(newValue);
-    onChange(newValue);
     if (!open) setOpen(true);
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
-    console.log(`🎯 [AUTOCOMPLETE] selectSuggestion called:`, { 
-      symbol: suggestion.symbol, 
-      name: suggestion.name, 
-      type: suggestion.symbol_type 
-    });
-    
-    // Clean up the symbol based on type - preserve full format for currencies and crypto
-    let finalSymbol = suggestion.symbol;
-    
-    // For currencies and crypto, keep the full symbol to avoid conflicts
-    if (suggestion.symbol_type === 'currency' || suggestion.symbol_type === 'crypto') {
-      finalSymbol = suggestion.symbol.toUpperCase();
-    }
-    // For stock symbols, remove exchange prefixes as before
-    else {
-      if (finalSymbol.toUpperCase().startsWith('NYSE:')) {
-        finalSymbol = finalSymbol.substring(5);
-      }
-      if (finalSymbol.toUpperCase().startsWith('NASDAQ:')) {
-        finalSymbol = finalSymbol.substring(7);
-      }
-      if (finalSymbol.toUpperCase().startsWith('TASE:')) {
-        finalSymbol = finalSymbol.substring(5);
-      }
-      
-      // For TASE symbols, extract only the number part
-      if (suggestion.symbol_type === 'tase' && finalSymbol.includes('.')) {
-        const parts = finalSymbol.split('.');
-        finalSymbol = parts[0];
-      }
-      
-      finalSymbol = finalSymbol.toUpperCase();
-    }
-    
-    console.log(`🎯 [AUTOCOMPLETE] Setting final symbol: "${finalSymbol}" (type: ${suggestion.symbol_type})`);
-    
-    setInputValue(finalSymbol);
-    onChange(finalSymbol);
-    
-    // Call onSelection callback if provided
-    if (onSelection) {
-      console.log(`🎯 [AUTOCOMPLETE] Calling onSelection with: "${finalSymbol}"`);
-      onSelection(finalSymbol);
-    }
-    
+    onSelect(suggestion);
     setOpen(false);
-    setHighlightedIndex(-1);
+    onClose();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -129,10 +82,10 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
-      setHighlightedIndex(-1);
+      onClose();
     } else if (e.key === 'Tab') {
       setOpen(false);
-      setHighlightedIndex(-1);
+      onClose();
     }
     
     if (onKeyDown) onKeyDown(e);
@@ -193,7 +146,12 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(isOpen) => {
+      setOpen(isOpen);
+      if (!isOpen) {
+        onClose();
+      }
+    }}>
       <PopoverTrigger asChild>
         <div className="relative w-full">
           <input
@@ -203,12 +161,9 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
             value={inputValue}
             onChange={(e) => handleInputChange(e.target.value)}
             onFocus={() => setOpen(true)}
-            onBlur={(e) => {
-              const trimmedValue = e.target.value.trim();
-              if (trimmedValue && trimmedValue !== value) {
-                onChange(trimmedValue.toUpperCase());
-              }
-              if (onBlur) onBlur(e);
+            onBlur={() => {
+              setOpen(false);
+              onClose();
             }}
             onKeyDown={handleKeyDown}
             className={cn(
@@ -251,7 +206,6 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                   onMouseDown={(e) => {
                     // Use onMouseDown to prevent blur from closing before selection
                     e.preventDefault();
-                    console.log(`🖱️ [AUTOCOMPLETE] Clicked suggestion:`, suggestion.symbol);
                     selectSuggestion(suggestion);
                   }}
                   onMouseEnter={() => setHighlightedIndex(index)}
