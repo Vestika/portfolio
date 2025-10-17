@@ -19,7 +19,7 @@ import finnhub
 from pymaya.maya import Maya
 
 from core.database import db_manager
-from models.symbol import Symbol, SymbolType
+from models.symbol import SymbolType
 from config import settings
 
 # Configure logging
