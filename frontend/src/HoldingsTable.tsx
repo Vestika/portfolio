@@ -514,6 +514,64 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     direction: 'asc' | 'desc';
   }>({ key: 'total_value', direction: 'desc' });
 
+  // Get autocomplete data from context to resolve full names
+  const { 
+    getEarningsBySymbol, 
+    getPercentChange, 
+    getUserTagLibrary, 
+    refreshTagsOnly, 
+    allPortfoliosData, 
+    updateCustomCharts, 
+    selectedPortfolioId,
+    getAutocompleteData // Get the function to access autocomplete data
+  } = usePortfolioData();
+  const autocompleteData = getAutocompleteData();
+
+  // Memoized function to get the full name for a holding
+  const getHoldingFullName = useMemo(() => {
+    const nameCache = new Map<string, string>();
+    if (!autocompleteData) {
+        return (holding: SecurityHolding) => holding.name;
+    }
+
+    return (holding: SecurityHolding): string => {
+        const symbol = holding.symbol;
+        if (nameCache.has(symbol)) return nameCache.get(symbol)!;
+
+        const symbolUpper = symbol.toUpperCase();
+
+        const symbolData = autocompleteData.find(s => {
+            const sUpper = s.symbol.toUpperCase();
+            if (sUpper === symbolUpper) return true; // For currencies, crypto, or if holding has prefix for some reason.
+
+            // TASE symbols are numeric and might not have a security_type that matches 'stock' or 'etf'
+            if (s.symbol_type === 'tase' && /^\d+$/.test(symbolUpper)) {
+                const taseNumPart = sUpper.replace('TASE:', '').split('.')[0];
+                if (taseNumPart === symbolUpper) return true;
+            }
+
+            if (holding.security_type === 'cash' && s.symbol_type === 'currency') {
+                if (sUpper === `FX:${symbolUpper}`) return true;
+            }
+            
+            // Handle other stock types, but exclude TASE which is now handled above.
+            if ((holding.security_type === 'stock' || holding.security_type === 'etf') && s.symbol_type !== 'tase') {
+                // This handles NYSE and NASDAQ
+                const parts = sUpper.split(':');
+                if (parts.length === 2 && parts[1] === symbolUpper) {
+                    return true;
+                }
+            }
+            
+            return false;
+        });
+        
+        const name = symbolData ? symbolData.name : holding.name;
+        nameCache.set(symbol, name);
+        return name;
+    }
+  }, [autocompleteData]);
+
   // Clean symbol display function (same logic as AccountSelector)
   const getDisplaySymbol = (symbol: string) => {
     let displaySymbol = symbol;
@@ -540,9 +598,6 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     return displaySymbol;
   };
 
-  // Get real earnings data from context
-  const { getEarningsBySymbol, getPercentChange } = usePortfolioData();
-  
   // Add real earnings data to holdings - memoized to prevent infinite loops
   const dataWithRealEarnings = useMemo(() => {
     return {
@@ -614,10 +669,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   // Tag management state
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [editingTag, setEditingTag] = useState<{ symbol: string; definition: TagDefinition; value?: any } | null>(null);
-
-  // Get tags and quotes from context (no more API calls needed!)
-  const { getUserTagLibrary, refreshTagsOnly, allPortfoliosData, updateCustomCharts, selectedPortfolioId } = usePortfolioData();
-
+  
   // Load tag library from context (tags are already in holding.tags from computedData)
   useEffect(() => {
     try {
@@ -1250,7 +1302,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               )}
                             </div>
                           </td>
-                          <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
+                          <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{getHoldingFullName(holding)}</td>
                           <td className="px-2 md:px-4 text-sm hidden md:table-cell">
                             {renderTags(holding, true)}
                           </td>
@@ -1430,7 +1482,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
                                   <p className="font-bold text-gray-400">Name</p>
-                                  <p>{holding.name}</p>
+                                  <p>{getHoldingFullName(holding)}</p>
                                 </div>
                                 <div>
                                   <p className="font-bold text-gray-400">Performance</p>
@@ -1594,7 +1646,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         )}
                       </div>
                     </td>
-                    <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{holding.name}</td>
+                    <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{getHoldingFullName(holding)}</td>
                     <td className="px-2 md:px-4 text-sm hidden md:table-cell">
                       {renderTags(holding, true)} {/* Show all functionality: filter on click, remove buttons, add dropdown */}
                     </td>
@@ -1778,7 +1830,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-bold text-gray-400">Name</p>
-                            <p>{holding.name}</p>
+                            <p>{getHoldingFullName(holding)}</p>
                           </div>
                           <div>
                             <p className="font-bold text-gray-400">Performance</p>
