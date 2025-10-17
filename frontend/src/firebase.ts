@@ -45,3 +45,35 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
 };
 
 export default app; 
+
+// Expose Firebase ID token to trusted callers (browser extension) via window message
+// Only responds to explicit requests and never broadcasts tokens.
+window.addEventListener('message', async (event: MessageEvent) => {
+  try {
+    // Accept only messages targeting this window
+    if (event.source !== window) return;
+    const data = event.data as { type?: string; requestId?: string; forceRefresh?: boolean } | undefined;
+    if (!data || data.type !== 'VESTIKA_EXTENSION_GET_ID_TOKEN') return;
+
+    const user = auth.currentUser;
+    const idToken = user ? await user.getIdToken(!!data.forceRefresh) : null;
+
+    window.postMessage(
+      {
+        type: 'VESTIKA_EXTENSION_ID_TOKEN',
+        requestId: data.requestId,
+        token: idToken,
+      },
+      window.location.origin
+    );
+  } catch {
+    window.postMessage(
+      {
+        type: 'VESTIKA_EXTENSION_ID_TOKEN',
+        requestId: (event.data && (event.data as { requestId?: string }).requestId) || undefined,
+        error: 'TOKEN_ERROR',
+      },
+      window.location.origin
+    );
+  }
+});

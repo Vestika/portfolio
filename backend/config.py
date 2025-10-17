@@ -87,6 +87,12 @@ class Settings(BaseSettings):
         description="Google AI model to use for analysis"
     )
 
+    # Google OAuth (Web client) for extension auth exchange
+    google_web_client_id: Optional[str] = Field(
+        default=None,
+        description="Google OAuth Web Client ID used to verify Google ID tokens"
+    )
+
     # Telegram Bot Configuration
     telegram_bot_token: Optional[str] = Field(
         default=None,
