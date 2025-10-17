@@ -1,4 +1,4 @@
-from .base_model import BaseFeatureModel, FeatureConfig, AuthType
+from .base_model import BaseFeatureModel
 from pydantic import Field
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -30,62 +30,6 @@ class Notification(BaseFeatureModel):
     created_at: datetime = Field(default_factory=datetime.utcnow, description="When notification was created")
     read_at: Optional[datetime] = Field(default=None, description="When notification was read")
     archived_at: Optional[datetime] = Field(default=None, description="When notification was archived")
-
-    @classmethod
-    def get_feature_config(cls) -> FeatureConfig:
-        return FeatureConfig(
-            collection_name="notifications",
-            auth_required=AuthType.BEARER,
-            enable_create=True,
-            enable_read=True,
-            enable_update=True,
-            enable_delete=True,
-            enable_list=True,
-            async_operations=True,
-            # Custom hooks for additional logic
-            pre_hooks={
-                "create": [cls.validate_user_notification],
-                "update": [cls.handle_status_change]
-            },
-            post_hooks={
-                "read": [cls.track_read_time],
-                "list": [cls.filter_by_user]
-            }
-        )
-
-    @staticmethod
-    async def validate_user_notification(data: dict):
-        """Custom pre-hook to validate user notification creation"""
-        if not data.get('user_id'):
-            raise ValueError("user_id is required for notifications")
-        if not data.get('type'):
-            raise ValueError("type is required for notifications")
-        if not data.get('title'):
-            raise ValueError("title is required for notifications")
-        if not data.get('message'):
-            raise ValueError("message is required for notifications")
-
-    @staticmethod
-    def handle_status_change(item_id: str, data: dict):
-        """Custom pre-hook to handle status changes"""
-        if 'status' in data:
-            if data['status'] == NotificationStatus.READ and 'read_at' not in data:
-                data['read_at'] = datetime.utcnow()
-            elif data['status'] == NotificationStatus.ARCHIVED and 'archived_at' not in data:
-                data['archived_at'] = datetime.utcnow()
-
-    @staticmethod
-    async def track_read_time(item: dict):
-        """Custom post-hook to track read time"""
-        if item.get('status') == NotificationStatus.READ and not item.get('read_at'):
-            item['read_at'] = datetime.utcnow().isoformat()
-        return item
-
-    @staticmethod
-    async def filter_by_user(items: list):
-        """Custom post-hook to filter notifications by user"""
-        # This will be handled by the API layer with proper authentication
-        return items
 
     @classmethod
     def create_welcome_notification(cls, user_id: str, user_name: str) -> 'Notification':

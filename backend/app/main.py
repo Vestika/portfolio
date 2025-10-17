@@ -6,10 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from core import feature_generator
 from core.database import db_manager
 from core.firebase import FirebaseAuthMiddleware
-from models import User, Product, UserPreferences, Symbol, Notification
 from services.closing_price.service import get_global_service
 
 # Import endpoint routers
@@ -117,11 +115,6 @@ async def startup_event():
             except Exception as e:
                 logger.warning(f"Failed to check/populate symbols on startup: {e}")
 
-            # Register feature models only if database is available
-            models_to_register = [User, Product, UserPreferences, Symbol, Notification]
-            for model_class in models_to_register:
-                router = feature_generator.register_feature(model_class)
-                app.include_router(router, prefix="/api/v1")
         except Exception as e:
             logger.warning(f"Failed to connect to database: {e}")
 

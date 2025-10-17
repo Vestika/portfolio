@@ -1,4 +1,4 @@
-from .base_model import BaseFeatureModel, FeatureConfig, AuthType
+from .base_model import BaseFeatureModel
 from pydantic import Field
 from typing import Optional, List
 from enum import Enum
@@ -33,16 +33,3 @@ class Symbol(BaseFeatureModel):
     # Logo caching fields
     logo_url: Optional[str] = Field(None, description="Cached logo URL for the symbol")
     logo_updated_at: Optional[datetime] = Field(None, description="When the logo was last updated")
-
-    @classmethod
-    def get_feature_config(cls) -> FeatureConfig:
-        return FeatureConfig(
-            collection_name="symbols",
-            auth_required=AuthType.NONE,
-            enable_create=True,
-            enable_read=True,
-            enable_update=True,
-            enable_delete=True,
-            enable_list=True,
-            async_operations=True,
-        ) 
