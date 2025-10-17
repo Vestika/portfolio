@@ -1,0 +1,339 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vestika Import</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <script>
+      try { if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.classList.add('dark'); } } catch {}
+    </script>
+  </head>
+  <body>
+    <div class="p-4 w-[360px] text-sm bg-background text-foreground">
+      <h3 class="text-lg font-semibold mb-3">Vestika Import</h3>
+
+      <div class="mb-3">
+        <label class="block mb-1 text-muted-foreground">Shared Config</label>
+        <select id="shared" class="w-full rounded border border-border bg-background text-foreground px-2 py-1"></select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block mb-1 text-muted-foreground">CSS Selector (optional)</label>
+        <div class="flex gap-2">
+          <input id="selector" class="flex-1 rounded border border-border bg-background text-foreground px-2 py-1" placeholder="#portfolioTable, .holdings-grid" />
+          <button id="pickElement" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Pick</button>
+        </div>
+        <div class="text-xs text-muted-foreground mt-1">If empty, entire page will be captured.</div>
+      </div>
+
+      <div class="mb-3">
+        <label class="block mb-1 text-muted-foreground">Portfolio</label>
+        <select id="portfolio" class="w-full rounded border border-border bg-background text-foreground px-2 py-1"></select>
+      </div>
+      <div class="mb-3">
+        <label class="block mb-1 text-muted-foreground">Account</label>
+        <input id="accountName" class="w-full rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Imported Account" />
+      </div>
+
+      <div class="mb-3 flex gap-2">
+        <button id="validateBtn" class="rounded bg-secondary text-secondary-foreground hover:brightness-110 border border-border px-3 py-1">Validate</button>
+        <button id="captureBtn" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Capture</button>
+      </div>
+
+      <div class="mb-3">
+        <label class="block mb-1 text-muted-foreground">Extracted JSON (editable)</label>
+        <textarea id="jsonEditor" class="w-full h-40 rounded border border-border bg-background text-foreground px-2 py-1 font-mono"></textarea>
+        <div class="mt-2">
+          <button id="importEdited" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Import Edited</button>
+        </div>
+      </div>
+
+      <pre id="output" class="text-xs text-muted-foreground whitespace-pre-wrap"></pre>
+    </div>
+
+    <script type="module">
+      const output = document.getElementById('output');
+      const selectorInput = document.getElementById('selector');
+      const sharedSelect = document.getElementById('shared');
+      const portfolioSelect = document.getElementById('portfolio');
+      const accountNameInput = document.getElementById('accountName');
+
+      const ENV_BASE = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+      let API_BASE = ENV_BASE;
+      let RAW_PORTFOLIOS = null;
+
+      async function getActiveTabId() {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        return tab?.id;
+      }
+
+      async function getToken() {
+        // Prefer extension custom token if present; otherwise fallback to web app bridge
+        const sess = await chrome.storage.session.get('extCustomToken');
+        if (sess && sess.extCustomToken) return sess.extCustomToken;
+        const res = await chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' });
+        return res?.token ?? null;
+      }
+
+      async function fetchJSON(url, opts = {}) {
+        let token = await getToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        let res = await fetch(url, { ...opts, headers });
+        if (res.status === 401) {
+          const refresh = await chrome.runtime.sendMessage({ type: 'REFRESH_AUTH_TOKEN' });
+          token = refresh?.token ?? null;
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            res = await fetch(url, { ...opts, headers });
+          }
+        }
+        if (res.status === 401) {
+          // Offer interactive login via chrome.identity
+          const login = await chrome.runtime.sendMessage({ type: 'START_IDENTITY_LOGIN' });
+          if (login?.token) {
+            headers['Authorization'] = `Bearer ${login.token}`;
+            res = await fetch(url, { ...opts, headers });
+          }
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      }
+
+      async function loadPortfolios() {
+        try {
+          const data = await fetchJSON(`${API_BASE}/portfolios/raw`);
+          RAW_PORTFOLIOS = data;
+          const portfolios = data.portfolios || {};
+          portfolioSelect.innerHTML = '';
+          Object.entries(portfolios).forEach(([id, p]) => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = p.portfolio_metadata?.portfolio_name || id;
+            portfolioSelect.appendChild(opt);
+          });
+          // Populate accounts list for selected portfolio if present
+          portfolioSelect.addEventListener('change', () => updateAccounts(data));
+          updateAccounts(data);
+        } catch (e) {
+          output.textContent = 'Failed to load portfolios';
+        }
+      }
+
+      function updateAccounts(raw) {
+        const pid = portfolioSelect.value;
+        const p = raw.portfolios?.[pid];
+        const accounts = p?.accounts || [];
+        // Suggest existing account names in a datalist
+        let dl = document.getElementById('accountsList');
+        if (!dl) {
+          dl = document.createElement('datalist');
+          dl.id = 'accountsList';
+          accountNameInput.setAttribute('list', 'accountsList');
+          document.body.appendChild(dl);
+        }
+        dl.innerHTML = '';
+        accounts.forEach((a) => {
+          const opt = document.createElement('option');
+          opt.value = a.account_name;
+          dl.appendChild(opt);
+        });
+      }
+
+      async function loadShared() {
+        try {
+          const data = await fetchJSON(`${API_BASE}/extension/configs/shared`);
+          sharedSelect.innerHTML = '';
+          const blank = document.createElement('option'); blank.value=''; blank.textContent='—'; sharedSelect.appendChild(blank);
+          (data.items || []).forEach((item) => {
+            const opt = document.createElement('option');
+            opt.value = item.extension_config_id;
+            opt.textContent = `${item.name} (${item.url})`;
+            opt.dataset.selector = item.selector || '';
+            sharedSelect.appendChild(opt);
+          });
+          sharedSelect.addEventListener('change', () => {
+            const sel = sharedSelect.selectedOptions[0];
+            selectorInput.value = sel?.dataset?.selector || '';
+          });
+        } catch {}
+      }
+
+      async function loadPrivate() {
+        try {
+          const data = await fetchJSON(`${API_BASE}/extension/configs/private`);
+          // If a private config exists, prefill portfolio/account/shared
+          const first = (data.items || [])[0];
+          if (first) {
+            portfolioSelect.value = first.portfolio_id;
+            accountNameInput.value = first.account_id || '';
+            sharedSelect.value = first.extension_config_id || '';
+          }
+        } catch {}
+      }
+
+      async function captureHtml(selector) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) throw new Error('No active tab');
+        const [{ result }] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (sel) => {
+            const cloned = document.documentElement.cloneNode(true);
+            cloned.querySelectorAll('script, style').forEach((el) => el.remove());
+            if (sel) {
+              const el = document.querySelector(sel);
+              return el ? el.cloneNode(true).outerHTML : cloned.outerHTML;
+            }
+            return cloned.outerHTML;
+          },
+          args: [selector]
+        });
+        return result;
+      }
+
+      async function runExtract(html) {
+        return fetchJSON(`${API_BASE}/extension/extract`, { method: 'POST', body: JSON.stringify({ html }) });
+      }
+
+      async function runImport(portfolioId, accountName, data) {
+        // Determine if this is an update (existing account) or create
+        let account_id = undefined;
+        try {
+          const accounts = RAW_PORTFOLIOS?.portfolios?.[portfolioId]?.accounts || [];
+          if (accounts.find((a) => a.account_name === accountName)) {
+            account_id = accountName; // update existing by name
+          }
+        } catch {}
+        const body = JSON.stringify({
+          portfolio_id: portfolioId,
+          account_id,
+          account_name: accountName || data.data.account_name || 'Imported Account',
+          account_type: data.data.account_type || 'brokerage',
+          owners: data.data.owners || ['me'],
+          holdings: data.data.holdings || [],
+          rsu_plans: data.data.rsu_plans || [],
+          espp_plans: data.data.espp_plans || [],
+          options_plans: data.data.options_plans || []
+        });
+        return fetchJSON(`${API_BASE}/extension/import`, { method: 'POST', body });
+      }
+
+      (async () => {
+        try {
+          const sync = await chrome.storage.sync.get('apiBase');
+          API_BASE = sync.apiBase || ENV_BASE;
+        } catch {}
+
+        const jsonEditor = document.getElementById('jsonEditor');
+      document.getElementById('validateBtn').addEventListener('click', async () => {
+          output.textContent = 'Extracting...';
+          try {
+          // If shared config URL pattern exists, ensure current tab URL matches
+          const selOpt = sharedSelect.value ? sharedSelect.selectedOptions[0] : null;
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (selOpt?.textContent?.includes('(')) {
+            // Very lightweight check: if pattern contains '*', convert to regex
+            const match = selOpt.textContent.match(/\((.*)\)$/);
+            if (match && tab?.url) {
+              const pattern = match[1];
+              const rx = new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+              if (!rx.test(tab.url)) {
+                output.textContent = 'Current page does not match selected shared URL';
+                return;
+              }
+            }
+          }
+          const html = await captureHtml(selectorInput.value.trim() || undefined);
+            const data = await runExtract(html);
+            output.textContent = JSON.stringify(data.data, null, 2);
+            jsonEditor.value = JSON.stringify(data.data, null, 2);
+          } catch (e) {
+            output.textContent = 'Extraction failed';
+          }
+        });
+
+      document.getElementById('captureBtn').addEventListener('click', async () => {
+          output.textContent = 'Capturing...';
+          try {
+          const selOpt = sharedSelect.value ? sharedSelect.selectedOptions[0] : null;
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (selOpt?.textContent?.includes('(')) {
+            const match = selOpt.textContent.match(/\((.*)\)$/);
+            if (match && tab?.url) {
+              const pattern = match[1];
+              const rx = new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+              if (!rx.test(tab.url)) {
+                output.textContent = 'Current page does not match selected shared URL';
+                return;
+              }
+            }
+          }
+            const html = await captureHtml(selectorInput.value.trim() || undefined);
+            const data = await runExtract(html);
+            const imp = await runImport(portfolioSelect.value, accountNameInput.value.trim(), data);
+            output.textContent = JSON.stringify(imp, null, 2);
+          } catch (e) {
+            output.textContent = 'Capture failed';
+          }
+        });
+
+        document.getElementById('importEdited').addEventListener('click', async () => {
+          try {
+            const parsed = JSON.parse(jsonEditor.value || '{}');
+            // Determine account_id for update when matching existing
+            let account_id = undefined;
+            try {
+              const accounts = RAW_PORTFOLIOS?.portfolios?.[portfolioSelect.value]?.accounts || [];
+              const entered = accountNameInput.value.trim() || parsed.account_name || '';
+              if (entered && accounts.find((a) => a.account_name === entered)) {
+                account_id = entered;
+              }
+            } catch {}
+            const imp = await fetchJSON(`${API_BASE}/extension/import`, {
+              method: 'POST',
+              body: JSON.stringify({
+                portfolio_id: portfolioSelect.value,
+                account_id,
+                account_name: accountNameInput.value.trim() || parsed.account_name || 'Imported Account',
+                account_type: parsed.account_type || 'brokerage',
+                owners: parsed.owners || ['me'],
+                holdings: parsed.holdings || [],
+                rsu_plans: parsed.rsu_plans || [],
+                espp_plans: parsed.espp_plans || [],
+                options_plans: parsed.options_plans || []
+              })
+            });
+            output.textContent = JSON.stringify(imp, null, 2);
+          } catch {
+            output.textContent = 'Invalid JSON';
+          }
+        });
+
+        document.getElementById('pickElement').addEventListener('click', async () => {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab?.id) return;
+          // Clear any previous selection
+          try { await chrome.storage.session.remove('lastPickedSelector'); } catch {}
+          chrome.tabs.sendMessage(tab.id, { type: 'ENABLE_ELEMENT_PICKER' });
+          // Close the popup so the user can interact; when reopened, we read the stored selector
+          window.close();
+        });
+
+        // If a selector was picked while popup was closed, load it
+        try {
+          const sess = await chrome.storage.session.get('lastPickedSelector');
+          if (sess && sess.lastPickedSelector) {
+            selectorInput.value = sess.lastPickedSelector;
+            await chrome.storage.session.remove('lastPickedSelector');
+          }
+        } catch {}
+
+        await loadPortfolios();
+        await loadShared();
+        await loadPrivate();
+      })();
+    </script>
+  </body>
+  </html>
+

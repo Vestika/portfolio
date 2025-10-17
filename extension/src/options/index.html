@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vestika Extension Options</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <script>
+      try { if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.classList.add('dark'); } } catch {}
+    </script>
+  </head>
+  <body>
+    <div class="p-4 text-sm bg-background text-foreground">
+      <h2 class="text-xl font-semibold mb-4">Vestika Extension Options</h2>
+
+      <div class="mb-4 flex items-end gap-2">
+        <div class="flex-1">
+          <label class="block mb-1 text-gray-600 dark:text-gray-300">API Base</label>
+          <input id="apiBase" class="w-full rounded border border-border bg-background text-foreground px-2 py-1" placeholder="http://localhost:8000" />
+        </div>
+        <button id="saveBase" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Save</button>
+      </div>
+
+      <h3 class="text-lg font-medium mb-2">Shared Configurations</h3>
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="sharedName" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Broker Name" />
+        <input id="sharedUrl" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="URL pattern (e.g. https://broker.com/*)" />
+        <input id="sharedFullUrl" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Full URL captured" />
+        <input id="sharedSelector" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="CSS selector (optional)" />
+      </div>
+      <div class="mb-4">
+        <button id="addShared" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Add Shared</button>
+      </div>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="min-w-full text-xs">
+          <thead class="text-left text-muted-foreground">
+            <tr><th class="py-1 pr-2">Name</th><th class="py-1 pr-2">URL</th><th class="py-1 pr-2">Selector</th><th class="py-1 pr-2">ID</th><th class="py-1 pr-2"></th></tr>
+          </thead>
+          <tbody id="sharedTable" class="align-top"></tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-medium mb-2">Private Configurations</h3>
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="privatePortfolioId" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Portfolio ID" />
+        <input id="privateAccountId" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Account Name (optional)" />
+        <input id="privateSharedId" class="rounded border border-border bg-background text-foreground px-2 py-1" placeholder="Shared Config ID" />
+        <label class="inline-flex items-center gap-2 text-muted-foreground"><input type="checkbox" id="privateAutoSync" class="rounded" /> Auto Sync</label>
+      </div>
+      <div class="mb-4">
+        <button id="addPrivate" class="rounded bg-primary text-primary-foreground hover:brightness-110 px-3 py-1">Add Private</button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+          <thead class="text-left text-muted-foreground">
+            <tr><th class="py-1 pr-2">Portfolio</th><th class="py-1 pr-2">Account</th><th class="py-1 pr-2">Shared ID</th><th class="py-1 pr-2">Auto</th><th class="py-1 pr-2">ID</th><th class="py-1 pr-2"></th></tr>
+          </thead>
+          <tbody id="privateTable" class="align-top"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script type="module">
+      const apiBaseEl = document.getElementById('apiBase');
+      const saveBaseBtn = document.getElementById('saveBase');
+      const sharedTable = document.getElementById('sharedTable');
+      const sharedName = document.getElementById('sharedName');
+      const sharedUrl = document.getElementById('sharedUrl');
+      const sharedFullUrl = document.getElementById('sharedFullUrl');
+      const sharedSelector = document.getElementById('sharedSelector');
+      const privatePortfolioId = document.getElementById('privatePortfolioId');
+      const privateAccountId = document.getElementById('privateAccountId');
+      const privateSharedId = document.getElementById('privateSharedId');
+      const privateAutoSync = document.getElementById('privateAutoSync');
+      const privateTable = document.getElementById('privateTable');
+
+      async function getToken() {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) return null;
+        const res = await chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' });
+        return res?.token ?? null;
+      }
+
+      async function fetchJSON(url, opts = {}) {
+        const token = await getToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(url, { ...opts, headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      }
+
+      async function loadBase() {
+        const { apiBase } = await chrome.storage.sync.get('apiBase');
+        const envBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+        apiBaseEl.value = apiBase || envBase;
+      }
+
+      async function saveBase() {
+        await chrome.storage.sync.set({ apiBase: apiBaseEl.value.trim() });
+      }
+
+      async function loadShared() {
+        const { apiBase } = await chrome.storage.sync.get('apiBase');
+        const envBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+        const base = apiBase || envBase;
+        const data = await fetchJSON(`${base}/extension/configs/shared`);
+        sharedTable.innerHTML = '';
+        (data.items || []).forEach((item) => {
+          const tr = document.createElement('tr');
+          const id = item.extension_config_id;
+          tr.innerHTML = `<td>${item.name}</td><td>${item.url}</td><td>${item.selector || ''}</td><td>${id}</td><td><button data-id="${id}" class="delShared">Delete</button></td>`;
+          sharedTable.appendChild(tr);
+        });
+        sharedTable.querySelectorAll('.delShared').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            const target = e.currentTarget;
+            const id = target && target.dataset ? target.dataset.id : undefined;
+            if (!confirm('Delete shared config?')) return;
+            const { apiBase } = await chrome.storage.sync.get('apiBase');
+            const base = apiBase || 'http://localhost:8000';
+            const token = await getToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            await fetch(`${base}/extension/configs/shared/${id}`, { method: 'DELETE', headers });
+            await loadShared();
+          });
+        });
+      }
+
+      async function addShared() {
+        const { apiBase } = await chrome.storage.sync.get('apiBase');
+        const envBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+        const base = apiBase || envBase;
+        const body = JSON.stringify({
+          name: sharedName.value.trim(),
+          url: sharedUrl.value.trim(),
+          full_url: sharedFullUrl.value.trim(),
+          selector: sharedSelector.value.trim() || undefined
+        });
+        await fetchJSON(`${base}/extension/configs/shared`, { method: 'POST', body });
+        await loadShared();
+      }
+
+      async function loadPrivate() {
+        const { apiBase } = await chrome.storage.sync.get('apiBase');
+        const envBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+        const base = apiBase || envBase;
+        const data = await fetchJSON(`${base}/extension/configs/private`);
+        privateTable.innerHTML = '';
+        (data.items || []).forEach((item) => {
+          const tr = document.createElement('tr');
+          const id = item.private_config_id;
+          tr.innerHTML = `<td>${item.portfolio_id}</td><td>${item.account_id || ''}</td><td>${item.extension_config_id}</td><td>${item.auto_sync ? '✅' : ''}</td><td>${id}</td><td><button data-id="${id}" class="delPrivate">Delete</button></td>`;
+          privateTable.appendChild(tr);
+        });
+        privateTable.querySelectorAll('.delPrivate').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            const target = e.currentTarget;
+            const id = target && target.dataset ? target.dataset.id : undefined;
+            if (!confirm('Delete private config?')) return;
+            const { apiBase } = await chrome.storage.sync.get('apiBase');
+            const base = apiBase || 'http://localhost:8000';
+            const token = await getToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            await fetch(`${base}/extension/configs/private/${id}`, { method: 'DELETE', headers });
+            await loadPrivate();
+          });
+        });
+      }
+
+      async function addPrivate() {
+        const { apiBase } = await chrome.storage.sync.get('apiBase');
+        const envBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8080';
+        const base = apiBase || envBase;
+        const body = JSON.stringify({
+          portfolio_id: privatePortfolioId.value.trim(),
+          account_id: privateAccountId.value.trim() || undefined,
+          extension_config_id: privateSharedId.value.trim(),
+          auto_sync: !!privateAutoSync.checked
+        });
+        await fetchJSON(`${base}/extension/configs/private`, { method: 'POST', body });
+        await loadPrivate();
+      }
+
+      (async () => {
+        saveBaseBtn.addEventListener('click', saveBase);
+        document.getElementById('addShared').addEventListener('click', addShared);
+        document.getElementById('addPrivate').addEventListener('click', addPrivate);
+        await loadBase();
+        await loadShared();
+        await loadPrivate();
+      })();
+    </script>
+  </body>
+  </html>
+

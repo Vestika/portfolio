@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Vestika Portfolio Sync",
+  "version": "0.1.0",
+  "description": "Import and sync your investment portfolio with Vestika",
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "tabs", "scripting"],
+  "oauth2": {
+    "client_id": "962053007917-m3tjj95uaa08o04nfjjihsit73j7npem.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
+  },
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["assets/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "options_page": "src/options/index.html"
+}
+
