@@ -146,7 +146,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   return (
-    <Popover open={open} onOpenChange={(isOpen) => {
+    <Popover open={open && inputValue.trim().length > 0} onOpenChange={(isOpen) => {
       setOpen(isOpen);
       if (!isOpen) {
         onClose();
