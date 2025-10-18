@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import 'highcharts/highcharts-more';
@@ -37,7 +37,7 @@ interface RSUTimelineChartProps {
 
 const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, accountName, baseCurrency, globalPrices, isValueVisible = true }) => {
   const chartRef = useRef<HighchartsReact.RefObject>(null);
-  const [hoveredGauge, setHoveredGauge] = useState<number | null>(null);
+  const hoverTimeoutRef = useRef<number | null>(null);
   
   // Utility function to format numbers with K/M suffix
   const formatShortNumber = (num: number): string => {
@@ -109,9 +109,149 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
     const overallPercentage = totalPortfolioValue > 0 ? (totalVested / totalPortfolioValue) * 100 : 0;
 
     return { grantData, totalVested, totalUnvested, overallPercentage, totalVestedShares, totalShares };
-  }, [plans, baseCurrency, pieChartColors]);
+  }, [plans, baseCurrency, globalPrices, isValueVisible]);
 
-  // Hover state is now defined above
+  const getSubtitleHTML = (grant: any | null) => {
+    if (grant) {
+      const grantColor = grant.color || '#ffffff';
+      const grantVestedInfo = isValueVisible ? 
+        `Vested: ${grant.vestedPercentage?.toFixed(1)}% | ${(grant.planInfo.vested_units || 0).toLocaleString()} of ${(grant.planInfo.total_units || 0).toLocaleString()} shares | ${Math.round(grant.vestedValue || 0).toLocaleString()} of ${Math.round(grant.totalValue || 0).toLocaleString()} ${baseCurrency}` :
+        `Vested: ${grant.vestedPercentage?.toFixed(1)}% | ${generateDots()} of ${generateDots()} shares | ${generateDots()} of ${generateDots()} ${baseCurrency}`;
+      
+      const grantPriceData = globalPrices[grant.planInfo.symbol];
+      const grantCurrentPrice = grantPriceData?.price || 0;
+      const nextVestInfo = grant.planInfo.next_vest_date ? 
+        (isValueVisible ?
+          `Next Vest: ${grant.planInfo.next_vest_date} | ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares | ${Math.round((grant.planInfo.next_vest_units || 0) * grantCurrentPrice).toLocaleString()} ${baseCurrency}` :
+          `Next Vest: ${grant.planInfo.next_vest_date} | ${generateDots()} shares | ${generateDots()} ${baseCurrency}`) :
+        `No upcoming vesting`;
+      
+      return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
+        <div style="color: ${grantColor}; margin: 0; padding: 0;">${grantVestedInfo}</div>
+        <div style="color: ${grantColor}; margin: 0; padding: 0;">${nextVestInfo}</div>
+      </div>`;
+    }
+
+    // Aggregate subtitle
+    let nextVestDate: string | null = null;
+    plans.forEach(plan => {
+      if (plan.next_vest_date) {
+        if (!nextVestDate || new Date(plan.next_vest_date) < new Date(nextVestDate)) {
+          nextVestDate = plan.next_vest_date;
+        }
+      }
+    });
+    
+    const overallInfo = isValueVisible ?
+      `Vested: ${chartData.overallPercentage.toFixed(1)}% | ${chartData.totalVestedShares.toLocaleString()} of ${chartData.totalShares.toLocaleString()} shares | ${Math.round(chartData.totalVested).toLocaleString()} of ${Math.round(chartData.totalVested + chartData.totalUnvested).toLocaleString()} ${baseCurrency}` :
+      `Vested: ${chartData.overallPercentage.toFixed(1)}% | ${generateDots()} of ${generateDots()} shares | ${generateDots()} of ${generateDots()} ${baseCurrency}`;
+    
+    let nextVestInfo = '';
+    if (nextVestDate) {
+      const today = new Date();
+      const vestDate = new Date(nextVestDate);
+      const daysUntil = Math.ceil((vestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysUntil > 0) {
+        nextVestInfo = `Next Vest: ${daysUntil} days`;
+      } else {
+        nextVestInfo = `Next Vest: Today`;
+      }
+    } else {
+      nextVestInfo = 'No upcoming vesting events';
+    }
+    
+    return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
+      <div style="color: #cccccc; margin: 0; padding: 0;">${overallInfo}</div>
+      <div style="color: #999999; margin: 0; padding: 0;">${nextVestInfo}</div>
+    </div>`;
+  };
+
+  const getAggregateDataLabel = () => {
+    const totalVestedShort = formatShortNumber(Math.round(chartData.totalVested));
+    const totalPortfolioShort = formatShortNumber(Math.round(chartData.totalVested + chartData.totalUnvested));
+    return `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
+      <div style="font-size: 32px; font-weight: bold; color: #ffffff; line-height: 1.2; white-space: nowrap;">
+        ${isValueVisible ? totalVestedShort : generateDots('#ffffff')} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+      </div>
+      <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
+        ${Math.round(chartData.overallPercentage)}% of ${isValueVisible ? totalPortfolioShort : generateDots('#cccccc')}
+      </div>
+    </div>`;
+  };
+
+  const getGrantDataLabel = (grant: any) => {
+    const grantVestedShort = formatShortNumber(Math.round(grant.vestedValue));
+    const grantTotalShort = formatShortNumber(Math.round(grant.totalValue));
+    return `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
+      <div style="font-size: 32px; font-weight: bold; color: ${grant.color}; line-height: 1.2; white-space: nowrap;">
+        ${isValueVisible ? grantVestedShort : generateDots(grant.color)} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
+      </div>
+      <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
+        ${Math.round(grant.vestedPercentage)}% of ${isValueVisible ? grantTotalShort : generateDots('#cccccc')}
+      </div>
+    </div>`;
+  };
+
+  const setAggregateView = (chart: Highcharts.Chart) => {
+    chart.setTitle({ text: `${symbol} (${accountName || 'Account'})` });
+    chart.setSubtitle({ text: getSubtitleHTML(null) });
+    chart.series.forEach((series, i) => {
+      if (series.name.startsWith('Grant') && series.points[0]) {
+        const isFirst = i === 1; // 0 is unvested, 1 is first vested series
+        series.points[0].update({
+          dataLabels: {
+            enabled: isFirst,
+            format: isFirst ? getAggregateDataLabel() : ''
+          }
+        }, false);
+      }
+    });
+    chart.redraw();
+  };
+
+  const setGrantView = (chart: Highcharts.Chart, grantIndex: number) => {
+    const grant = chartData.grantData[grantIndex];
+    if (!grant) return;
+
+    chart.setTitle({ text: `${symbol} (${accountName || 'Account'}) Grant ${grant.planInfo.grant_date}` });
+    chart.setSubtitle({ text: getSubtitleHTML(grant) });
+    
+    chart.series.forEach(series => {
+      if (series.name.startsWith('Grant') && series.points[0]) {
+        const seriesGrantIndex = series.options.custom?.grantIndex;
+        const isHovered = seriesGrantIndex === grantIndex;
+        series.points[0].update({
+          dataLabels: {
+            enabled: isHovered,
+            format: isHovered ? getGrantDataLabel(grant) : ''
+          }
+        }, false);
+      }
+    });
+    chart.redraw();
+  };
+
+  useEffect(() => {
+    const chart = chartRef.current?.chart;
+    if (!chart?.container) return;
+
+    const container = chart.container;
+    const handleMouseLeave = () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = null;
+      }
+      setAggregateView(chart);
+    };
+
+    container.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [chartData]);
+
 
   const chartOptions: Highcharts.Options = {
     chart: {
@@ -123,15 +263,13 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
       spacingTop: 20,
       spacingBottom: 20,
       spacingLeft: 20,
-      spacingRight: 20
+      spacingRight: 20,
     },
     credits: {
       enabled: false
     },
     title: {
-      text: hoveredGauge !== null ? 
-        `${symbol} (${accountName || 'Account'}) Grant ${chartData.grantData[hoveredGauge]?.planInfo?.grant_date || ''}` :
-        `${symbol} (${accountName || 'Account'})`,
+      text: `${symbol} (${accountName || 'Account'})`,
       align: 'left',
       style: { 
         color: '#ffffff',
@@ -140,65 +278,7 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
       }
     },
     subtitle: {
-      text: hoveredGauge !== null ? 
-        (() => {
-          const grant = chartData.grantData[hoveredGauge];
-          const grantColor = grant?.color || '#ffffff';
-          // Grant-specific information in same format as base subtitle (replaces base when hovering)
-          const grantVestedInfo = isValueVisible ? 
-            `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${(grant?.planInfo?.vested_units || 0).toLocaleString()} of ${(grant?.planInfo?.total_units || 0).toLocaleString()} shares  |  ${Math.round(grant?.vestedValue || 0).toLocaleString()} of ${Math.round(grant?.totalValue || 0).toLocaleString()} ${baseCurrency}` :
-            `Vested: ${grant?.vestedPercentage?.toFixed(1)}%  |  ${generateDots()} of ${generateDots()} shares  |  ${generateDots()} of ${generateDots()} ${baseCurrency}`;
-          
-          // Next vesting information - calculate value using global price
-          const grantPriceData = globalPrices[grant?.planInfo?.symbol];
-          const grantCurrentPrice = grantPriceData?.price || 0;
-          const nextVestInfo = grant?.planInfo?.next_vest_date ? 
-            (isValueVisible ?
-              `Next Vest: ${grant.planInfo.next_vest_date}  |  ${(grant.planInfo.next_vest_units || 0).toLocaleString()} shares  |  ${Math.round((grant.planInfo.next_vest_units || 0) * grantCurrentPrice).toLocaleString()} ${baseCurrency}` :
-              `Next Vest: ${grant.planInfo.next_vest_date}  |  ${generateDots()} shares  |  ${generateDots()} ${baseCurrency}`) :
-            `No upcoming vesting`;
-          
-          return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
-            <div style="color: ${grantColor}; margin: 0; padding: 0;">${grantVestedInfo}</div>
-            <div style="color: ${grantColor}; margin: 0; padding: 0;">${nextVestInfo}</div>
-          </div>`;
-        })() :
-        (() => {
-          // Find the next vesting event across all plans
-          let nextVestDate: string | null = null;
-          
-          plans.forEach(plan => {
-            if (plan.next_vest_date) {
-              if (!nextVestDate || new Date(plan.next_vest_date) < new Date(nextVestDate)) {
-                nextVestDate = plan.next_vest_date;
-              }
-            }
-          });
-          
-          const overallInfo = isValueVisible ?
-            `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${chartData.totalVestedShares.toLocaleString()} of ${chartData.totalShares.toLocaleString()} shares  |  ${Math.round(chartData.totalVested).toLocaleString()} of ${Math.round(chartData.totalVested + chartData.totalUnvested).toLocaleString()} ${baseCurrency}` :
-            `Vested: ${chartData.overallPercentage.toFixed(1)}%  |  ${generateDots()} of ${generateDots()} shares  |  ${generateDots()} of ${generateDots()} ${baseCurrency}`;
-          
-          let nextVestInfo = '';
-          if (nextVestDate) {
-            const today = new Date();
-            const vestDate = new Date(nextVestDate);
-            const daysUntil = Math.ceil((vestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            
-            if (daysUntil > 0) {
-              nextVestInfo = `Next Vest: ${daysUntil} days`;
-            } else {
-              nextVestInfo = `Next Vest: Today`;
-            }
-          } else {
-            nextVestInfo = 'No upcoming vesting events';
-          }
-          
-          return `<div style="line-height: 1.2; text-align: left; margin: 0; padding: 0;">
-            <div style="color: #cccccc; margin: 0; padding: 0;">${overallInfo}</div>
-            <div style="color: #999999; margin: 0; padding: 0;">${nextVestInfo}</div>
-          </div>`;
-        })(),
+      text: getSubtitleHTML(null),
       useHTML: true,
       style: {
         color: '#cccccc',
@@ -239,87 +319,75 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
     plotOptions: {
       solidgauge: {
         dataLabels: {
-          enabled: false, // Disabled globally, will be enabled per point
+          enabled: true,
           borderWidth: 0,
           backgroundColor: 'transparent',
-          shadow: false
+          shadow: false,
+          useHTML: true
         },
         linecap: 'round',
         stickyTracking: false,
         rounded: true,
-        enableMouseTracking: true
+        enableMouseTracking: true,
+        point: {
+          events: {
+            mouseOver: function() {
+              if (hoverTimeoutRef.current) {
+                clearTimeout(hoverTimeoutRef.current);
+                hoverTimeoutRef.current = null;
+              }
+              const grantIndex = this.series.options.custom?.grantIndex;
+              if (typeof grantIndex === 'number') {
+                setGrantView(this.series.chart, grantIndex);
+              }
+            },
+            mouseOut: function() {
+              const chart = this.series.chart;
+              hoverTimeoutRef.current = window.setTimeout(() => {
+                setAggregateView(chart);
+              }, 100);
+            }
+          }
+        }
       }
     },
     tooltip: {
       enabled: false
     },
     series: chartData.grantData.flatMap((grant, index) => {
-      // Pre-compute formatted values
-      const grantVestedShort = formatShortNumber(Math.round(grant.vestedValue));
-      const grantTotalShort = formatShortNumber(Math.round(grant.totalValue));
-      const totalVestedShort = formatShortNumber(Math.round(chartData.totalVested));
-      const totalPortfolioShort = formatShortNumber(Math.round(chartData.totalVested + chartData.totalUnvested));
-      
       return [
         // Unvested portion (transparent) - full circle background
         {
+          type: 'solidgauge',
           name: `Grant ${grant.planInfo.grant_date} Unvested`,
           data: [{
             color: grant.color + '40', // 40 = 25% transparency in hex
             radius: `${100 - index * 15}%`,
             innerRadius: `${85 - index * 15}%`,
-            y: 100, // Full circle
-            dataLabels: {
-              enabled: false
-            }
+            y: 100,
           }],
           enableMouseTracking: false,
-          zIndex: 0 // Behind the vested portion
+          zIndex: 0,
+          dataLabels: { enabled: false }
         },
         // Vested portion (colored) - on top
         {
+          type: 'solidgauge',
           name: `Grant ${grant.planInfo.grant_date}`,
+          custom: {
+            grantIndex: index
+          },
           data: [{
             color: grant.color,
             radius: `${100 - index * 15}%`,
             innerRadius: `${85 - index * 15}%`,
             y: grant.vestedPercentage,
             dataLabels: {
-              enabled: hoveredGauge !== null ? (hoveredGauge === index) : (index === 0),
-              borderWidth: 0,
-              backgroundColor: 'transparent',
-              shadow: false,
-              format: hoveredGauge === index ? 
-                `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
-                  <div style="font-size: 32px; font-weight: bold; color: ${grant.color}; line-height: 1.2; white-space: nowrap;">
-                    ${isValueVisible ? grantVestedShort : generateDots(grant.color)} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
-                  </div>
-                  <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
-                    ${Math.round(grant.vestedPercentage)}% of ${isValueVisible ? grantTotalShort : generateDots('#cccccc')}
-                  </div>
-                </div>` : 
-                (hoveredGauge === null && index === 0 ? 
-                  `<div style="text-align: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: none; background: transparent; white-space: nowrap;">
-                    <div style="font-size: 32px; font-weight: bold; color: #ffffff; line-height: 1.2; white-space: nowrap;">
-                      ${isValueVisible ? totalVestedShort : generateDots('#ffffff')} <span style="font-size: 14px; color: #999999;">${baseCurrency}</span>
-                    </div>
-                    <div style="font-size: 16px; color: #cccccc; margin-top: 2px; white-space: nowrap;">
-                      ${Math.round(chartData.overallPercentage)}% of ${isValueVisible ? totalPortfolioShort : generateDots('#cccccc')}
-                    </div>
-                  </div>` : 
-                  ''),
-              useHTML: true
+              enabled: index === 0,
+              format: index === 0 ? getAggregateDataLabel() : '',
             }
           }],
           enableMouseTracking: true,
-          events: {
-            mouseOver: function() {
-              setHoveredGauge(index);
-            },
-            mouseOut: function() {
-              setHoveredGauge(null);
-            }
-          },
           zIndex: 1 // On top of the unvested portion
         }
       ];
@@ -327,7 +395,7 @@ const RSUTimelineChart: React.FC<RSUTimelineChartProps> = ({ plans, symbol, acco
   };
 
   return (
-    <div className="w-full" onMouseLeave={() => setHoveredGauge(null)}>
+    <div className="w-full">
       <HighchartsReact
         ref={chartRef}
         highcharts={Highcharts}
