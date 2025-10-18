@@ -77,13 +77,25 @@ const App: React.FC = () => {
       account_name: acc.account_name,
       account_type: acc.account_type,
       owners: acc.owners,
-      holdings: (acc.holdings || []).map((h: any) => ({
-        symbol: h.symbol,
-        units: h.units,
-        original_currency: h.original_currency,
-        security_type: h.security_type,
-        security_name: h.security_name
-      })),
+      holdings: (acc.holdings || []).map((h: any) => {
+        const holding: any = {
+          symbol: h.symbol,
+          units: h.units,
+          original_currency: h.original_currency,
+          security_type: h.security_type,
+          security_name: h.security_name
+        };
+        
+        // Include custom holding fields if present
+        if (h.is_custom) {
+          holding.is_custom = true;
+          holding.custom_price = h.custom_price;
+          holding.custom_currency = h.custom_currency;
+          holding.custom_name = h.custom_name;
+        }
+        
+        return holding;
+      }),
       rsu_plans: acc.rsu_plans || [],
       espp_plans: acc.espp_plans || [],
       options_plans: acc.options_plans || [],

@@ -33,6 +33,7 @@ import api from '../utils/api';
 import logo from '../assets/logo.png';
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
 import { SymbolSuggestion } from '../hooks/useSymbolAutocomplete';
+import { CustomHoldingDialog, CustomHoldingData } from './CustomHoldingDialog';
 
 interface OnboardingFlowProps {
   user: User;
@@ -97,6 +98,17 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
   // Holdings management state
   const [editingSymbolIndex, setEditingSymbolIndex] = useState<number | null>(null);
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  
+  // Custom holding dialog state
+  const [showCustomHoldingDialog, setShowCustomHoldingDialog] = useState(false);
+  const [customHoldingContext, setCustomHoldingContext] = useState<{
+    index: number;
+    initialSymbol: string;
+    initialPrice?: number;
+    initialCurrency?: string;
+    initialUnits?: number;
+    initialName?: string;
+  } | null>(null);
   
   // IBKR integration state
   const [ibkrAccessToken, setIbkrAccessToken] = useState<string>('');
@@ -167,10 +179,22 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
       // Filter out empty holdings and convert units to numbers
       const validHoldings = newAccount.holdings
         .filter(holding => holding.symbol.trim() && holding.units.trim())
-        .map(holding => ({
-          symbol: holding.symbol.trim(),
-          units: parseFloat(holding.units)
-        }));
+        .map(holding => {
+          const baseHolding: any = {
+            symbol: holding.symbol.trim(),
+            units: parseFloat(holding.units)
+          };
+          
+          // Include custom holding fields if present
+          if ((holding as any).is_custom) {
+            baseHolding.is_custom = true;
+            baseHolding.custom_price = (holding as any).custom_price;
+            baseHolding.custom_currency = (holding as any).custom_currency;
+            baseHolding.custom_name = (holding as any).custom_name;
+          }
+          
+          return baseHolding;
+        });
 
       const accountData: any = {
         ...newAccount,
@@ -222,6 +246,46 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
       setTimeout(() => addNewRowIfNeeded(updatedHoldings, index), 10);
     }
     setEditingSymbolIndex(null); // Exit edit mode after selection
+  };
+
+  const handleAddCustomHolding = (searchTerm: string) => {
+    console.log('🎨 [CUSTOM HOLDING] Opening custom holding dialog for:', searchTerm);
+    setCustomHoldingContext({
+      index: editingSymbolIndex || 0,
+      initialSymbol: searchTerm
+    });
+    setShowCustomHoldingDialog(true);
+    setEditingSymbolIndex(null);
+  };
+
+  const handleSaveCustomHolding = async (holdingData: CustomHoldingData) => {
+    console.log('💾 [CUSTOM HOLDING] Saving custom holding:', holdingData);
+    
+    if (!customHoldingContext) return;
+
+    const { index } = customHoldingContext;
+    
+    // Update the holding with the custom data
+    const updatedHoldings = newAccount.holdings.map((holding, i) =>
+      i === index ? { 
+        symbol: holdingData.symbol, 
+        units: holdingData.units.toString(),
+        is_custom: true,
+        custom_price: holdingData.price,
+        custom_currency: holdingData.currency,
+        custom_name: holdingData.name
+      } : holding
+    );
+
+    setNewAccount(prev => ({ ...prev, holdings: updatedHoldings }));
+
+    // Add new row if needed
+    if (index === newAccount.holdings.length - 1) {
+      setTimeout(() => addNewRowIfNeeded(updatedHoldings, index), 10);
+    }
+
+    setShowCustomHoldingDialog(false);
+    setCustomHoldingContext(null);
   };
 
   const updateHoldingUnits = (index: number, value: string) => {
@@ -723,6 +787,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                                 value={holding.symbol}
                                 onSelect={(suggestion) => handleHoldingSymbolSelect(index, suggestion)}
                                 onClose={() => setEditingSymbolIndex(null)}
+                                onAddCustom={handleAddCustomHolding}
                                 className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                                 onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
                                 ref={(el) => {
@@ -781,9 +846,6 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                     ))}
                   </div>
                 </div>
-                <p className="text-xs text-gray-400">
-                  💡 Rows are added automatically when typing and removed when cleared
-                </p>
               </div>
 
               <div className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-xl p-6">
@@ -852,7 +914,23 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
     );
   }
 
-  return null;
+  return (
+    <>
+      <CustomHoldingDialog
+        isOpen={showCustomHoldingDialog}
+        onClose={() => {
+          setShowCustomHoldingDialog(false);
+          setCustomHoldingContext(null);
+        }}
+        onSave={handleSaveCustomHolding}
+        initialSymbol={customHoldingContext?.initialSymbol || ''}
+        initialPrice={customHoldingContext?.initialPrice}
+        initialCurrency={customHoldingContext?.initialCurrency}
+        initialUnits={customHoldingContext?.initialUnits}
+        initialName={customHoldingContext?.initialName}
+      />
+    </>
+  );
 };
 
 export default OnboardingFlow;

@@ -48,6 +48,7 @@ import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
 import OptionsPlanConfig from './components/OptionsPlanConfig';
 import api from './utils/api';
+import { CustomHoldingDialog, CustomHoldingData } from './components/CustomHoldingDialog';
 
 interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
@@ -100,7 +101,8 @@ const EnhancedSymbolDisplay: React.FC<{
   symbol: string;
   onClick: () => void;
   className?: string;
-}> = ({ symbol, onClick, className }) => {
+  isCustom?: boolean;
+}> = ({ symbol, onClick, className, isCustom = false }) => {
   const { getAutocompleteData } = usePortfolioData();
 
   // Helper functions (matching autocomplete component)
@@ -205,6 +207,32 @@ const EnhancedSymbolDisplay: React.FC<{
         onClick={onClick}
       >
         <span className="text-sm">Click to add symbol...</span>
+      </div>
+    );
+  }
+
+  // For custom holdings, show custom badge
+  if (isCustom) {
+    return (
+      <div 
+        className={cn(
+          "cursor-pointer hover:bg-muted/30 px-3 py-2",
+          "flex items-center w-full",
+          className
+        )}
+        onClick={onClick}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-medium text-sm">{symbol}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full border bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800">
+              CUSTOM
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            Custom holding (manual pricing)
+          </div>
+        </div>
       </div>
     );
   }
@@ -337,6 +365,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [editingSymbolIndex, setEditingSymbolIndex] = useState<number | null>(null);
   const [editEditingSymbolIndex, setEditEditingSymbolIndex] = useState<number | null>(null);
   
+  // Custom holding dialog state
+  const [showCustomHoldingDialog, setShowCustomHoldingDialog] = useState(false);
+  const [customHoldingContext, setCustomHoldingContext] = useState<{
+    mode: 'new' | 'edit';
+    index: number;
+    initialSymbol: string;
+    initialPrice?: number;
+    initialCurrency?: string;
+    initialUnits?: number;
+    initialName?: string;
+  } | null>(null);
+  
   // Removed unused autocomplete tracking state
 
   // Handle clicks outside to exit symbol edit mode
@@ -443,6 +483,47 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     setEditingSymbolIndex(null); // Exit edit mode after selection
   };
 
+  const handleAddCustomHolding = (searchTerm: string) => {
+    console.log('🎨 [CUSTOM HOLDING] Opening custom holding dialog for:', searchTerm);
+    setCustomHoldingContext({
+      mode: 'new',
+      index: editingSymbolIndex || 0,
+      initialSymbol: searchTerm
+    });
+    setShowCustomHoldingDialog(true);
+    setEditingSymbolIndex(null);
+  };
+
+  const handleSaveCustomHolding = async (holdingData: CustomHoldingData) => {
+    if (!customHoldingContext) return;
+
+    const { index } = customHoldingContext;
+    
+    // Update the holding with the custom data
+    const updatedHolding = { 
+      symbol: holdingData.symbol, 
+      units: holdingData.units.toString(),
+      is_custom: true,
+      custom_price: holdingData.price,
+      custom_currency: holdingData.currency,
+      custom_name: holdingData.name
+    };
+    
+    const updatedHoldings = newAccount.holdings.map((holding, i) =>
+      i === index ? updatedHolding : holding
+    );
+
+    setNewAccount(prev => ({ ...prev, holdings: updatedHoldings }));
+
+    // Add new row if needed
+    if (index === newAccount.holdings.length - 1) {
+      setTimeout(() => addNewRowIfNeeded(updatedHoldings, index, false), 10);
+    }
+
+    setShowCustomHoldingDialog(false);
+    setCustomHoldingContext(null);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number, field: 'symbol' | 'units') => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -482,10 +563,22 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         // Filter out empty holdings and convert units to numbers
         validHoldings = newAccount.holdings
           .filter(holding => holding.symbol.trim() && holding.units.trim())
-          .map(holding => ({
-            symbol: holding.symbol.trim(),
-            units: parseFloat(holding.units)
-          }));
+          .map(holding => {
+            const baseHolding: any = {
+              symbol: holding.symbol.trim(),
+              units: parseFloat(holding.units)
+            };
+            
+            // Include custom holding fields if present
+            if ((holding as any).is_custom) {
+              baseHolding.is_custom = true;
+              baseHolding.custom_price = (holding as any).custom_price;
+              baseHolding.custom_currency = (holding as any).custom_currency;
+              baseHolding.custom_name = (holding as any).custom_name;
+            }
+            
+            return baseHolding;
+          });
       }
 
       // Filter out empty RSU, ESPP, and Options plans
@@ -552,10 +645,22 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       let mappedHoldings = [{ symbol: '', units: '' }]; // Default empty holding
       
       if (account.holdings && Array.isArray(account.holdings) && account.holdings.length > 0) {
-        mappedHoldings = account.holdings.map(h => ({
-          symbol: h.symbol || '',
-          units: (h.units || 0).toString()
-        }));
+        mappedHoldings = account.holdings.map(h => {
+          const baseHolding: any = {
+            symbol: h.symbol || '',
+            units: (h.units || 0).toString()
+          };
+          
+          // Preserve custom holding fields if present (backend now includes them in holdings)
+          if ((h as any).is_custom) {
+            baseHolding.is_custom = true;
+            baseHolding.custom_price = (h as any).custom_price;
+            baseHolding.custom_currency = (h as any).custom_currency;
+            baseHolding.custom_name = (h as any).custom_name;
+          }
+          
+          return baseHolding;
+        });
       }
       
       // Ensure there's always at least one empty row available for typing
@@ -639,6 +744,47 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     setEditEditingSymbolIndex(null); // Exit edit mode after selection
   };
 
+  const handleEditAddCustomHolding = (searchTerm: string) => {
+    console.log('🎨 [CUSTOM HOLDING] Opening custom holding dialog for edit:', searchTerm);
+    setCustomHoldingContext({
+      mode: 'edit',
+      index: editEditingSymbolIndex || 0,
+      initialSymbol: searchTerm
+    });
+    setShowCustomHoldingDialog(true);
+    setEditEditingSymbolIndex(null);
+  };
+
+  const handleEditSaveCustomHolding = async (holdingData: CustomHoldingData) => {
+    console.log('💾 [CUSTOM HOLDING] Saving custom holding for edit:', holdingData);
+    
+    if (!customHoldingContext) return;
+
+    const { index } = customHoldingContext;
+    
+    // Update the holding with the custom data
+    const updatedHoldings = editAccount.holdings.map((holding, i) =>
+      i === index ? { 
+        symbol: holdingData.symbol, 
+        units: holdingData.units.toString(),
+        is_custom: true,
+        custom_price: holdingData.price,
+        custom_currency: holdingData.currency,
+        custom_name: holdingData.name
+      } : holding
+    );
+
+    setEditAccount(prev => ({ ...prev, holdings: updatedHoldings }));
+
+    // Add new row if needed
+    if (index === editAccount.holdings.length - 1) {
+      setTimeout(() => addNewRowIfNeeded(updatedHoldings, index, true), 10);
+    }
+
+    setShowCustomHoldingDialog(false);
+    setCustomHoldingContext(null);
+  };
+
   const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number, field: 'symbol' | 'units') => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -678,10 +824,22 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         // Filter out empty holdings and convert units to numbers
         validHoldings = editAccount.holdings
           .filter(holding => holding.symbol.trim() && holding.units.trim())
-          .map(holding => ({
-            symbol: holding.symbol.trim(),
-            units: parseFloat(holding.units)
-          }));
+          .map(holding => {
+            const baseHolding: any = {
+              symbol: holding.symbol.trim(),
+              units: parseFloat(holding.units)
+            };
+            
+            // Include custom holding fields if present
+            if ((holding as any).is_custom) {
+              baseHolding.is_custom = true;
+              baseHolding.custom_price = (holding as any).custom_price;
+              baseHolding.custom_currency = (holding as any).custom_currency;
+              baseHolding.custom_name = (holding as any).custom_name;
+            }
+            
+            return baseHolding;
+          });
       }
 
       // Filter out empty RSU, ESPP, and Options plans
@@ -1354,6 +1512,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                     value={holding.symbol}
                                     onSelect={(suggestion) => handleHoldingSymbolSelect(index, suggestion)}
                                     onClose={() => setEditingSymbolIndex(null)}
+                                    onAddCustom={handleAddCustomHolding}
                                     className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                                     onKeyDown={(e) => handleKeyDown(e, index, 'symbol')}
                                     ref={(el) => {
@@ -1366,14 +1525,30 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               ) : (
                                 <EnhancedSymbolDisplay
                                   symbol={holding.symbol}
+                                  isCustom={(holding as any).is_custom || false}
                                   onClick={() => {
-                                    setEditingSymbolIndex(index);
-                                    // For empty symbols, immediately show autocomplete
-                                    if (!holding.symbol.trim()) {
-                                      setTimeout(() => {
-                                        const input = holdingRefs.current[`${index}-symbol`];
-                                        if (input) input.focus();
-                                      }, 50);
+                                      // If it's a custom holding, open dialog to edit it
+                                      if ((holding as any).is_custom) {
+                                        const customHolding = holding as any;
+                                        setCustomHoldingContext({
+                                          mode: 'new',
+                                          index: index,
+                                          initialSymbol: holding.symbol,
+                                          initialPrice: customHolding.custom_price,
+                                          initialCurrency: customHolding.custom_currency,
+                                          initialUnits: parseFloat(holding.units),
+                                          initialName: customHolding.custom_name
+                                        });
+                                        setShowCustomHoldingDialog(true);
+                                      } else {
+                                        setEditingSymbolIndex(index);
+                                        // For empty symbols, immediately show autocomplete
+                                        if (!holding.symbol.trim()) {
+                                          setTimeout(() => {
+                                            const input = holdingRefs.current[`${index}-symbol`];
+                                            if (input) input.focus();
+                                          }, 50);
+                                        }
                                     }
                                   }}
                                   className="border-0 rounded-none shadow-none bg-transparent min-h-[48px] flex items-center"
@@ -1411,9 +1586,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      💡 Rows are added automatically when typing and removed when cleared
-                    </p>
                   </>
                 )}
               </div>
@@ -1904,6 +2076,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                     value={holding.symbol}
                                     onSelect={(suggestion) => handleEditHoldingSymbolSelect(index, suggestion)}
                                     onClose={() => setEditEditingSymbolIndex(null)}
+                                    onAddCustom={handleEditAddCustomHolding}
                                     className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto"
                                     onKeyDown={(e) => handleEditKeyDown(e, index, 'symbol')}
                                     ref={(el) => {
@@ -1916,14 +2089,30 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               ) : (
                                 <EnhancedSymbolDisplay
                                   symbol={holding.symbol}
+                                  isCustom={(holding as any).is_custom || false}
                                   onClick={() => {
-                                    setEditEditingSymbolIndex(index);
-                                    // For empty symbols, immediately show autocomplete
-                                    if (!holding.symbol.trim()) {
-                                      setTimeout(() => {
-                                        const input = editHoldingRefs.current[`edit-${index}-symbol`];
-                                        if (input) input.focus();
-                                      }, 50);
+                                    // If it's a custom holding, open dialog to edit it
+                                    if ((holding as any).is_custom) {
+                                      const customHolding = holding as any;
+                                      setCustomHoldingContext({
+                                        mode: 'edit',
+                                        index: index,
+                                        initialSymbol: holding.symbol,
+                                        initialPrice: customHolding.custom_price,
+                                        initialCurrency: customHolding.custom_currency,
+                                        initialUnits: parseFloat(holding.units),
+                                        initialName: customHolding.custom_name
+                                      });
+                                      setShowCustomHoldingDialog(true);
+                                    } else {
+                                      setEditEditingSymbolIndex(index);
+                                      // For empty symbols, immediately show autocomplete
+                                      if (!holding.symbol.trim()) {
+                                        setTimeout(() => {
+                                          const input = editHoldingRefs.current[`edit-${index}-symbol`];
+                                          if (input) input.focus();
+                                        }, 50);
+                                      }
                                     }
                                   }}
                                   className="border-0 rounded-none shadow-none bg-transparent min-h-[48px] flex items-center"
@@ -1961,9 +2150,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                         ))}
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      💡 Rows are added automatically when typing and removed when cleared
-                    </p>
                   </>
                 )}
               </div>
@@ -2019,6 +2205,21 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Custom Holding Dialog */}
+      <CustomHoldingDialog
+        isOpen={showCustomHoldingDialog}
+        onClose={() => {
+          setShowCustomHoldingDialog(false);
+          setCustomHoldingContext(null);
+        }}
+        onSave={customHoldingContext?.mode === 'edit' ? handleEditSaveCustomHolding : handleSaveCustomHolding}
+        initialSymbol={customHoldingContext?.initialSymbol || ''}
+        initialPrice={customHoldingContext?.initialPrice}
+        initialCurrency={customHoldingContext?.initialCurrency}
+        initialUnits={customHoldingContext?.initialUnits}
+        initialName={customHoldingContext?.initialName}
+      />
     </div>
   );
 };

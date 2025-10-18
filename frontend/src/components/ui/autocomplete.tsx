@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSymbolAutocomplete, SymbolSuggestion } from '../../hooks/useSymbolAutocomplete';
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Plus } from 'lucide-react';
 
 interface AutocompleteProps {
   value: string;
   onSelect: (suggestion: SymbolSuggestion) => void;
   onClose: () => void;
+  onAddCustom?: (searchTerm: string) => void;
   placeholder?: string;
   className?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -17,6 +19,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   value,
   onSelect,
   onClose,
+  onAddCustom,
   onKeyDown,
   className
 }, ref) => {
@@ -188,9 +191,35 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
               <span className="ml-2 text-sm">Searching...</span>
             </div>
-          ) : suggestions.length === 0 && inputValue.trim() ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              No symbols found.
+          ) : !isLoading && suggestions.length === 0 && inputValue.trim() ? (
+            <div className="p-2">
+              {onAddCustom ? (
+                <div
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-4 py-3 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onAddCustom(inputValue.trim());
+                    setOpen(false);
+                    onClose();
+                  }}
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/20">
+                      <Plus className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-blue-300">Add Custom Holding</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        "{inputValue.trim()}" not found - add as custom holding
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No symbols found.
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-1">

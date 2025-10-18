@@ -175,16 +175,26 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                         "symbol": holding.symbol,
                         "name": security.name,
                         "security_type": security.security_type.value,
-                        "currency": security.currency.value
+                        "currency": security.currency.value,
+                        "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
                     }
                     
-                    holdings_with_values.append({
+                    holding_data = {
                         "symbol": holding.symbol,
                         "units": holding.units,
                         "original_currency": security.currency.value,
                         "security_type": security.security_type.value,
-                        "security_name": security.name
-                    })
+                        "security_name": security.name,
+                        "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
+                    }
+                    
+                    # Include custom holding metadata if it's a custom holding
+                    if security.is_custom if hasattr(security, 'is_custom') else False:
+                        holding_data["custom_price"] = security.custom_price if hasattr(security, 'custom_price') else None
+                        holding_data["custom_currency"] = security.currency.value
+                        holding_data["custom_name"] = security.name
+                    
+                    holdings_with_values.append(holding_data)
 
                 # Add RSU virtual holdings
                 rsu_result = rsu_calculator.calculate_rsu_vesting_for_account({
@@ -313,14 +323,21 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
                     "price": price_info["value"],  # Price in base currency (converted)
                     "original_price": price_info["unit_price"],  # Price in original currency
                     "currency": security.currency.value,
-                    "last_updated": datetime.utcnow().isoformat()
+                    "last_updated": datetime.utcnow().isoformat(),
+                    "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
                 }
                 
-                # Prepare historical price task (don't await yet!)
-                # Pass the portfolio's base currency for forex lookups
-                portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
-                historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
-                symbol_securities[symbol] = security
+                # Skip historical price fetching for custom holdings (they don't have market history)
+                if security.is_custom if hasattr(security, 'is_custom') else False:
+                    print(f"✨ [CUSTOM HOLDING] Skipping historical price fetch for custom holding: {symbol}")
+                    # Add empty historical prices for custom holdings
+                    global_historical_prices[symbol] = []
+                else:
+                    # Prepare historical price task (don't await yet!)
+                    # Pass the portfolio's base currency for forex lookups
+                    portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
+                    historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
+                    symbol_securities[symbol] = security
         
         current_prices_time = time.time() - current_prices_start
         print(f"⚡ [COLLECT PRICES] Current prices calculated in {current_prices_time:.3f}s for {len(global_current_prices)} symbols")
@@ -1863,14 +1880,27 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             portfolio_data['securities'] = {}
         for holding in request.holdings:
             symbol = holding.get('symbol')
-            if symbol and symbol not in portfolio_data['securities']:
-                # Determine security type and currency based on symbol format
-                security_type, currency = determine_security_type_and_currency(symbol)
-                portfolio_data['securities'][symbol] = {
-                    'name': symbol,
-                    'type': security_type,
-                    'currency': currency
-                }
+            if symbol:
+                # Check if this is a custom holding
+                is_custom = holding.get('is_custom', False)
+                if is_custom:
+                    # For custom holdings, always update (to allow price changes)
+                    portfolio_data['securities'][symbol] = {
+                        'name': holding.get('custom_name', symbol),
+                        'type': 'stock',  # Default to stock for custom holdings
+                        'currency': holding.get('custom_currency', 'USD'),
+                        'is_custom': True,
+                        'custom_price': holding.get('custom_price')
+                    }
+                elif symbol not in portfolio_data['securities']:
+                    # Only create non-custom securities if they don't exist
+                    # Determine security type and currency based on symbol format
+                    security_type, currency = determine_security_type_and_currency(symbol)
+                    portfolio_data['securities'][symbol] = {
+                        'name': symbol,
+                        'type': security_type,
+                        'currency': currency
+                    }
 
         # Add securities for options plans
         for plan in request.options_plans:
@@ -1983,14 +2013,27 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             doc['securities'] = {}
         for holding in request.holdings:
             symbol = holding.get('symbol')
-            if symbol and symbol not in doc['securities']:
-                # Determine security type and currency based on symbol format
-                security_type, currency = determine_security_type_and_currency(symbol)
-                doc['securities'][symbol] = {
-                    'name': symbol,
-                    'type': security_type,
-                    'currency': currency
-                }
+            if symbol:
+                # Check if this is a custom holding
+                is_custom = holding.get('is_custom', False)
+                if is_custom:
+                    # For custom holdings, always update (to allow price changes)
+                    doc['securities'][symbol] = {
+                        'name': holding.get('custom_name', symbol),
+                        'type': 'stock',  # Default to stock for custom holdings
+                        'currency': holding.get('custom_currency', 'USD'),
+                        'is_custom': True,
+                        'custom_price': holding.get('custom_price')
+                    }
+                elif symbol not in doc['securities']:
+                    # Only create non-custom securities if they don't exist
+                    # Determine security type and currency based on symbol format
+                    security_type, currency = determine_security_type_and_currency(symbol)
+                    doc['securities'][symbol] = {
+                        'name': symbol,
+                        'type': security_type,
+                        'currency': currency
+                    }
 
         # Add securities for options plans
         for plan in request.options_plans:

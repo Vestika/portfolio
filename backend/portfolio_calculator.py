@@ -120,8 +120,13 @@ class PortfolioCalculator:
         price_source = "predefined"  # Default
         unit_price = None
         
+        # Handle custom holdings first - they have a user-provided price
+        if security.is_custom and security.custom_price is not None:
+            unit_price = security.custom_price
+            price_source = "custom"
+            logger.info(f"✨ [CUSTOM HOLDING] Using custom price for {security.symbol}: {unit_price} {security.currency}")
         # Handle cash securities specially - they always have unit price of 1.0 in their own currency
-        if security.security_type == SecurityType.CASH:
+        elif security.security_type == SecurityType.CASH:
             unit_price = 1.0
             price_source = "cash"
             logger.debug(f"Cash security {security.symbol}: unit price = 1.0 {security.currency}")
