@@ -25,6 +25,7 @@ from .endpoints.notifications import router as notifications_router
 from .endpoints.custom_charts import router as custom_charts_router
 from .endpoints.real_estate import router as real_estate_router
 from .endpoints.feedback import router as feedback_router
+from .endpoints.extension import router as extension_router
 
 logger = logging.Logger(__name__)
 
@@ -156,6 +157,7 @@ app.include_router(notifications_router)
 app.include_router(custom_charts_router)
 app.include_router(real_estate_router)
 app.include_router(feedback_router)
+app.include_router(extension_router)
 
 # Mount static files for uploaded profile images
 import os

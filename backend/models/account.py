@@ -12,6 +12,7 @@ class Account:
     rsu_plans: list[Any] = None
     espp_plans: list[Any] = None
     options_plans: list[Any] = None
+    url: str | None = None  # URL associated with this account (for browser extension matching)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
@@ -22,4 +23,5 @@ class Account:
             rsu_plans=data.get("rsu_plans", []),
             espp_plans=data.get("espp_plans", []),
             options_plans=data.get("options_plans", []),
+            url=data.get("url"),
         )

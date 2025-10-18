@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Vestika Portfolio Importer",
+  "version": "1.0.0",
+  "description": "Import portfolio holdings from brokerage websites into Vestika with AI-powered extraction",
+  "icons": {
+    "16": "assets/icon-16.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://app.vestika.io/*",
+    "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "48": "assets/icon-48.png",
+      "128": "assets/icon-128.png"
+    }
+  },
+  "options_page": "src/options/options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://app.vestika.io/*",
+        "http://localhost:5173/*",
+        "http://localhost:*/*"
+      ],
+      "js": ["src/content/vestika-auth.ts"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/injected-auth-bridge.js"],
+      "matches": [
+        "https://app.vestika.io/*",
+        "http://localhost:*/*"
+      ]
+    }
+  ]
+}
