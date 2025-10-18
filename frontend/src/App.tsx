@@ -14,7 +14,6 @@ import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
-import { ExploreView } from './components/ExploreView';
 import { NewsView } from './components/NewsView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
@@ -503,9 +502,6 @@ const App: React.FC = () => {
                   globalPrices={allPortfoliosData?.global_current_prices || {}}
                 />
               )
-            )}
-            {!subView && activeView === 'explore' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ExploreView />
             )}
             {!subView && activeView === 'news' && (
               (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <NewsViewSkeleton /> : <NewsView />
