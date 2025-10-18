@@ -13,6 +13,8 @@ class Security:
     currency: Currency
     tags: dict[str, Any] = field(default_factory=dict)
     unit_price: Optional[float] = None
+    is_custom: bool = False
+    custom_price: Optional[float] = None
 
     @classmethod
     def from_dict(cls, symbol: str, data: dict[str, Any]) -> Self:
@@ -23,4 +25,6 @@ class Security:
             currency=Currency(data["currency"]),
             tags=data.get("tags", {}),
             unit_price=data.get("unit_price"),
+            is_custom=data.get("is_custom", False),
+            custom_price=data.get("custom_price"),
         )

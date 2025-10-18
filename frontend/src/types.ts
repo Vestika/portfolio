@@ -143,6 +143,11 @@ export interface SecurityHolding {
   historical_prices: HistoricalPrice[];
   logo?: string;
   account_breakdown?: AccountBreakdown[];
+  // Custom holding fields
+  is_custom?: boolean;
+  custom_price?: number;
+  custom_currency?: string;
+  custom_name?: string;
   earnings_calendar?: EarningsData[];
 }
 
