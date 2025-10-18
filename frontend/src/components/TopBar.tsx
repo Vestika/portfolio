@@ -1,6 +1,5 @@
 import { 
   PieChart, 
-  Search, 
   Tags, 
   Wrench,
   Bot,
@@ -24,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useUserProfile } from '../contexts/UserProfileContext'
 
-export type NavigationView = 'portfolios' | 'explore' | 'news' | 'analyst' | 'tags' | 'tools'
+export type NavigationView = 'portfolios' | 'news' | 'analyst' | 'tags' | 'tools'
 
 interface TopBarProps {
   activeView: NavigationView
@@ -46,11 +45,6 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
       id: 'portfolios' as NavigationView,
       label: 'My Portfolios',
       icon: <PieChart className="h-4 w-4" />,
-    },
-    {
-      id: 'explore' as NavigationView,
-      label: 'Explore',
-      icon: <Search className="h-4 w-4" />,
     },
     {
       id: 'news' as NavigationView,
@@ -118,18 +112,18 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
 
         {/* Right side - Profile and Notifications (Desktop only) */}
         <div className="hidden md:flex items-center gap-2">
-          {/* Notification Bell */}
-          <NotificationBell />
           {/* Feedback button */}
           <button
             onClick={() => {
               setIsFeedbackOpen(true)
               onFeedbackClick && onFeedbackClick()
             }}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-300 transform hover:scale-105 border border-blue-400/30 hover:border-blue-300/40"
           >
             Feedback
           </button>
+          {/* Notification Bell */}
+          <NotificationBell />
           
           {/* Profile Icon Dropdown */}
           <DropdownMenu>
@@ -183,18 +177,18 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
 
         {/* Mobile Menu Button and Icons */}
         <div className="md:hidden flex items-center gap-2">
-          {/* Notification Bell for mobile */}
-          <NotificationBell />
           {/* Feedback button mobile */}
           <button
             onClick={() => {
               setIsFeedbackOpen(true)
               onFeedbackClick && onFeedbackClick()
             }}
-            className="px-2 py-1 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            className="px-2 py-1 rounded-md text-xs font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-200 border border-blue-400/30 hover:border-blue-300/40"
           >
             Feedback
           </button>
+          {/* Notification Bell for mobile */}
+          <NotificationBell />
           
           {/* Profile Icon for mobile */}
           <DropdownMenu>

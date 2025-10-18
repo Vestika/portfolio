@@ -41,7 +41,7 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
   const creators: Creator[] = [
     {
       name: "Ben", 
-      title: "Backend Team Leader @ Demostack",
+      title: "VP R&D @ Demostack",
       linkedinUrl: "https://www.linkedin.com/in/bensterenson/",
       imageUrl: benSterensonImage
     },

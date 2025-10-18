@@ -1,4 +1,4 @@
-.PHONY: help run clean install stop setup backend frontend
+.PHONY: help run clean install stop setup backend frontend build
 
 # Default target
 help:
@@ -9,6 +9,7 @@ help:
 	@echo "  make backend          - Run only the backend API service"
 	@echo "  make frontend         - Run only the UI development server"
 	@echo "  make install          - Install dependencies for all services"
+	@echo "  make build            - Build the frontend for production"
 	@echo "  make clean            - Clean up temporary files and caches"
 
 # Run all services
@@ -47,6 +48,12 @@ install:
 	@echo "📦 Installing UI dependencies..."
 	@cd frontend && npm install
 	@echo "✅ All dependencies installed!"
+
+# Build frontend for production
+build:
+	@echo "🏗️  Building frontend for production..."
+	@cd frontend && pnpm build
+	@echo "✅ Frontend build complete!"
 
 # Clean up
 clean:
