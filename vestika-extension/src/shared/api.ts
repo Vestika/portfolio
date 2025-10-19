@@ -32,25 +32,32 @@ export class VestikaAPI {
     return response.json();
   }
 
-  // Extract holdings from HTML
-  async extractHoldings(html: string, configId: string, portfolioId?: string) {
+  // Extract holdings from HTML - returns session_id
+  async extractHoldings(html: string, sourceUrl?: string, selector?: string) {
     return this.request('/api/extension/extract', {
       method: 'POST',
       body: JSON.stringify({
         html_body: html,
-        extension_config_id: configId,
-        portfolio_id: portfolioId,
+        source_url: sourceUrl,
+        selector: selector,
       }),
     });
   }
 
-  // Import holdings
+  // Get extraction session
+  async getExtractionSession(sessionId: string) {
+    return this.request(`/api/extension/sessions/${sessionId}`, {
+      method: 'GET',
+    });
+  }
+
+  // Import holdings from session
   async importHoldings(data: {
+    session_id: string;
     portfolio_id: string;
     account_id?: string;
     account_name?: string;
     account_type?: string;
-    holdings: Array<{ symbol: string; units: number }>;
     replace_holdings?: boolean;
   }) {
     return this.request('/api/extension/import', {

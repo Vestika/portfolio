@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
-import { 
-  PortfolioHeaderSkeleton, 
-  PortfolioMainSkeleton, 
+import {
+  PortfolioHeaderSkeleton,
+  PortfolioMainSkeleton,
   ViewTransitionSkeleton,
   ManageTagsViewSkeleton,
   AIChatViewSkeleton,
@@ -19,6 +20,8 @@ import { NewsView } from './components/NewsView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
+import { ImportView } from './components/ImportView';
+import { UploadView } from './components/UploadView';
 import ProfileView from './components/ProfileView';
 import SettingsView from './components/SettingsView';
 import { useAuth } from './contexts/AuthContext';
@@ -38,6 +41,11 @@ const HEADER_HEIGHT = 128; // px, adjust if needed
 
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
+  const location = useLocation();
+
+  // Check if we're on the import or upload page
+  const isImportPage = location.pathname === '/import';
+  const isUploadPage = location.pathname === '/import/upload';
   
   // Use the new ALL portfolios data context
   const { 
@@ -320,6 +328,30 @@ const App: React.FC = () => {
 
   // Show login screen if user is not authenticated
   if (!user) return <Login />;
+
+  // Handle /import/upload route - show upload page without portfolio context requirements
+  if (isUploadPage) {
+    return (
+      <NotificationProvider>
+        <UserProfileProvider>
+          <PopupManager />
+          <UploadView />
+        </UserProfileProvider>
+      </NotificationProvider>
+    );
+  }
+
+  // Handle /import route - show import page without portfolio context requirements
+  if (isImportPage) {
+    return (
+      <NotificationProvider>
+        <UserProfileProvider>
+          <PopupManager />
+          <ImportView />
+        </UserProfileProvider>
+      </NotificationProvider>
+    );
+  }
 
   // Do not block UI during portfolio loading; show skeletons instead
   

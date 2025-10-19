@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 
@@ -20,6 +20,7 @@ from models.extension_models import (
     ExtractHoldingsRequest,
     ExtractHoldingsResponse,
     ExtractedHolding,
+    ExtractionSession,
     ImportHoldingsRequest,
     ImportHoldingsResponse,
 )
@@ -30,31 +31,30 @@ router = APIRouter()
 
 
 # ============================================================================
-# EXTRACTION ENDPOINT
+# BACKGROUND EXTRACTION TASK
 # ============================================================================
 
-@router.post("/api/extension/extract")
-async def extract_holdings(
-    request: ExtractHoldingsRequest,
-    user=Depends(get_current_user)
-) -> ExtractHoldingsResponse:
+async def process_extraction_task(session_id: str, html_body: str, source_url: Optional[str], selector: Optional[str]):
     """
-    Extract portfolio holdings from HTML using Google Gemini AI.
-
-    This endpoint:
-    1. Accepts HTML from a brokerage website
-    2. Uses AI to parse and extract holding data
-    3. Returns structured holdings with confidence scores
+    Background task to extract holdings from HTML using AI.
+    Updates the extraction session with results or error.
     """
     try:
         start_time = datetime.utcnow()
 
+        # Get database connection
+        db = await db_manager.get_database("vestika")
+
         # Validate API key
         if not settings.google_ai_api_key:
-            raise HTTPException(
-                status_code=503,
-                detail="AI extraction service not configured"
+            await db.extraction_sessions.update_one(
+                {"_id": session_id},
+                {"$set": {
+                    "status": "failed",
+                    "error_message": "AI extraction service not configured"
+                }}
             )
+            return
 
         # Initialize Gemini client
         client = genai.Client(api_key=settings.google_ai_api_key)
@@ -64,7 +64,7 @@ async def extract_holdings(
 You are a financial data extraction assistant. Analyze the following HTML from a brokerage portfolio page and extract all investment holdings.
 
 HTML Content:
-{request.html_body}
+{html_body}
 
 Extract the following information for each holding:
 - symbol: Stock ticker symbol (e.g., AAPL, GOOGL, MSFT)
@@ -126,10 +126,14 @@ Important rules:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
             logger.error(f"Response text: {response_text}")
-            raise HTTPException(
-                status_code=500,
-                detail="AI returned invalid JSON format"
+            await db.extraction_sessions.update_one(
+                {"_id": session_id},
+                {"$set": {
+                    "status": "failed",
+                    "error_message": "AI returned invalid JSON format"
+                }}
             )
+            return
 
         # Convert to ExtractedHolding models
         holdings = []
@@ -144,24 +148,238 @@ Important rules:
         end_time = datetime.utcnow()
         extraction_time_ms = int((end_time - start_time).total_seconds() * 1000)
 
+        # Update session with results
+        await db.extraction_sessions.update_one(
+            {"_id": session_id},
+            {"$set": {
+                "status": "completed",
+                "extracted_holdings": [h.dict() for h in holdings],
+                "extraction_metadata": {
+                    "model_used": settings.google_ai_model,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "html_size_bytes": len(html_body),
+                    "extraction_time_ms": extraction_time_ms,
+                    "holdings_count": len(holdings)
+                },
+                "html_body": None  # Clear HTML to save space
+            }}
+        )
+
+        logger.info(f"Completed extraction for session {session_id}: {len(holdings)} holdings")
+
+    except Exception as e:
+        logger.error(f"Error in background extraction task: {e}", exc_info=True)
+        try:
+            db = await db_manager.get_database("vestika")
+            await db.extraction_sessions.update_one(
+                {"_id": session_id},
+                {"$set": {
+                    "status": "failed",
+                    "error_message": str(e)
+                }}
+            )
+        except Exception as update_error:
+            logger.error(f"Failed to update session status: {update_error}")
+
+
+# ============================================================================
+# EXTRACTION ENDPOINT
+# ============================================================================
+
+@router.post("/api/extension/extract")
+async def extract_holdings(
+    request: ExtractHoldingsRequest,
+    background_tasks: BackgroundTasks,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+) -> ExtractHoldingsResponse:
+    """
+    Extract portfolio holdings from HTML using Google Gemini AI (background task).
+
+    Flow:
+    1. Create extraction session with "processing" status
+    2. Return session_id immediately
+    3. Process extraction in background
+    4. Frontend polls session status until "completed" or "failed"
+    """
+    try:
+        # Create extraction session with "processing" status
+        session = ExtractionSession(
+            user_id=user.id,
+            status="processing",
+            extracted_holdings=[],
+            extraction_metadata={},
+            source_url=request.source_url,
+            selector=request.selector,
+            html_body=request.html_body  # Store HTML temporarily for background task
+        )
+
+        # Save to database (temporary collection with TTL)
+        session_dict = session.dict()
+        session_dict["_id"] = session.session_id  # Use session_id as _id
+        await db.extraction_sessions.insert_one(session_dict)
+
+        # Start background task
+        background_tasks.add_task(
+            process_extraction_task,
+            session.session_id,
+            request.html_body,
+            request.source_url,
+            request.selector
+        )
+
+        logger.info(f"Created extraction session {session.session_id} for user {user.id} (processing in background)")
+
         return ExtractHoldingsResponse(
-            holdings=holdings,
-            extraction_metadata={
-                "model_used": settings.google_ai_model,
-                "timestamp": datetime.utcnow().isoformat(),
-                "html_size_bytes": len(request.html_body),
-                "extraction_time_ms": extraction_time_ms,
-                "holdings_count": len(holdings)
-            }
+            session_id=session.session_id
+        )
+
+    except Exception as e:
+        logger.error(f"Error in extract_holdings: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start extraction: {str(e)}"
+        )
+
+
+# ============================================================================
+# FILE UPLOAD ENDPOINT
+# ============================================================================
+
+@router.post("/api/extension/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+) -> ExtractHoldingsResponse:
+    """
+    Upload a file (PDF, CSV, image) and extract holdings using AI.
+
+    Supported file types:
+    - PDF: Brokerage statements
+    - CSV: Holdings export
+    - JPG/PNG: Screenshots of portfolio pages
+
+    Returns session_id for tracking extraction progress.
+    """
+    try:
+        # Validate file type
+        allowed_types = {
+            "application/pdf",
+            "text/csv",
+            "image/jpeg",
+            "image/jpg",
+            "image/png"
+        }
+
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file.content_type}. Allowed: PDF, CSV, JPG, PNG"
+            )
+
+        # Read file content
+        file_bytes = await file.read()
+
+        # For now, convert to text representation
+        # TODO: Implement proper file parsing (PyPDF2 for PDF, etc.)
+        if file.content_type == "text/csv":
+            file_content = file_bytes.decode('utf-8')
+        elif file.content_type == "application/pdf":
+            # For PDF, we'll send the raw content as base64 for now
+            # Google Gemini can handle PDFs
+            import base64
+            file_content = f"PDF_BASE64:{base64.b64encode(file_bytes).decode('utf-8')}"
+        else:
+            # For images, convert to base64
+            import base64
+            file_content = f"IMAGE_BASE64:{base64.b64encode(file_bytes).decode('utf-8')}"
+
+        # Create extraction session
+        session = ExtractionSession(
+            user_id=user.id,
+            status="processing",
+            extracted_holdings=[],
+            extraction_metadata={},
+            source_url=f"uploaded_file:{file.filename}",
+            selector=None,
+            html_body=file_content  # Store file content temporarily
+        )
+
+        # Save to database
+        session_dict = session.dict()
+        session_dict["_id"] = session.session_id
+        await db.extraction_sessions.insert_one(session_dict)
+
+        # Start background task with file content
+        background_tasks.add_task(
+            process_extraction_task,
+            session.session_id,
+            file_content,
+            f"uploaded_file:{file.filename}",
+            None
+        )
+
+        logger.info(f"Created file upload extraction session {session.session_id} for user {user.id} (file: {file.filename})")
+
+        return ExtractHoldingsResponse(
+            session_id=session.session_id
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in extract_holdings: {e}", exc_info=True)
+        logger.error(f"Error in upload_file: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Extraction failed: {str(e)}"
+            detail=f"Failed to process uploaded file: {str(e)}"
+        )
+
+
+# ============================================================================
+# SESSION ENDPOINT
+# ============================================================================
+
+@router.get("/api/extension/sessions/{session_id}")
+async def get_extraction_session(
+    session_id: str,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Retrieve an extraction session for review/editing.
+
+    Used by web app /import page to display extracted holdings.
+    """
+    try:
+        session_doc = await db.extraction_sessions.find_one({"_id": session_id})
+
+        if not session_doc:
+            raise HTTPException(
+                status_code=404,
+                detail="Session not found or expired"
+            )
+
+        # Verify ownership
+        if session_doc.get("user_id") != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+        # Convert _id back to session_id for response
+        session_doc["session_id"] = session_doc.pop("_id")
+
+        return session_doc
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving session {session_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve session"
         )
 
 
@@ -178,6 +396,11 @@ async def import_holdings(
     """
     Import holdings into a portfolio account.
 
+    Flow:
+    1. Load holdings from extraction session
+    2. Import to portfolio/account
+    3. Delete session
+
     Logic:
     - If account_id is provided: Update existing account
     - If account_id is None: Create new account with account_name
@@ -185,6 +408,26 @@ async def import_holdings(
     - If replace_holdings = False: Merge holdings (update existing, add new)
     """
     try:
+        # Load extraction session
+        session_doc = await db.extraction_sessions.find_one({"_id": request.session_id})
+
+        if not session_doc:
+            raise HTTPException(
+                status_code=404,
+                detail="Session not found or expired"
+            )
+
+        # Verify ownership
+        if session_doc.get("user_id") != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied to this session"
+            )
+
+        # Extract holdings from session
+        session_holdings = session_doc.get("extracted_holdings", [])
+        holdings = [{"symbol": h["symbol"], "units": h["units"]} for h in session_holdings]
+
         collection = db.portfolios
 
         # Verify portfolio ownership
@@ -223,14 +466,14 @@ async def import_holdings(
 
             # Update holdings
             if request.replace_holdings:
-                accounts[account_index]["holdings"] = request.holdings
+                accounts[account_index]["holdings"] = holdings
             else:
                 # Merge holdings (update existing symbols, add new ones)
                 existing_holdings = {
                     h["symbol"]: h
                     for h in accounts[account_index].get("holdings", [])
                 }
-                for new_holding in request.holdings:
+                for new_holding in holdings:
                     existing_holdings[new_holding["symbol"]] = new_holding
                 accounts[account_index]["holdings"] = list(existing_holdings.values())
 
@@ -240,12 +483,15 @@ async def import_holdings(
                 {"$set": {"accounts": accounts}}
             )
 
+            # Delete extraction session after successful import
+            await db.extraction_sessions.delete_one({"_id": request.session_id})
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
                 account_id=request.account_id,
                 account_name=accounts[account_index]["name"],
-                imported_holdings_count=len(request.holdings),
+                imported_holdings_count=len(holdings),
                 message="Account updated successfully"
             )
 
@@ -272,7 +518,7 @@ async def import_holdings(
                 "name": request.account_name,
                 "type": request.account_type,
                 "owners": ["me"],
-                "holdings": request.holdings,
+                "holdings": holdings,
                 "rsu_plans": [],
                 "espp_plans": [],
                 "options_plans": []
@@ -284,12 +530,15 @@ async def import_holdings(
                 {"$push": {"accounts": new_account}}
             )
 
+            # Delete extraction session after successful import
+            await db.extraction_sessions.delete_one({"_id": request.session_id})
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
                 account_id=new_account_id,
                 account_name=request.account_name,
-                imported_holdings_count=len(request.holdings),
+                imported_holdings_count=len(holdings),
                 message="Account created successfully"
             )
 

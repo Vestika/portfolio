@@ -67,6 +67,17 @@ async def startup_event():
             # Create database indexes for closing price service
             from services.closing_price.database import create_database_indexes
             await create_database_indexes()
+
+            # Create TTL index for extraction_sessions (auto-expire after 1 hour)
+            try:
+                db = await db_manager.get_database("vestika")
+                await db.extraction_sessions.create_index(
+                    "created_at",
+                    expireAfterSeconds=3600  # 1 hour
+                )
+                logger.info("Created TTL index for extraction_sessions")
+            except Exception as index_err:
+                logger.warning(f"Failed to create extraction_sessions index: {index_err}")
             
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")

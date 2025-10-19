@@ -3,12 +3,96 @@
 import { api } from '../shared/api';
 import type { Message, AuthState } from '../shared/types';
 
-// Auth state stored in memory
-let authState: AuthState = {
-  isAuthenticated: false,
-  token: null,
-  user: null,
-};
+// Auth state - loaded from storage on startup
+let authState: AuthState | null = null;
+
+// Load auth state from storage on startup (survives service worker restarts)
+async function loadAuthFromStorage() {
+  try {
+    const result = await chrome.storage.local.get('authState');
+    if (result.authState) {
+      authState = result.authState;
+      console.log('[Background] Loaded auth from storage:', {
+        isAuthenticated: authState?.isAuthenticated,
+        expiresAt: authState?.expiresAt ? new Date(authState.expiresAt).toISOString() : null
+      });
+
+      // Set token in API client
+      if (authState?.token) {
+        api.setToken(authState.token);
+      }
+
+      // Check if token needs refresh
+      if (authState?.expiresAt) {
+        const timeUntilExpiry = authState.expiresAt - Date.now();
+        if (timeUntilExpiry < 5 * 60 * 1000) {
+          console.log('[Background] Token close to expiry, requesting refresh...');
+          // Request fresh token from Vestika tab
+          await requestAuthRefresh();
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Background] Error loading auth from storage:', error);
+  }
+}
+
+// Request auth refresh from Vestika web app tab
+async function requestAuthRefresh() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['https://app.vestika.io/*', 'http://localhost:5173/*', 'http://localhost:*/*'] });
+
+    if (tabs.length > 0) {
+      // Send refresh request to first matching tab
+      const response = await chrome.tabs.sendMessage(tabs[0].id!, {
+        type: 'REQUEST_AUTH',
+        forceRefresh: true
+      });
+
+      if (response?.token) {
+        // Update auth state
+        authState = {
+          isAuthenticated: true,
+          token: response.token,
+          user: response.user,
+          expiresAt: response.expiresAt,
+          lastUpdated: Date.now()
+        };
+
+        // Persist to storage
+        await chrome.storage.local.set({ authState });
+
+        // Update API client
+        api.setToken(response.token);
+
+        console.log('[Background] Token refreshed successfully');
+      }
+    } else {
+      console.log('[Background] No Vestika tab open for token refresh');
+    }
+  } catch (error) {
+    console.error('[Background] Error refreshing token:', error);
+  }
+}
+
+// Load auth on startup
+loadAuthFromStorage();
+
+// Set up periodic token refresh check (every 30 minutes)
+chrome.alarms.create('tokenRefresh', { periodInMinutes: 30 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'tokenRefresh') {
+    loadAuthFromStorage().then(() => {
+      if (authState?.expiresAt) {
+        const timeUntilExpiry = authState.expiresAt - Date.now();
+        if (timeUntilExpiry < 5 * 60 * 1000) {
+          console.log('[Background] Periodic check: Token needs refresh');
+          requestAuthRefresh();
+        }
+      }
+    });
+  }
+});
 
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
@@ -23,15 +107,33 @@ async function handleMessage(message: Message) {
     case 'AUTH_STATE':
       // Update auth state from Vestika web app
       authState = message.payload;
-      if (authState.token) {
+      // Already persisted by content script, just update in-memory state
+      if (authState?.token) {
         api.setToken(authState.token);
       }
-      console.log('[Background] Auth state updated:', authState.isAuthenticated);
+      console.log('[Background] Auth state updated:', authState?.isAuthenticated);
       return { success: true };
 
     case 'GET_AUTH_TOKEN':
-      // Return current auth token
-      return { token: authState.token, user: authState.user };
+      // Return current auth token (from storage if needed)
+      if (!authState) {
+        await loadAuthFromStorage();
+      }
+
+      // Check if token needs refresh
+      if (authState?.expiresAt) {
+        const timeUntilExpiry = authState.expiresAt - Date.now();
+        if (timeUntilExpiry < 5 * 60 * 1000) {
+          // Try to refresh
+          await requestAuthRefresh();
+        }
+      }
+
+      return {
+        token: authState?.token || null,
+        user: authState?.user || null,
+        expiresAt: authState?.expiresAt || null
+      };
 
     case 'EXTRACT_HTML':
       // Extract HTML from active tab

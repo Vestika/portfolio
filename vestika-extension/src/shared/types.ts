@@ -83,10 +83,14 @@ export interface AuthState {
     email: string;
     displayName: string;
     photoURL: string;
+    uid: string;
   } | null;
+  expiresAt?: number | null; // Token expiration timestamp in milliseconds
+  lastUpdated?: number; // Last time auth was fetched/refreshed
 }
 
 export interface Message {
-  type: 'AUTH_STATE' | 'GET_AUTH_TOKEN' | 'EXTRACT_HTML' | 'AUTO_SYNC';
+  type: 'AUTH_STATE' | 'GET_AUTH_TOKEN' | 'EXTRACT_HTML' | 'AUTO_SYNC' | 'REQUEST_AUTH';
   payload?: any;
+  forceRefresh?: boolean;
 }

@@ -30,12 +30,12 @@ if (document.readyState === 'loading') {
 }
 
 // Function to get auth from injected script
-function getFirebaseAuthToken(): Promise<{ token: string | null; user: any }> {
+function getFirebaseAuthToken(forceRefresh: boolean = false): Promise<{ token: string | null; user: any; expiresAt: number | null }> {
   return new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
       cleanup();
       console.log('[Vestika Auth] Timeout waiting for auth response');
-      resolve({ token: null, user: null });
+      resolve({ token: null, user: null, expiresAt: null });
     }, 5000);
 
     function handleMessage(event: MessageEvent) {
@@ -53,52 +53,72 @@ function getFirebaseAuthToken(): Promise<{ token: string | null; user: any }> {
 
     window.addEventListener('message', handleMessage);
 
-    // Request auth from injected script
-    window.postMessage({ type: 'GET_FIREBASE_AUTH' }, window.location.origin);
+    // Request auth from injected script with forceRefresh flag
+    window.postMessage({ type: 'GET_FIREBASE_AUTH', forceRefresh }, window.location.origin);
   });
 }
 
-// Send auth state to background script
-async function monitorAuthState() {
+// Send auth state to background script and persist to storage
+async function syncAuthState(forceRefresh: boolean = false) {
   try {
-    const { token, user } = await getFirebaseAuthToken();
+    const { token, user, expiresAt } = await getFirebaseAuthToken(forceRefresh);
 
     console.log('[Vestika Auth] Got auth state:', {
       hasToken: !!token,
       hasUser: !!user,
-      email: user?.email
+      email: user?.email,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null
     });
+
+    const authData = {
+      isAuthenticated: !!token,
+      token,
+      user,
+      expiresAt,
+      lastUpdated: Date.now()
+    };
+
+    // Persist to chrome.storage.local for durability across service worker restarts
+    await chrome.storage.local.set({ authState: authData });
 
     // Send to background script
     chrome.runtime.sendMessage({
       type: 'AUTH_STATE',
-      payload: {
-        isAuthenticated: !!token,
-        token,
-        user,
-      },
+      payload: authData,
     }).catch(err => {
       console.error('[Vestika Auth] Failed to send to background:', err);
     });
 
   } catch (error) {
-    console.error('[Vestika Auth] Error getting auth token:', error);
+    console.error('[Vestika Auth] Error syncing auth state:', error);
   }
 }
 
-// Monitor auth state
-// Wait a bit for page to load
+// Initial sync
 setTimeout(() => {
-  monitorAuthState();
-  // Check periodically
-  setInterval(monitorAuthState, 60000); // Every minute
+  syncAuthState();
+
+  // Periodic refresh - check token every 30 minutes and refresh if close to expiry
+  setInterval(async () => {
+    const result = await chrome.storage.local.get('authState');
+    const authState = result.authState;
+
+    if (authState?.expiresAt) {
+      const timeUntilExpiry = authState.expiresAt - Date.now();
+      // Refresh if less than 5 minutes until expiry
+      if (timeUntilExpiry < 5 * 60 * 1000) {
+        console.log('[Vestika Auth] Token close to expiry, refreshing...');
+        await syncAuthState(true); // Force refresh
+      }
+    }
+  }, 30 * 60 * 1000); // Every 30 minutes
 }, 2000);
 
 // Listen for messages from extension
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'REQUEST_AUTH') {
-    getFirebaseAuthToken().then(({ token, user }) => {
-      sendResponse({ token, user });
+    getFirebaseAuthToken(message.forceRefresh || false).then(({ token, user, expiresAt }) => {
+      sendResponse({ token, user, expiresAt });
     });
     return true;
   }
