@@ -31,7 +31,7 @@ export const UploadView: React.FC = () => {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await api.post('/api/extension/upload', formData, {
+      const response = await api.post('/api/import/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -80,7 +80,7 @@ export const UploadView: React.FC = () => {
           </Button>
           <h1 className="text-3xl font-bold text-white mb-2">Upload Portfolio Statement</h1>
           <p className="text-gray-400">
-            Upload a brokerage statement (PDF, CSV, or image) and our AI will extract your holdings
+            Upload a brokerage statement (PDF, CSV, or image) and we will extract your holdings automatically.
           </p>
         </div>
 

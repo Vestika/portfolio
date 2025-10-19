@@ -34,7 +34,7 @@ export class VestikaAPI {
 
   // Extract holdings from HTML - returns session_id
   async extractHoldings(html: string, sourceUrl?: string, selector?: string) {
-    return this.request('/api/extension/extract', {
+    return this.request('/api/import/extract', {
       method: 'POST',
       body: JSON.stringify({
         html_body: html,
@@ -46,7 +46,7 @@ export class VestikaAPI {
 
   // Get extraction session
   async getExtractionSession(sessionId: string) {
-    return this.request(`/api/extension/sessions/${sessionId}`, {
+    return this.request(`/api/import/sessions/${sessionId}`, {
       method: 'GET',
     });
   }
@@ -55,12 +55,11 @@ export class VestikaAPI {
   async importHoldings(data: {
     session_id: string;
     portfolio_id: string;
-    account_id?: string;
     account_name?: string;
     account_type?: string;
     replace_holdings?: boolean;
   }) {
-    return this.request('/api/extension/import', {
+    return this.request('/api/import/holdings', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -68,50 +67,50 @@ export class VestikaAPI {
 
   // Shared configs
   async getSharedConfigs() {
-    return this.request('/api/extension/configs');
+    return this.request('/api/import/configs');
   }
 
   async createSharedConfig(config: any) {
-    return this.request('/api/extension/configs', {
+    return this.request('/api/import/configs', {
       method: 'POST',
       body: JSON.stringify(config),
     });
   }
 
   async updateSharedConfig(id: string, config: any) {
-    return this.request(`/api/extension/configs/${id}`, {
+    return this.request(`/api/import/configs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(config),
     });
   }
 
   async deleteSharedConfig(id: string) {
-    return this.request(`/api/extension/configs/${id}`, {
+    return this.request(`/api/import/configs/${id}`, {
       method: 'DELETE',
     });
   }
 
   // Private configs
   async getPrivateConfigs() {
-    return this.request('/api/extension/private-configs');
+    return this.request('/api/import/private-configs');
   }
 
   async createPrivateConfig(config: any) {
-    return this.request('/api/extension/private-configs', {
+    return this.request('/api/import/private-configs', {
       method: 'POST',
       body: JSON.stringify(config),
     });
   }
 
   async updatePrivateConfig(id: string, config: any) {
-    return this.request(`/api/extension/private-configs/${id}`, {
+    return this.request(`/api/import/private-configs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(config),
     });
   }
 
   async deletePrivateConfig(id: string) {
-    return this.request(`/api/extension/private-configs/${id}`, {
+    return this.request(`/api/import/private-configs/${id}`, {
       method: 'DELETE',
     });
   }

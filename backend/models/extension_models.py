@@ -69,11 +69,10 @@ class ExtractHoldingsResponse(BaseModel):
 class ImportHoldingsRequest(BaseModel):
     """Request to import holdings into portfolio"""
     session_id: str  # References ExtractionSession
-    portfolio_id: str
-    account_id: Optional[str] = None  # If None, create new account
-    account_name: Optional[str] = None  # Required if account_id is None
-    account_type: str = "taxable-brokerage"
-    replace_holdings: bool = False  # True = replace all, False = merge
+    portfolio_id: str  # Portfolio ID to import into
+    account_name: Optional[str] = None  # Account name to import into (if exists, override; if new, create)
+    account_type: str = "bank-account"  # Used only when creating new account (must match AccountSelector options)
+    replace_holdings: bool = True  # Always replace (override) holdings in the account
 
 
 class ImportHoldingsResponse(BaseModel):

@@ -186,7 +186,7 @@ Important rules:
 # EXTRACTION ENDPOINT
 # ============================================================================
 
-@router.post("/api/extension/extract")
+@router.post("/api/import/extract")
 async def extract_holdings(
     request: ExtractHoldingsRequest,
     background_tasks: BackgroundTasks,
@@ -246,7 +246,7 @@ async def extract_holdings(
 # FILE UPLOAD ENDPOINT
 # ============================================================================
 
-@router.post("/api/extension/upload")
+@router.post("/api/import/upload")
 async def upload_file(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
@@ -341,7 +341,7 @@ async def upload_file(
 # SESSION ENDPOINT
 # ============================================================================
 
-@router.get("/api/extension/sessions/{session_id}")
+@router.get("/api/import/sessions/{session_id}")
 async def get_extraction_session(
     session_id: str,
     user=Depends(get_current_user),
@@ -387,7 +387,7 @@ async def get_extraction_session(
 # IMPORT ENDPOINT
 # ============================================================================
 
-@router.post("/api/extension/import")
+@router.post("/api/import/holdings")
 async def import_holdings(
     request: ImportHoldingsRequest,
     user=Depends(get_current_user),
@@ -402,10 +402,9 @@ async def import_holdings(
     3. Delete session
 
     Logic:
-    - If account_id is provided: Update existing account
-    - If account_id is None: Create new account with account_name
-    - If replace_holdings = True: Replace all holdings
-    - If replace_holdings = False: Merge holdings (update existing, add new)
+    - If account_name matches existing account: OVERRIDE (replace) all holdings in that account
+    - If account_name is new: CREATE new account with the provided name and type
+    - NOTE: We always OVERRIDE holdings, never merge/append
     """
     try:
         # Load extraction session
@@ -442,40 +441,25 @@ async def import_holdings(
                 detail="Portfolio not found or access denied"
             )
 
-        if request.account_id:
-            # Update existing account
-            accounts = portfolio_doc.get("accounts", [])
-            account_index = None
+        accounts = portfolio_doc.get("accounts", [])
 
-            # Find account by ID or name
-            for i, acc in enumerate(accounts):
-                acc_id = acc.get("_id") or acc.get("id")
-                if str(acc_id) == request.account_id:
-                    account_index = i
-                    break
-                # Fallback: match by name if provided
-                if request.account_name and acc.get("name") == request.account_name:
-                    account_index = i
-                    break
+        # If no account_name provided, generate a default one
+        if not request.account_name:
+            request.account_name = f"Imported Account {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
 
-            if account_index is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Account not found in portfolio"
-                )
+        # Find account by name (MongoDB stores it as "name" field per Account model)
+        account_index = None
+        for i, acc in enumerate(accounts):
+            if acc.get("name") == request.account_name:
+                account_index = i
+                break
 
-            # Update holdings
-            if request.replace_holdings:
-                accounts[account_index]["holdings"] = holdings
-            else:
-                # Merge holdings (update existing symbols, add new ones)
-                existing_holdings = {
-                    h["symbol"]: h
-                    for h in accounts[account_index].get("holdings", [])
-                }
-                for new_holding in holdings:
-                    existing_holdings[new_holding["symbol"]] = new_holding
-                accounts[account_index]["holdings"] = list(existing_holdings.values())
+        if account_index is not None:
+            # Existing account found - OVERRIDE holdings
+            logger.info(f"Overriding holdings in existing account '{request.account_name}' (index {account_index})")
+
+            # Override all holdings in this account
+            accounts[account_index]["holdings"] = holdings
 
             # Update portfolio document
             await collection.update_one(
@@ -486,38 +470,29 @@ async def import_holdings(
             # Delete extraction session after successful import
             await db.extraction_sessions.delete_one({"_id": request.session_id})
 
+            account_id = accounts[account_index].get("_id") or accounts[account_index].get("id") or str(ObjectId())
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
-                account_id=request.account_id,
-                account_name=accounts[account_index]["name"],
+                account_id=str(account_id),
+                account_name=request.account_name,
                 imported_holdings_count=len(holdings),
-                message="Account updated successfully"
+                message=f"Successfully overridden holdings in account '{request.account_name}'"
             )
 
         else:
-            # Create new account
-            if not request.account_name:
-                raise HTTPException(
-                    status_code=400,
-                    detail="account_name is required when creating a new account"
-                )
+            # Account not found - CREATE new account
+            logger.info(f"Creating new account '{request.account_name}'")
 
-            # Check for duplicate account name
-            existing_accounts = portfolio_doc.get("accounts", [])
-            if any(acc.get("name") == request.account_name for acc in existing_accounts):
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Account '{request.account_name}' already exists"
-                )
-
-            # Create new account
             new_account_id = str(ObjectId())
             new_account = {
                 "_id": new_account_id,
-                "name": request.account_name,
-                "type": request.account_type,
-                "owners": ["me"],
+                "name": request.account_name,  # MongoDB stores account name in "name" field per Account model
+                "properties": {
+                    "owners": ["me"],
+                    "type": request.account_type
+                },
                 "holdings": holdings,
                 "rsu_plans": [],
                 "espp_plans": [],
@@ -539,7 +514,7 @@ async def import_holdings(
                 account_id=new_account_id,
                 account_name=request.account_name,
                 imported_holdings_count=len(holdings),
-                message="Account created successfully"
+                message=f"Successfully created account '{request.account_name}' with {len(holdings)} holdings"
             )
 
     except HTTPException:
@@ -556,7 +531,7 @@ async def import_holdings(
 # CONFIGURATION ENDPOINTS
 # ============================================================================
 
-@router.post("/api/extension/configs")
+@router.post("/api/import/configs")
 async def create_shared_config(
     config: ExtensionConfig,
     user=Depends(get_current_user),
@@ -576,7 +551,7 @@ async def create_shared_config(
     }
 
 
-@router.get("/api/extension/configs")
+@router.get("/api/import/configs")
 async def list_shared_configs(
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
@@ -589,7 +564,7 @@ async def list_shared_configs(
     return {"configs": configs}
 
 
-@router.get("/api/extension/configs/{config_id}")
+@router.get("/api/import/configs/{config_id}")
 async def get_shared_config(
     config_id: str,
     user=Depends(get_current_user),
@@ -604,7 +579,7 @@ async def get_shared_config(
     return doc
 
 
-@router.put("/api/extension/configs/{config_id}")
+@router.put("/api/import/configs/{config_id}")
 async def update_shared_config(
     config_id: str,
     config: ExtensionConfig,
@@ -633,7 +608,7 @@ async def update_shared_config(
     return {"message": "Configuration updated successfully"}
 
 
-@router.delete("/api/extension/configs/{config_id}")
+@router.delete("/api/import/configs/{config_id}")
 async def delete_shared_config(
     config_id: str,
     user=Depends(get_current_user),
@@ -658,7 +633,7 @@ async def delete_shared_config(
 # PRIVATE CONFIGURATION ENDPOINTS
 # ============================================================================
 
-@router.post("/api/extension/private-configs")
+@router.post("/api/import/private-configs")
 async def create_private_config(
     config: PrivateExtensionConfig,
     user=Depends(get_current_user),
@@ -678,7 +653,7 @@ async def create_private_config(
     }
 
 
-@router.get("/api/extension/private-configs")
+@router.get("/api/import/private-configs")
 async def list_private_configs(
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
@@ -691,7 +666,7 @@ async def list_private_configs(
     return {"configs": configs}
 
 
-@router.get("/api/extension/private-configs/{config_id}")
+@router.get("/api/import/private-configs/{config_id}")
 async def get_private_config(
     config_id: str,
     user=Depends(get_current_user),
@@ -709,7 +684,7 @@ async def get_private_config(
     return doc
 
 
-@router.put("/api/extension/private-configs/{config_id}")
+@router.put("/api/import/private-configs/{config_id}")
 async def update_private_config(
     config_id: str,
     config: PrivateExtensionConfig,
@@ -735,7 +710,7 @@ async def update_private_config(
     return {"message": "Private configuration updated successfully"}
 
 
-@router.delete("/api/extension/private-configs/{config_id}")
+@router.delete("/api/import/private-configs/{config_id}")
 async def delete_private_config(
     config_id: str,
     user=Depends(get_current_user),

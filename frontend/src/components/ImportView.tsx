@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
+import { ComboBox, ComboBoxOption } from './ui/combobox';
 
 interface ExtractedHolding {
   symbol: string;
@@ -50,11 +51,9 @@ export const ImportView: React.FC = () => {
   const [holdings, setHoldings] = useState<ExtractedHolding[]>([]);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
 
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState('');
-  const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [newPortfolioName, setNewPortfolioName] = useState('');
-  const [newAccountName, setNewAccountName] = useState('');
-  const [newAccountType, setNewAccountType] = useState('taxable-brokerage');
+  const [selectedPortfolioName, setSelectedPortfolioName] = useState('');
+  const [selectedAccountName, setSelectedAccountName] = useState('');
+  const [newAccountType, setNewAccountType] = useState('bank-account');
 
   const [importing, setImporting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -72,7 +71,7 @@ export const ImportView: React.FC = () => {
 
   async function loadSession() {
     try {
-      const response = await api.get(`/api/extension/sessions/${sessionId}`);
+      const response = await api.get(`/api/import/sessions/${sessionId}`);
       const sessionData = response.data;
 
       setSession(sessionData);
@@ -105,17 +104,30 @@ export const ImportView: React.FC = () => {
       const response = await api.get('/portfolios/raw');
       const data = response.data;
       if (data && data.portfolios) {
-        const portfoliosArray = Object.entries(data.portfolios).map(([id, portfolio]: [string, any]) => ({
-          id,
-          portfolio_name: portfolio.portfolio_name || portfolio.name || id,
-          base_currency: portfolio.base_currency || 'USD',
-          accounts: portfolio.accounts || []
-        }));
+        const portfoliosArray = Object.entries(data.portfolios).map(([id, portfolioData]: [string, any]) => {
+          // Extract portfolio metadata
+          const metadata = portfolioData.portfolio_metadata || {};
+
+          // Extract accounts with their names
+          const accounts = (portfolioData.accounts || []).map((account: any, index: number) => ({
+            id: account.account_name || `account_${index}`,
+            name: account.account_name || `Account ${index + 1}`,
+            type: account.account_type || 'taxable-brokerage'
+          }));
+
+          return {
+            id: metadata.portfolio_id || id,
+            portfolio_name: metadata.portfolio_name || 'Unnamed Portfolio',
+            base_currency: metadata.base_currency || 'USD',
+            accounts
+          };
+        });
+
         setPortfolios(portfoliosArray);
 
         // Auto-select first portfolio
         if (portfoliosArray.length > 0) {
-          setSelectedPortfolioId(portfoliosArray[0].id);
+          setSelectedPortfolioName(portfoliosArray[0].portfolio_name);
         }
       }
     } catch (err: any) {
@@ -149,35 +161,45 @@ export const ImportView: React.FC = () => {
     setImporting(true);
 
     try {
-      // Create portfolio if needed
-      let portfolioId = selectedPortfolioId;
-      if (!portfolioId && newPortfolioName) {
+      if (!selectedPortfolioName) {
+        throw new Error('Please select or enter a portfolio name');
+      }
+
+      // Find existing portfolio by name or create new one
+      let selectedPortfolio = portfolios.find(p => p.portfolio_name === selectedPortfolioName);
+      let portfolioId = selectedPortfolio?.id;
+
+      if (!portfolioId) {
+        // Create new portfolio with the entered name
         const response = await api.post('/portfolio', {
-          portfolio_name: newPortfolioName,
+          portfolio_name: selectedPortfolioName,
           base_currency: 'USD'
         });
         portfolioId = response.data.portfolio_id;
-      }
-
-      if (!portfolioId) {
-        throw new Error('Please select a portfolio or create a new one');
       }
 
       // Prepare import request
       const importData: any = {
         session_id: sessionId,
         portfolio_id: portfolioId,
-        replace_holdings: false
+        replace_holdings: true  // Always override (not used in backend anymore, but kept for compatibility)
       };
 
-      if (selectedAccountId) {
-        importData.account_id = selectedAccountId;
-      } else if (newAccountName) {
-        importData.account_name = newAccountName;
-        importData.account_type = newAccountType;
-      }
+      // Handle account selection/creation
+      if (selectedAccountName) {
+        // Backend will check if account exists and override, or create new
+        importData.account_name = selectedAccountName;
 
-      await api.post('/api/extension/import', importData);
+        // Check if account is new to determine if we need to send account_type
+        const existingAccount = selectedPortfolio?.accounts?.find(a => a.name === selectedAccountName);
+        if (!existingAccount) {
+          // New account - send account_type
+          importData.account_type = newAccountType;
+        }
+      }
+      // If no account name provided, backend will auto-generate one
+
+      await api.post('/api/import/holdings', importData);
 
       setSuccess(true);
       setImporting(false);
@@ -241,8 +263,17 @@ export const ImportView: React.FC = () => {
     );
   }
 
-  const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
-  const availableAccounts = selectedPortfolio?.accounts || [];
+  // Prepare options for ComboBoxes
+  const portfolioOptions: ComboBoxOption[] = portfolios.map(p => ({
+    value: p.portfolio_name,
+    label: p.portfolio_name
+  }));
+
+  const selectedPortfolio = portfolios.find(p => p.portfolio_name === selectedPortfolioName);
+  const accountOptions: ComboBoxOption[] = (selectedPortfolio?.accounts || []).map(a => ({
+    value: a.name,
+    label: a.name
+  }));
 
   return (
     <div className="min-h-screen bg-gray-900 p-4">
@@ -353,27 +384,25 @@ export const ImportView: React.FC = () => {
             <label className="block text-gray-400 text-sm font-medium mb-2">
               Portfolio *
             </label>
-            <select
-              value={selectedPortfolioId}
-              onChange={(e) => setSelectedPortfolioId(e.target.value)}
-              className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">-- Create New Portfolio --</option>
-              {portfolios.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.portfolio_name}
-                </option>
-              ))}
-            </select>
-            {!selectedPortfolioId && (
-              <input
-                type="text"
-                value={newPortfolioName}
-                onChange={(e) => setNewPortfolioName(e.target.value)}
-                placeholder="Enter new portfolio name"
-                className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none mt-2"
-              />
-            )}
+            <ComboBox
+              options={portfolioOptions}
+              value={selectedPortfolioName}
+              onChange={(value) => {
+                setSelectedPortfolioName(value);
+                // Reset account selection when portfolio changes
+                setSelectedAccountName('');
+              }}
+              placeholder="Select or type portfolio name..."
+              allowCustom={true}
+              emptyMessage="No portfolios found. Type to create new."
+            />
+            <p className="text-gray-500 text-xs mt-2">
+              {selectedPortfolio
+                ? 'Importing to existing portfolio'
+                : selectedPortfolioName
+                ? `Will create new portfolio "${selectedPortfolioName}"`
+                : 'Select an existing portfolio or type a new name'}
+            </p>
           </div>
 
           {/* Account Selection */}
@@ -381,45 +410,42 @@ export const ImportView: React.FC = () => {
             <label className="block text-gray-400 text-sm font-medium mb-2">
               Account
             </label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-              disabled={!selectedPortfolioId}
-            >
-              <option value="">-- Create New Account --</option>
-              {availableAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            {!selectedAccountId && selectedPortfolioId && (
-              <>
-                <input
-                  type="text"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                  placeholder="Enter new account name (optional)"
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none mt-2"
-                />
+            <ComboBox
+              options={accountOptions}
+              value={selectedAccountName}
+              onChange={setSelectedAccountName}
+              placeholder="Select or type account name..."
+              allowCustom={true}
+              disabled={!selectedPortfolioName}
+              emptyMessage="No accounts found. Type to create new."
+            />
+
+            {/* Account Type Selection - only shown when creating new account */}
+            {selectedAccountName && !selectedPortfolio?.accounts?.find(a => a.name === selectedAccountName) && (
+              <div className="mt-2">
+                <label className="block text-gray-400 text-xs font-medium mb-1">
+                  Account Type
+                </label>
                 <select
                   value={newAccountType}
                   onChange={(e) => setNewAccountType(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none mt-2"
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
                 >
-                  <option value="taxable-brokerage">Taxable Brokerage</option>
-                  <option value="ira">IRA</option>
-                  <option value="401k">401(k)</option>
-                  <option value="roth-ira">Roth IRA</option>
-                  <option value="company-custodian-account">Company Account</option>
+                  <option value="bank-account">Bank Account</option>
+                  <option value="investment-account">Investment Account</option>
+                  <option value="education-fund">Education Fund</option>
+                  <option value="retirement-account">Retirement Account</option>
+                  <option value="company-custodian-account">Company Custodian Account</option>
                 </select>
-              </>
+              </div>
             )}
+
             <p className="text-gray-500 text-xs mt-2">
-              {selectedAccountId
-                ? 'Holdings will be merged into the selected account'
-                : 'A new account will be created with an auto-generated name if left empty'}
+              {selectedAccountName && selectedPortfolio?.accounts?.find(a => a.name === selectedAccountName)
+                ? '⚠️  WARNING: All existing holdings in this account will be OVERRIDDEN (replaced)'
+                : selectedAccountName
+                ? `Will create new account "${selectedAccountName}"`
+                : 'Select an existing account or type a new name (optional)'}
             </p>
           </div>
         </div>
