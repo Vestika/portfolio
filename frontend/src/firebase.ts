@@ -16,6 +16,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
+// Expose auth to window for browser extension access
+if (typeof window !== 'undefined') {
+  (window as any).__FIREBASE_AUTH__ = auth;
+  console.log('[Firebase] Auth exposed to window for extension');
+}
+
 // Authentication functions
 export const signInWithGoogle = async () => {
   try {

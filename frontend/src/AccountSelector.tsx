@@ -16,7 +16,10 @@ import {
   Trash2,
   X,
   Edit,
-  Info
+  Info,
+  ChevronDown,
+  FileUp,
+  PenLine
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -40,8 +43,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SymbolSuggestion } from './hooks/useSymbolAutocomplete';
 import HamburgerMenu from "@/components/ui/HamburgerMenu";
+import { useNavigate } from 'react-router-dom';
 
 
 import RSUPlanConfig from './components/RSUPlanConfig';
@@ -290,6 +300,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   onDefaultPortfolioSet,
   globalPrices
 }) => {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<AccountInfo[]>(
     portfolioMetadata.accounts.map(account => ({
       ...account,
@@ -1055,15 +1066,33 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   )}
                 </div>
             ))}
-            
-            {/* Add New Account Button */}
-            <button
-              onClick={() => setShowAddAccountModal(true)}
-              className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group"
-            >
-              <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
-              <span className="text-xs font-medium text-emerald-100">Add Account</span>
-            </button>
+
+            {/* Add New Account Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group">
+                  <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
+                  <span className="text-xs font-medium text-emerald-100">Add Account</span>
+                  <ChevronDown size={14} className="text-emerald-200 group-hover:text-emerald-100" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onSelect={() => setShowAddAccountModal(true)}
+                  className="cursor-pointer"
+                >
+                  <PenLine className="mr-2 h-4 w-4" />
+                  <span>Manual Entry</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => navigate('/import/upload')}
+                  className="cursor-pointer"
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  <span>Upload Statement</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Visibility Toggle */}

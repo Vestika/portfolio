@@ -25,6 +25,7 @@ from .endpoints.notifications import router as notifications_router
 from .endpoints.custom_charts import router as custom_charts_router
 from .endpoints.real_estate import router as real_estate_router
 from .endpoints.feedback import router as feedback_router
+from .endpoints.extension import router as extension_router
 
 logger = logging.Logger(__name__)
 
@@ -66,6 +67,17 @@ async def startup_event():
             # Create database indexes for closing price service
             from services.closing_price.database import create_database_indexes
             await create_database_indexes()
+
+            # Create TTL index for extraction_sessions (auto-expire after 1 hour)
+            try:
+                db = await db_manager.get_database("vestika")
+                await db.extraction_sessions.create_index(
+                    "created_at",
+                    expireAfterSeconds=3600  # 1 hour
+                )
+                logger.info("Created TTL index for extraction_sessions")
+            except Exception as index_err:
+                logger.warning(f"Failed to create extraction_sessions index: {index_err}")
             
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")
@@ -156,6 +168,7 @@ app.include_router(notifications_router)
 app.include_router(custom_charts_router)
 app.include_router(real_estate_router)
 app.include_router(feedback_router)
+app.include_router(extension_router)
 
 # Mount static files for uploaded profile images
 import os
