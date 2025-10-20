@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { AboutModal } from './AboutModal'
 import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
+import GoogleProfilePicture from './GoogleProfilePicture'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +39,7 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
-  const { profileImageUrl } = useUserProfile()
+  const { googleProfileData } = useUserProfile()
   
   const navigationItems = [
     {
@@ -128,20 +129,13 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
           {/* Profile Icon Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-8 h-8' : 'p-1.5'}`}>
-                {profileImageUrl ? (
-                  <img
-                    src={profileImageUrl}
-                    alt="Profile"
-                    className="w-full h-full rounded-full object-cover"
-                    onError={(e) => {
-                      // Fallback to User icon if image fails to load
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                ) : null}
-                <User size={18} className={profileImageUrl ? 'hidden' : ''} />
+              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-8 h-8">
+                <GoogleProfilePicture
+                  photoURL={googleProfileData?.photoURL}
+                  displayName={googleProfileData?.displayName}
+                  size="sm"
+                  className="border-0 bg-transparent"
+                />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent 
@@ -193,20 +187,13 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
           {/* Profile Icon for mobile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={`rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${profileImageUrl ? 'p-0 w-7 h-7' : 'p-1'}`}>
-                {profileImageUrl ? (
-                  <img
-                    src={profileImageUrl}
-                    alt="Profile"
-                    className="w-full h-full rounded-full object-cover"
-                    onError={(e) => {
-                      // Fallback to User icon if image fails to load
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                ) : null}
-                <User size={16} className={profileImageUrl ? 'hidden' : ''} />
+              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-7 h-7">
+                <GoogleProfilePicture
+                  photoURL={googleProfileData?.photoURL}
+                  displayName={googleProfileData?.displayName}
+                  size="sm"
+                  className="border-0 bg-transparent"
+                />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent 

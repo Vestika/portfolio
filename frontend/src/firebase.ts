@@ -16,6 +16,10 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
+// Add profile scope to access user's profile information including profile picture
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+
 // Expose auth to window for browser extension access
 if (typeof window !== 'undefined') {
   (window as any).__FIREBASE_AUTH__ = auth;
