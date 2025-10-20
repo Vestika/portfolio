@@ -22,6 +22,12 @@ interface UserProfile {
   updated_at: string;
 }
 
+interface GoogleProfileData {
+  photoURL?: string | null;
+  displayName?: string | null;
+  email?: string | null;
+}
+
 interface UserProfileContextType {
   profile: UserProfile | null;
   isLoading: boolean;
@@ -31,6 +37,7 @@ interface UserProfileContextType {
   profileImageUrl: string | undefined;
   displayName: string;
   isAuthenticated: boolean;
+  googleProfileData: GoogleProfileData | null;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
@@ -54,6 +61,7 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [googleProfileData, setGoogleProfileData] = useState<GoogleProfileData | null>(null);
 
   const loadProfile = async () => {
     // Wait for auth to finish loading before making any decisions
@@ -66,6 +74,7 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     if (!user) {
       console.log('🔄 [UserProfileContext] No authenticated user, skipping profile load');
       setProfile(null);
+      setGoogleProfileData(null);
       setIsLoading(false);
       return;
     }
@@ -74,9 +83,19 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     if (!user.uid) {
       console.warn('🔄 [UserProfileContext] User exists but has no UID, skipping profile load');
       setProfile(null);
+      setGoogleProfileData(null);
       setIsLoading(false);
       return;
     }
+
+    // Extract Google profile data from Firebase user
+    const googleData: GoogleProfileData = {
+      photoURL: user.photoURL,
+      displayName: user.displayName,
+      email: user.email
+    };
+    setGoogleProfileData(googleData);
+    console.log('🔄 [UserProfileContext] Google profile data extracted:', googleData);
 
     try {
       setIsLoading(true);
@@ -136,7 +155,8 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     loadProfile();
   }, [user, authLoading]);
 
-  const profileImageUrl = getFullImageUrl(profile?.profile_image_url);
+  // Use Google profile picture if available, otherwise fall back to stored profile image
+  const profileImageUrl = googleProfileData?.photoURL || getFullImageUrl(profile?.profile_image_url);
   
   // Check if user is properly authenticated
   const isAuthenticated = !!(user && user.uid);
@@ -162,8 +182,9 @@ export const UserProfileProvider: React.FC<{ children: ReactNode }> = ({ childre
     updateProfile,
     refreshProfile,
     profileImageUrl,
-    displayName: profile?.display_name || user?.displayName || 'User',
-    isAuthenticated
+    displayName: googleProfileData?.displayName || profile?.display_name || user?.displayName || 'User',
+    isAuthenticated,
+    googleProfileData
   };
 
   return (

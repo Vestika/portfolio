@@ -6,22 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
-import ProfileImageUpload from './ProfileImageUpload';
+import GoogleProfilePicture from './GoogleProfilePicture';
 import { useUserProfile } from '../contexts/UserProfileContext';
 
-// Helper function to construct full image URL
-const getFullImageUrl = (imageUrl: string | undefined): string | undefined => {
-  if (!imageUrl) return undefined;
-  
-  // If it's already a full URL, return as is
-  if (imageUrl.startsWith('http')) return imageUrl;
-  
-  // If it's a relative path, prepend the API base URL from the centralized api instance
-  const apiUrl = api.defaults.baseURL;
-  const fullUrl = `${apiUrl}${imageUrl}`;
-  console.log('🖼️ Full Image URL:', fullUrl);
-  return fullUrl;
-};
 
 interface ProfileViewProps {
   onBackToPortfolio: () => void;
@@ -29,7 +16,7 @@ interface ProfileViewProps {
 
 const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
   const { user } = useAuth();
-  const { refreshProfile } = useUserProfile();
+  const { refreshProfile, googleProfileData } = useUserProfile();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -38,10 +25,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
     displayName: '',
     email: '',
     timezone: 'UTC',
-    profileImageUrl: '',
   });
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
-  const [imageError, setImageError] = useState('');
 
   const timezones = [
     'America/New_York',
@@ -68,25 +52,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
         setIsLoadingProfile(true);
         const response = await api.get('/profile');
         setFormData({
-          displayName: response.data.display_name || '',
-          email: response.data.email || user?.email || '',
+          displayName: response.data.display_name || googleProfileData?.displayName || '',
+          email: response.data.email || googleProfileData?.email || user?.email || '',
           timezone: response.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-          profileImageUrl: response.data.profile_image_url || '',
         });
-        
-        // Debug: Log the profile image URL
-        if (response.data.profile_image_url) {
-          console.log('🖼️ Profile image URL from API:', response.data.profile_image_url);
-          console.log('🖼️ Full image URL:', getFullImageUrl(response.data.profile_image_url));
-        }
       } catch (error) {
         console.error('Error loading profile:', error);
-        // Set fallback values
+        // Set fallback values using Google profile data
         setFormData({
-          displayName: user?.displayName || '',
-          email: user?.email || '',
+          displayName: googleProfileData?.displayName || user?.displayName || '',
+          email: googleProfileData?.email || user?.email || '',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          profileImageUrl: '',
         });
       } finally {
         setIsLoadingProfile(false);
@@ -96,51 +72,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
     if (user) {
       loadProfile();
     }
-  }, [user]);
+  }, [user, googleProfileData]);
 
   const handleSave = async () => {
     setIsLoading(true);
     setSaveStatus('idle');
     setErrorMessage('');
-    setImageError('');
     
     try {
-      let imageUrl = formData.profileImageUrl;
-      
-      // Upload image first if there's a selected file
-      if (selectedImageFile) {
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', selectedImageFile);
-        
-        const imageResponse = await api.post('/profile/image', formDataUpload, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-        
-        imageUrl = imageResponse.data.image_url;
-        console.log('Profile image uploaded successfully:', imageResponse.data);
-        console.log('🖼️ Image URL from upload:', imageUrl);
-        console.log('🖼️ Full image URL after upload:', getFullImageUrl(imageUrl));
-      }
-      
-      // Update profile with all data including the new image URL
+      // Update profile with display name and timezone (no image handling needed)
       const response = await api.put('/profile', {
         display_name: formData.displayName,
         timezone: formData.timezone,
-        profile_image_url: imageUrl,
       });
       
-      // Update form data with the new image URL
-      setFormData(prev => ({
-        ...prev,
-        profileImageUrl: imageUrl
-      }));
-      
-      // Clear selected file since it's now saved
-      setSelectedImageFile(null);
-      
-      // Refresh the global profile data so the image appears in navigation
+      // Refresh the global profile data
       refreshProfile();
       
       setSaveStatus('success');
@@ -164,36 +110,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
     }
   };
 
-  const handleImageSelect = (file: File | null) => {
-    setSelectedImageFile(file);
-    setImageError('');
-  };
-
-  const handleImageDelete = async () => {
-    try {
-      // If there's a current image, delete it from the server
-      if (formData.profileImageUrl) {
-        await api.delete('/profile/image');
-        console.log('🗑️ [PROFILE IMAGE] Deleted image from server');
-      }
-      
-      // Clear local state
-      setSelectedImageFile(null);
-      setFormData(prev => ({
-        ...prev,
-        profileImageUrl: ''
-      }));
-      setImageError('');
-      
-      // Refresh the global profile data
-      refreshProfile();
-      
-      console.log('🧹 [PROFILE IMAGE] Cleared local image state');
-    } catch (error: any) {
-      console.error('Error deleting profile image:', error);
-      setImageError(error.response?.data?.detail || 'Failed to delete image');
-    }
-  };
 
   const formatTimezone = (tz: string) => {
     try {
@@ -266,19 +182,24 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
-            {/* Profile Image Upload */}
+            {/* Google Profile Picture */}
             <div className="space-y-3">
               <Label className="text-gray-300 text-sm font-medium flex items-center">
                 <User size={16} className="mr-2 text-blue-400" />
-                Profile Image
+                Profile Picture
               </Label>
-              <ProfileImageUpload
-                currentImageUrl={getFullImageUrl(formData.profileImageUrl)}
-                onImageSelect={handleImageSelect}
-                onImageDelete={handleImageDelete}
-                isLoading={isLoading}
-                error={imageError}
-              />
+              <div className="flex flex-col items-center space-y-4">
+                <GoogleProfilePicture
+                  photoURL={googleProfileData?.photoURL}
+                  displayName={googleProfileData?.displayName}
+                  size="xl"
+                />
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm">
+                    Your profile picture is automatically synced from your Google account
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Display Name */}

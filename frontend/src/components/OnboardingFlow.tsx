@@ -84,9 +84,15 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
   const [isCreating, setIsCreating] = useState(false);
   const [createdPortfolioId, setCreatedPortfolioId] = useState<string>('');
+  
+  const getPortfolioNameSuggestion = () => {
+    const name = user.displayName || user.email?.split('@')[0] || 'My';
+    return `${name}'s Portfolio`;
+  };
+  
   const [newPortfolio, setNewPortfolio] = useState({
-    portfolio_name: '',
-    base_currency: 'USD'
+    portfolio_name: getPortfolioNameSuggestion(),
+    base_currency: 'ILS'
   });
   const [newAccount, setNewAccount] = useState({
     account_name: '',
@@ -220,11 +226,6 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
     } finally {
       setIsCreating(false);
     }
-  };
-
-  const getPortfolioNameSuggestion = () => {
-    const name = user.displayName || user.email?.split('@')[0] || 'My';
-    return `${name}'s Portfolio`;
   };
 
   const getAccountNameSuggestion = () => {
@@ -415,7 +416,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/20">
+            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300">
               <CardHeader className="text-center">
                 <div className="w-14 h-14 bg-gradient-to-r from-blue-500/30 to-cyan-500/30 rounded-xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30 shadow-lg shadow-blue-500/20">
                   <TrendingUp className="w-7 h-7 text-blue-300" />
@@ -429,7 +430,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
               </CardContent>
             </Card>
 
-            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-emerald-500/20">
+            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300">
               <CardHeader className="text-center">
                 <div className="w-14 h-14 bg-gradient-to-r from-emerald-500/30 to-teal-500/30 rounded-xl flex items-center justify-center mx-auto mb-4 border border-emerald-500/30 shadow-lg shadow-emerald-500/20">
                   <Building2 className="w-7 h-7 text-emerald-300" />
@@ -443,7 +444,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
               </CardContent>
             </Card>
 
-            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-purple-500/20">
+            <Card className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 transition-all duration-300">
               <CardHeader className="text-center">
                 <div className="w-14 h-14 bg-gradient-to-r from-purple-500/30 to-violet-500/30 rounded-xl flex items-center justify-center mx-auto mb-4 border border-purple-500/30 shadow-lg shadow-purple-500/20">
                   <Target className="w-7 h-7 text-purple-300" />
@@ -505,7 +506,6 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                   id="portfolio-name"
                   value={newPortfolio.portfolio_name}
                   onChange={(e) => setNewPortfolio({ ...newPortfolio, portfolio_name: e.target.value })}
-                  placeholder={getPortfolioNameSuggestion()}
                   className="bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 h-12 text-lg rounded-xl"
                 />
                 <p className="text-sm text-gray-400">
