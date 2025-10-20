@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Globe, Save, Mail, CheckCircle, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react';
+import { User, Globe, Save, Mail, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,16 +110,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
     }
   };
 
-  const handleRefreshGoogleProfile = async () => {
-    try {
-      // Force a refresh of the user's authentication state to get updated Google profile data
-      await user?.reload();
-      // The UserProfileContext will automatically pick up the updated data
-      refreshProfile();
-    } catch (error) {
-      console.error('Error refreshing Google profile:', error);
-    }
-  };
 
   const formatTimezone = (tz: string) => {
     try {
@@ -203,21 +193,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ onBackToPortfolio }) => {
                   photoURL={googleProfileData?.photoURL}
                   displayName={googleProfileData?.displayName}
                   size="xl"
-                  className="border-4 border-gray-600"
                 />
                 <div className="text-center">
-                  <p className="text-gray-400 text-sm mb-2">
+                  <p className="text-gray-400 text-sm">
                     Your profile picture is automatically synced from your Google account
                   </p>
-                  <Button
-                    onClick={handleRefreshGoogleProfile}
-                    variant="outline"
-                    size="sm"
-                    className="bg-gray-600/50 border-gray-500 text-gray-300 hover:bg-gray-600 hover:text-white"
-                  >
-                    <RefreshCw size={16} className="mr-2" />
-                    Refresh from Google
-                  </Button>
                 </div>
               </div>
             </div>
