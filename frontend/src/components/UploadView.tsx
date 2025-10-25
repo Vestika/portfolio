@@ -86,7 +86,7 @@ export const UploadView: React.FC = () => {
 
         {/* Upload Area */}
         <div className="bg-gray-800 rounded-lg p-8">
-          <div className="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-blue-500 transition-colors">
+          <div className="border-2 border-dashed border-gray-500 rounded-lg p-12 text-center hover:border-blue-500 transition-colors">
             <div className="flex flex-col items-center space-y-4">
               {getFileIcon()}
 
@@ -103,6 +103,7 @@ export const UploadView: React.FC = () => {
                       setError(null);
                     }}
                     className="mt-2"
+                    aria-label="Remove selected file and choose a different one"
                   >
                     Choose Different File
                   </Button>
@@ -121,6 +122,7 @@ export const UploadView: React.FC = () => {
                     onChange={handleFileSelect}
                     className="hidden"
                     id="file-upload"
+                    aria-label="Upload portfolio statement file (PDF, CSV, JPG, or PNG)"
                   />
                   <label htmlFor="file-upload">
                     <Button variant="outline" asChild>
@@ -148,6 +150,7 @@ export const UploadView: React.FC = () => {
                 onClick={handleUpload}
                 disabled={uploading}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-8"
+                aria-label={uploading ? 'Uploading file in progress' : `Upload ${selectedFile.name} and extract holdings`}
               >
                 {uploading ? 'Uploading...' : 'Upload and Extract'}
               </Button>

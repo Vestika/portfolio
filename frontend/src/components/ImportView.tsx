@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { ComboBox, ComboBoxOption } from './ui/combobox';
+import { Button } from '@/components/ui/button';
 
 interface ExtractedHolding {
   symbol: string;
@@ -302,12 +303,13 @@ export const ImportView: React.FC = () => {
             <h2 className="text-xl font-bold text-white">
               Extracted Holdings ({holdings.length})
             </h2>
-            <button
+            <Button
               onClick={handleAddHolding}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+              size="sm"
+              aria-label="Add new holding to the list"
             >
               + Add Holding
-            </button>
+            </Button>
           </div>
 
           <div className="overflow-x-auto">
@@ -328,8 +330,9 @@ export const ImportView: React.FC = () => {
                         type="text"
                         value={holding.symbol}
                         onChange={(e) => handleEditHolding(index, 'symbol', e.target.value)}
-                        className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                        className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="SYMBOL"
+                        aria-label={`Symbol for holding ${index + 1}`}
                       />
                     </td>
                     <td className="py-3 px-4">
@@ -337,8 +340,9 @@ export const ImportView: React.FC = () => {
                         type="number"
                         value={holding.units}
                         onChange={(e) => handleEditHolding(index, 'units', e.target.value)}
-                        className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-right"
+                        className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
                         step="0.01"
+                        aria-label={`Units for holding ${index + 1}`}
                       />
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -355,12 +359,14 @@ export const ImportView: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <button
+                      <Button
                         onClick={() => handleDeleteHolding(index)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                        variant="destructive"
+                        size="sm"
+                        aria-label={`Delete holding ${holding.symbol || index + 1}`}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -423,13 +429,15 @@ export const ImportView: React.FC = () => {
             {/* Account Type Selection - only shown when creating new account */}
             {selectedAccountName && !selectedPortfolio?.accounts?.find(a => a.name === selectedAccountName) && (
               <div className="mt-2">
-                <label className="block text-gray-400 text-xs font-medium mb-1">
+                <label htmlFor="account-type" className="block text-gray-400 text-xs font-medium mb-1">
                   Account Type
                 </label>
                 <select
+                  id="account-type"
                   value={newAccountType}
                   onChange={(e) => setNewAccountType(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  aria-label="Select account type for new account"
                 >
                   <option value="bank-account">Bank Account</option>
                   <option value="investment-account">Investment Account</option>
@@ -452,19 +460,23 @@ export const ImportView: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex gap-4">
-          <button
+          <Button
             onClick={handleImport}
             disabled={importing || holdings.length === 0}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
+            size="lg"
+            className="flex-1"
+            aria-label={importing ? 'Importing holdings in progress' : `Import ${holdings.length} holdings to portfolio`}
           >
             {importing ? 'Importing...' : `Import ${holdings.length} Holding(s)`}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => window.location.href = '/'}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 px-6 rounded-lg transition-colors"
+            variant="secondary"
+            size="lg"
+            aria-label="Cancel import and return to portfolio"
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </div>

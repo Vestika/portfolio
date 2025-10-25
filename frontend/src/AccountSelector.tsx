@@ -311,6 +311,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showEditAccountModal, setShowEditAccountModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [addAccountDropdownOpen, setAddAccountDropdownOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<string>('');
   const [accountToEdit, setAccountToEdit] = useState<string>('');
   const [hoveredAccount, setHoveredAccount] = useState<string | null>(null);
@@ -1068,7 +1069,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             ))}
 
             {/* Add New Account Dropdown */}
-            <DropdownMenu>
+            <DropdownMenu open={addAccountDropdownOpen} onOpenChange={setAddAccountDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group">
                   <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
@@ -1078,7 +1079,13 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem
-                  onSelect={() => setShowAddAccountModal(true)}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    // Close dropdown first
+                    setAddAccountDropdownOpen(false);
+                    // Then open modal after a short delay
+                    setTimeout(() => setShowAddAccountModal(true), 100);
+                  }}
                   className="cursor-pointer"
                 >
                   <PenLine className="mr-2 h-4 w-4" />
@@ -1107,7 +1114,25 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       </div>
       
       {/* Add Account Modal */}
-      <Dialog open={showAddAccountModal} onOpenChange={setShowAddAccountModal}>
+      <Dialog open={showAddAccountModal} onOpenChange={(open) => {
+        setShowAddAccountModal(open);
+        if (!open) {
+          // Reset state when modal closes
+          setNewAccount({
+            account_name: '',
+            account_type: 'bank-account',
+            owners: ['me'],
+            holdings: [{ symbol: '', units: '' }],
+            rsu_plans: [],
+            espp_plans: [],
+            options_plans: []
+          });
+          setEditingSymbolIndex(null);
+          setIbkrAccessToken('');
+          setIbkrQueryId('');
+          setSaveIbkrCredentials(false);
+        }
+      }}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center">
@@ -1624,7 +1649,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setShowAddAccountModal(false);
-              setEditingSymbolIndex(null);
+              // State reset now handled by Dialog onOpenChange
             }}>
               Cancel
             </Button>
@@ -1670,7 +1695,23 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       </Dialog>
       
       {/* Edit Account Modal */}
-      <Dialog open={showEditAccountModal} onOpenChange={setShowEditAccountModal}>
+      <Dialog open={showEditAccountModal} onOpenChange={(open) => {
+        setShowEditAccountModal(open);
+        if (!open) {
+          // Reset state when modal closes
+          setEditAccount({
+            account_name: '',
+            account_type: 'bank-account',
+            owners: ['me'],
+            holdings: [{ symbol: '', units: '' }],
+            rsu_plans: [],
+            espp_plans: [],
+            options_plans: []
+          });
+          setEditingSymbolIndex(null);
+          setAccountToEdit('');
+        }
+      }}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center">
