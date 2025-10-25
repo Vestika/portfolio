@@ -361,7 +361,7 @@ IMMEDIATELY after implementing any front-end change:
 This verification ensures changes meet design standards and user requirements.
 
 ### Comprehensive Design Review
-Invoke the `@agent-design-review` subagent for thorough design validation when:
+Invoke the `@agent-design-review-specialist` subagent for thorough design validation when:
 - Completing significant UI/UX features
 - Before finalizing PRs with visual changes
 - Needing comprehensive accessibility and responsiveness testing
