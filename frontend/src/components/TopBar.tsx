@@ -1,6 +1,6 @@
-import { 
-  PieChart, 
-  Tags, 
+import {
+  PieChart,
+  Tags,
   Wrench,
   Bot,
   Menu,
@@ -8,7 +8,8 @@ import {
   Newspaper,
   User,
   Settings,
-  LogOut
+  LogOut,
+  Library
 } from 'lucide-react'
 import { useState } from 'react'
 import { AboutModal } from './AboutModal'
@@ -24,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useUserProfile } from '../contexts/UserProfileContext'
 
-export type NavigationView = 'portfolios' | 'news' | 'analyst' | 'tags' | 'tools'
+export type NavigationView = 'portfolios' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
 interface TopBarProps {
   activeView: NavigationView
@@ -66,6 +67,11 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
       id: 'tools' as NavigationView,
       label: 'Tools',
       icon: <Wrench className="h-4 w-4" />,
+    },
+    {
+      id: 'config-gallery' as NavigationView,
+      label: 'Extension Configs',
+      icon: <Library className="h-4 w-4" />,
     },
   ]
 

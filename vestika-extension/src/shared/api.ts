@@ -65,6 +65,12 @@ export class VestikaAPI {
     });
   }
 
+  // Match configs for URL
+  async matchConfigsForUrl(url: string) {
+    const encodedUrl = encodeURIComponent(url);
+    return this.request(`/api/import/configs/match?url=${encodedUrl}`);
+  }
+
   // Shared configs
   async getSharedConfigs() {
     return this.request('/api/import/configs');

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { api } from '../shared/api';
+import type { SharedConfig } from '../shared/types';
 import './popup.css';
 
 function Popup() {
@@ -15,11 +16,23 @@ function Popup() {
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Config detection state
+  const [matchedConfigs, setMatchedConfigs] = useState<SharedConfig[]>([]);
+  const [loadingConfigs, setLoadingConfigs] = useState(false);
+  const [showManualMode, setShowManualMode] = useState(false);
+
   useEffect(() => {
     checkAuth();
     loadPageInfo();
     loadSavedState();
   }, []);
+
+  // Check for matching configs when URL is available
+  useEffect(() => {
+    if (currentUrl && authState.isAuthenticated) {
+      checkForMatchingConfigs();
+    }
+  }, [currentUrl, authState.isAuthenticated]);
 
   // Save selector to storage when it changes
   useEffect(() => {
@@ -60,6 +73,61 @@ function Popup() {
       }
     } catch (err: any) {
       console.error('Error loading saved state:', err);
+    }
+  }
+
+  // Helper: Extract domain from URL
+  function getDomain(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch {
+      return '';
+    }
+  }
+
+  // Helper: Check if cache is expired
+  function isCacheExpired(cache: any): boolean {
+    return !cache.expires || Date.now() > cache.expires;
+  }
+
+  // Check for matching configs with caching
+  async function checkForMatchingConfigs() {
+    if (!currentUrl) return;
+
+    setLoadingConfigs(true);
+
+    try {
+      // Check cache first
+      const cacheKey = `config_match:${getDomain(currentUrl)}`;
+      const cached = await chrome.storage.local.get([cacheKey]);
+
+      if (cached[cacheKey] && !isCacheExpired(cached[cacheKey])) {
+        setMatchedConfigs(cached[cacheKey].configs);
+        setLoadingConfigs(false);
+        return;
+      }
+
+      // Fetch from API
+      const response = await api.matchConfigsForUrl(currentUrl);
+
+      if (response.matched && response.configs.length > 0) {
+        setMatchedConfigs(response.configs);
+
+        // Cache for 24 hours
+        await chrome.storage.local.set({
+          [cacheKey]: {
+            configs: response.configs,
+            timestamp: Date.now(),
+            expires: Date.now() + 86400000 // 24h
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Config matching error:', error);
+      // Silently fail - user can still use manual mode
+    } finally {
+      setLoadingConfigs(false);
     }
   }
 
@@ -310,6 +378,9 @@ function Popup() {
 
       setExtracting(false);
 
+      // Show success badge
+      chrome.runtime.sendMessage({ type: 'EXTRACTION_SUCCESS' }).catch(() => {});
+
       // Redirect to web app import page with session_id
       const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
       const importUrl = `${vestikaUrl}/import?session=${extractResponse.session_id}`;
@@ -319,6 +390,55 @@ function Popup() {
     } catch (err: any) {
       setError(err.message);
       setExtracting(false);
+
+      // Show failure badge
+      chrome.runtime.sendMessage({ type: 'EXTRACTION_FAILED' }).catch(() => {});
+    }
+  }
+
+  // Extract with prebuilt config
+  async function handleExtractWithConfig(config: SharedConfig) {
+    setError(null);
+    setExtracting(true);
+
+    try {
+      // Extract HTML (full page or selector-based)
+      const htmlResult = await chrome.runtime.sendMessage({
+        type: 'EXTRACT_HTML',
+        payload: {
+          selector: config.selector || null,
+          fullPage: config.full_page,
+        },
+      });
+
+      if (htmlResult.error) {
+        throw new Error(htmlResult.error);
+      }
+
+      // Call extract API with config info
+      const extractResponse = await api.extractHoldings(
+        htmlResult.html,
+        currentUrl,
+        config.selector || undefined
+      );
+
+      setExtracting(false);
+
+      // Show success badge
+      chrome.runtime.sendMessage({ type: 'EXTRACTION_SUCCESS' }).catch(() => {});
+
+      // Redirect to web app with config info
+      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+      const importUrl = `${vestikaUrl}/import?session=${extractResponse.session_id}&config=${config.config_id}`;
+
+      chrome.tabs.create({ url: importUrl });
+      window.close();
+    } catch (err: any) {
+      setError(err.message);
+      setExtracting(false);
+
+      // Show failure badge
+      chrome.runtime.sendMessage({ type: 'EXTRACTION_FAILED' }).catch(() => {});
     }
   }
 
@@ -368,64 +488,119 @@ function Popup() {
       <div className="content">
         {error && <div className="alert alert-error">{error}</div>}
 
-        <div className="form-group">
-          <label>Element Selector</label>
-          <button
-            onClick={handleStartPicker}
-            disabled={pickingElement}
-            className="btn-secondary"
-            style={{ width: '100%', marginBottom: '8px' }}
-          >
-            {pickingElement ? 'Picking... (ESC to cancel)' : 'Pick Element from Page'}
-          </button>
-          {selector && (
-            <div style={{ padding: '8px', background: 'hsl(var(--card))', borderRadius: '4px', border: '1px solid hsl(var(--border))' }}>
-              <div style={{ fontSize: '11px', color: '#4CAF50', marginBottom: '4px', fontWeight: 'bold' }}>
-                ✓ Element Selected
+        {loadingConfigs && (
+          <div className="loading-configs">
+            <div className="spinner"></div>
+            <span>Checking for prebuilt configuration...</span>
+          </div>
+        )}
+
+        {!loadingConfigs && matchedConfigs.length > 0 && !showManualMode && (
+          <div className="config-card">
+            <div className="config-header">
+              <span className="success-icon">🎉</span>
+              <h3>Good news!</h3>
+            </div>
+            <p>A configuration for <strong>{matchedConfigs[0].site_name}</strong> is available.</p>
+            <p className="subtitle">Import in one click.</p>
+
+            <div className="config-details">
+              <div className="config-name">{matchedConfigs[0].site_name} Holdings</div>
+              <div className="config-meta">
+                {matchedConfigs[0].creator_name && (
+                  <span>Created by: {matchedConfigs[0].creator_name}</span>
+                )}
+                {matchedConfigs[0].verified && (
+                  <span className="badge-verified">✓ Verified</span>
+                )}
               </div>
-              <input
-                type="text"
-                value={selector}
-                readOnly
-                placeholder="CSS selector"
-                style={{
-                  width: '100%',
-                  fontFamily: 'monospace',
-                  fontSize: '11px',
-                  background: 'hsl(var(--input))',
-                  color: 'hsl(var(--foreground))',
-                  border: '1px solid hsl(var(--border))',
-                  padding: '4px 8px',
-                  borderRadius: '4px'
-                }}
-              />
+              <div className="config-stats">
+                <span>Used by: {matchedConfigs[0].usage_count.toLocaleString()} users</span>
+                {matchedConfigs[0].success_rate > 0 && (
+                  <span>Success rate: {(matchedConfigs[0].success_rate * 100).toFixed(0)}%</span>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleExtractWithConfig(matchedConfigs[0])}
+              disabled={extracting}
+              className="btn-primary"
+            >
+              {extracting ? 'Extracting...' : 'Extract Data'}
+            </button>
+
+            <button
+              onClick={() => setShowManualMode(true)}
+              className="btn-link"
+            >
+              or select elements manually &gt;
+            </button>
+          </div>
+        )}
+
+        {(showManualMode || (!loadingConfigs && matchedConfigs.length === 0)) && (
+          <>
+            <div className="form-group">
+              <label>Element Selector</label>
               <button
-                onClick={() => setSelector('')}
-                style={{ marginTop: '4px', fontSize: '10px', padding: '2px 6px' }}
+                onClick={handleStartPicker}
+                disabled={pickingElement}
                 className="btn-secondary"
+                style={{ width: '100%', marginBottom: '8px' }}
               >
-                Clear & Pick Again
+                {pickingElement ? 'Picking... (ESC to cancel)' : 'Pick Element from Page'}
+              </button>
+              {selector && (
+                <div style={{ padding: '8px', background: 'hsl(var(--card))', borderRadius: '4px', border: '1px solid hsl(var(--border))' }}>
+                  <div style={{ fontSize: '11px', color: '#4CAF50', marginBottom: '4px', fontWeight: 'bold' }}>
+                    ✓ Element Selected
+                  </div>
+                  <input
+                    type="text"
+                    value={selector}
+                    readOnly
+                    placeholder="CSS selector"
+                    style={{
+                      width: '100%',
+                      fontFamily: 'monospace',
+                      fontSize: '11px',
+                      background: 'hsl(var(--input))',
+                      color: 'hsl(var(--foreground))',
+                      border: '1px solid hsl(var(--border))',
+                      padding: '4px 8px',
+                      borderRadius: '4px'
+                    }}
+                  />
+                  <button
+                    onClick={() => setSelector('')}
+                    style={{ marginTop: '4px', fontSize: '10px', padding: '2px 6px' }}
+                    className="btn-secondary"
+                  >
+                    Clear & Pick Again
+                  </button>
+                </div>
+              )}
+              <small style={{ display: 'block', marginTop: '4px', color: 'hsl(var(--muted-foreground))' }}>
+                Click button to visually select the holdings table or element
+              </small>
+            </div>
+
+            <div className="actions">
+              <button
+                onClick={handleImport}
+                disabled={extracting || !selector}
+                className="btn-primary"
+              >
+                {extracting ? 'Extracting...' : 'Import Now'}
               </button>
             </div>
-          )}
-          <small style={{ display: 'block', marginTop: '4px', color: 'hsl(var(--muted-foreground))' }}>
-            Click button to visually select the holdings table or element
-          </small>
-        </div>
 
-        <div className="actions">
-          <button
-            onClick={handleImport}
-            disabled={extracting || !selector}
-            className="btn-primary"
-          >
-            {extracting ? 'Extracting...' : 'Import Now'}
-          </button>
-        </div>
-
-        <p style={{ marginTop: '16px', fontSize: '12px', color: 'hsl(var(--muted-foreground))', textAlign: 'center' }}>
-          You'll be redirected to Vestika to review and complete the import
-        </p>
+            <p style={{ marginTop: '16px', fontSize: '12px', color: 'hsl(var(--muted-foreground))', textAlign: 'center' }}>
+              You'll be redirected to Vestika to review and complete the import
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

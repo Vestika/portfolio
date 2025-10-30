@@ -23,6 +23,7 @@ import { ImportView } from './components/ImportView';
 import { UploadView } from './components/UploadView';
 import ProfileView from './components/ProfileView';
 import SettingsView from './components/SettingsView';
+import { ConfigGalleryView } from './components/ConfigGalleryView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -546,6 +547,9 @@ const App: React.FC = () => {
             )}
             {!subView && activeView === 'tools' && (
               (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ToolsView />
+            )}
+            {!subView && activeView === 'config-gallery' && (
+              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ConfigGalleryView />
             )}
           </main>
         </div>

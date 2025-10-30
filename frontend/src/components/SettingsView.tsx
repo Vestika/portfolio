@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from '../contexts/AuthContext';
-import api from '../utils/api';
 
 interface SettingsViewProps {
   onToggleVisibility: () => void;
@@ -27,15 +26,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
     priceAlerts: true,
     newsUpdates: false,
     earningsAlerts: true,
-    
+
     // Privacy settings
     profileVisibility: 'private',
     dataSharing: false,
     analyticsTracking: true,
-    
+
     // Sound settings
     soundEnabled: true,
     volume: 50,
+
+    // Extension settings
+    showConfigCreationSuggestion: true,
   });
 
   // Load settings data on component mount
@@ -43,18 +45,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
     const loadSettings = async () => {
       try {
         setIsLoadingSettings(true);
-        const response = await api.get('/settings');
+
+        // Load extension settings from localStorage
+        const hideConfigSuggestion = localStorage.getItem('hideConfigCreationSuggestion') === 'true';
+
+        // Load other settings from API (commented out since endpoint doesn't exist yet)
+        // const response = await api.get('/settings');
         setSettings({
-          emailNotifications: response.data.email_notifications,
-          pushNotifications: response.data.push_notifications,
-          priceAlerts: response.data.price_alerts,
-          newsUpdates: response.data.news_updates,
-          earningsAlerts: response.data.earnings_alerts,
-          profileVisibility: response.data.profile_visibility,
-          dataSharing: response.data.data_sharing,
-          analyticsTracking: response.data.analytics_tracking,
-          soundEnabled: response.data.sound_enabled,
-          volume: response.data.volume,
+          emailNotifications: true, // response.data.email_notifications,
+          pushNotifications: true, // response.data.push_notifications,
+          priceAlerts: true, // response.data.price_alerts,
+          newsUpdates: false, // response.data.news_updates,
+          earningsAlerts: true, // response.data.earnings_alerts,
+          profileVisibility: 'private', // response.data.profile_visibility,
+          dataSharing: false, // response.data.data_sharing,
+          analyticsTracking: true, // response.data.analytics_tracking,
+          soundEnabled: true, // response.data.sound_enabled,
+          volume: 50, // response.data.volume,
+          showConfigCreationSuggestion: !hideConfigSuggestion,
         });
       } catch (error) {
         console.error('Error loading settings:', error);
@@ -73,8 +81,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
     setIsLoading(true);
     setSaveStatus('idle');
     setErrorMessage('');
-    
+
     try {
+      // Save extension settings to localStorage
+      if (settings.showConfigCreationSuggestion) {
+        localStorage.removeItem('hideConfigCreationSuggestion');
+      } else {
+        localStorage.setItem('hideConfigCreationSuggestion', 'true');
+      }
+
+      // Save other settings to API (commented out since endpoint doesn't exist yet)
+      /*
       const response = await api.put('/settings', {
         email_notifications: settings.emailNotifications,
         push_notifications: settings.pushNotifications,
@@ -87,18 +104,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
         sound_enabled: settings.soundEnabled,
         volume: settings.volume,
       });
-      
+      */
+
       setSaveStatus('success');
-      console.log('Settings saved successfully:', response.data);
-      
+      console.log('Settings saved successfully');
+
       // Clear success message after 3 seconds
       setTimeout(() => setSaveStatus('idle'), 3000);
-      
+
     } catch (error: any) {
       console.error('Error saving settings:', error);
       setSaveStatus('error');
       setErrorMessage(error.response?.data?.detail || 'Failed to save settings');
-      
+
       // Clear error message after 5 seconds
       setTimeout(() => {
         setSaveStatus('idle');
@@ -365,6 +383,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
                   </div>
                 </>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Extension Settings */}
+        <Card className="bg-gray-800/40 backdrop-blur-xl border-gray-700/50 shadow-2xl">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-2xl text-white flex items-center">
+              <Settings size={24} className="mr-3 text-purple-400" />
+              Browser Extension
+            </CardTitle>
+            <CardDescription className="text-gray-400 text-lg">
+              Configure Chrome extension behavior and suggestions
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-gray-700/30 border border-gray-600/30">
+                <div className="space-y-1 flex-1 pr-4">
+                  <Label className="text-gray-200 text-lg font-medium">Config Creation Suggestions</Label>
+                  <p className="text-gray-400 text-sm">
+                    Show suggestions to create extraction configs after manual imports.
+                    This helps build the community library and enables auto-sync for your future imports.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.showConfigCreationSuggestion}
+                  onCheckedChange={(checked) => updateSetting('showConfigCreationSuggestion', checked)}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

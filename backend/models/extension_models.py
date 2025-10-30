@@ -5,44 +5,85 @@ from pydantic import BaseModel, Field
 import uuid
 
 
-class ExtensionConfig(BaseModel):
-    """Shared configuration for extracting data from brokerage websites"""
-    id: Optional[str] = None
-    name: str
-    url: str  # URL pattern with wildcards (e.g., https://fidelity.com/portfolio/*)
-    full_url: bool = True  # True = send full page, False = use CSS selector
-    selector: Optional[str] = None  # CSS selector if full_url = False
-    source_url: Optional[str] = None  # Original URL this config is for (for display)
-    created_by: Optional[str] = None  # user_id
-    is_public: bool = True  # Allow community sharing
+class SharedConfig(BaseModel):
+    """Community-shared extraction configuration for popular financial sites"""
+    config_id: Optional[str] = None  # Unique config ID (e.g., "cfg_robinhood_v1")
+    site_name: str  # Human-readable name (e.g., "Robinhood")
+    url_pattern: str  # Regex pattern (e.g., "^https://robinhood\\.com/(account|portfolio)")
+    selector: Optional[str] = None  # CSS selector (null = full page)
+    full_page: bool = True  # true = send full HTML, false = use selector
+
+    # Metadata
+    creator_id: Optional[str] = None  # User ID who created config
+    creator_name: Optional[str] = None  # Display name (null if anonymous)
+    is_public: bool = True  # Public vs. private
+    verified: bool = False  # Verified by Vestika team or community
+    status: str = "active"  # "active", "under_review", "deprecated"
+
+    # Usage stats (denormalized for performance)
+    usage_count: int = 0  # Total times used
+    success_count: int = 0  # Successful extractions
+    failure_count: int = 0  # Failed extractions
+    success_rate: float = 0.0  # Calculated: success_count / usage_count
+    last_used_at: Optional[datetime] = None  # Last successful use
+
+    # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Alias for backwards compatibility
+ExtensionConfig = SharedConfig
 
 
 class ExtractionSession(BaseModel):
     """Temporary storage for extraction results before import"""
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
-    status: str = "processing"  # processing, completed, failed
+    status: str = "processing"  # "processing", "completed", "failed", "requires_review"
     extracted_holdings: List['ExtractedHolding'] = []
     extraction_metadata: dict = {}
     error_message: Optional[str] = None
     source_url: Optional[str] = None  # URL where extraction happened
     selector: Optional[str] = None  # CSS selector used
     html_body: Optional[str] = None  # Store HTML for background processing
+
+    # Auto-Sync Specific (new fields)
+    auto_sync: bool = False  # Was this triggered by auto-sync?
+    private_config_id: Optional[str] = None  # If auto-sync, which config?
+    previous_holdings: Optional[List[dict]] = None  # For conflict detection
+    conflict_detected: bool = False  # Significant changes detected?
+    conflict_reason: Optional[str] = None  # Why conflict was triggered
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class PrivateExtensionConfig(BaseModel):
-    """User-specific mapping of shared config to portfolio/account"""
-    id: Optional[str] = None
-    user_id: str
-    extension_config_id: str  # References ExtensionConfig
-    portfolio_id: str
-    account_id: str
-    auto_sync: bool = False  # Enable automatic sync on page load
+class PrivateConfig(BaseModel):
+    """User-specific mapping of shared config to portfolio/account (for auto-sync)"""
+    private_config_id: Optional[str] = None  # Unique ID
+
+    # User & Config
+    user_id: str  # Owner
+    shared_config_id: str  # References SharedConfig.config_id
+
+    # Portfolio Mapping
+    portfolio_id: str  # Target portfolio
+    account_name: Optional[str] = None  # Target account (null = create new on import)
+    account_type: Optional[str] = None  # For new account creation
+
+    # Auto-Sync Settings
+    enabled: bool = False  # Auto-sync enabled?
+    notification_preference: str = "notification_only"  # "notification_only" or "auto_redirect"
+    last_sync_at: Optional[datetime] = None  # Last successful sync
+    last_sync_status: Optional[str] = None  # "success", "failed", "conflict", null
+
+    # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Alias for backwards compatibility
+PrivateExtensionConfig = PrivateConfig
 
 
 class ExtractedHolding(BaseModel):

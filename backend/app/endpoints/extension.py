@@ -15,8 +15,10 @@ from core.auth import get_current_user
 from core.database import db_manager, get_db
 from config import settings
 from models.extension_models import (
-    ExtensionConfig,
-    PrivateExtensionConfig,
+    SharedConfig,
+    ExtensionConfig,  # Alias for backwards compatibility
+    PrivateConfig,
+    PrivateExtensionConfig,  # Alias for backwards compatibility
     ExtractHoldingsRequest,
     ExtractHoldingsResponse,
     ExtractedHolding,
@@ -531,21 +533,93 @@ async def import_holdings(
 # CONFIGURATION ENDPOINTS
 # ============================================================================
 
+@router.get("/api/import/configs/match")
+async def match_shared_configs(
+    url: str,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Match URL to available shared configs.
+
+    Returns configs sorted by success_rate DESC, usage_count DESC.
+    Returns top 3 matches.
+    """
+    try:
+        # Query for active public configs
+        matching_configs = []
+
+        async for doc in db.shared_configs.find({
+            "status": "active",
+            "is_public": True
+        }):
+            # Test URL against pattern
+            try:
+                pattern = doc.get("url_pattern", "")
+                if re.search(pattern, url):
+                    # Convert _id to config_id for response
+                    config_dict = {
+                        "config_id": doc.get("config_id") or str(doc["_id"]),
+                        "site_name": doc.get("site_name", ""),
+                        "url_pattern": doc.get("url_pattern", ""),
+                        "selector": doc.get("selector"),
+                        "full_page": doc.get("full_page", True),
+                        "creator_name": doc.get("creator_name"),
+                        "verified": doc.get("verified", False),
+                        "status": doc.get("status", "active"),
+                        "usage_count": doc.get("usage_count", 0),
+                        "success_rate": doc.get("success_rate", 0.0),
+                        "last_used_at": doc.get("last_used_at")
+                    }
+                    matching_configs.append(config_dict)
+            except re.error as e:
+                logger.warning(f"Invalid regex pattern in config {doc.get('_id')}: {e}")
+                continue
+
+        # Sort by success_rate DESC, then usage_count DESC
+        matching_configs.sort(
+            key=lambda x: (x["success_rate"], x["usage_count"]),
+            reverse=True
+        )
+
+        # Return top 3
+        top_matches = matching_configs[:3]
+
+        return {
+            "configs": top_matches,
+            "matched": len(top_matches) > 0
+        }
+
+    except Exception as e:
+        logger.error(f"Error in match_shared_configs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to match configs"
+        )
+
+
 @router.post("/api/import/configs")
 async def create_shared_config(
-    config: ExtensionConfig,
+    config: SharedConfig,
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
 ):
     """Create a new shared extension configuration"""
-    config.created_by = user.id
+    # Generate config_id if not provided
+    if not config.config_id:
+        # Generate from site_name (e.g., "Robinhood" → "cfg_robinhood_v1")
+        site_slug = config.site_name.lower().replace(" ", "_")
+        config.config_id = f"cfg_{site_slug}_v1"
+
+    config.creator_id = user.id
     config.created_at = datetime.utcnow()
     config.updated_at = datetime.utcnow()
 
-    config_dict = config.dict(exclude={"id"})
-    result = await db.extension_configs.insert_one(config_dict)
+    config_dict = config.dict(exclude_unset=True)
+    result = await db.shared_configs.insert_one(config_dict)
 
     return {
+        "config_id": config.config_id,
         "id": str(result.inserted_id),
         "message": "Configuration created successfully"
     }
@@ -558,7 +632,7 @@ async def list_shared_configs(
 ):
     """List all public shared configurations"""
     configs = []
-    async for doc in db.extension_configs.find({"is_public": True}):
+    async for doc in db.shared_configs.find({"is_public": True}):
         doc["id"] = str(doc.pop("_id"))
         configs.append(doc)
     return {"configs": configs}
@@ -571,7 +645,7 @@ async def get_shared_config(
     db: AsyncDatabase = Depends(get_db)
 ):
     """Get a specific shared configuration"""
-    doc = await db.extension_configs.find_one({"_id": ObjectId(config_id)})
+    doc = await db.shared_configs.find_one({"_id": ObjectId(config_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Configuration not found")
 
@@ -582,25 +656,25 @@ async def get_shared_config(
 @router.put("/api/import/configs/{config_id}")
 async def update_shared_config(
     config_id: str,
-    config: ExtensionConfig,
+    config: SharedConfig,
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
 ):
     """Update a shared configuration (only creator can update)"""
-    existing = await db.extension_configs.find_one({"_id": ObjectId(config_id)})
+    existing = await db.shared_configs.find_one({"_id": ObjectId(config_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Configuration not found")
 
-    if existing["created_by"] != user.id:
+    if existing.get("creator_id") != user.id:
         raise HTTPException(
             status_code=403,
             detail="Only the creator can update this configuration"
         )
 
     config.updated_at = datetime.utcnow()
-    config_dict = config.dict(exclude={"id", "created_by", "created_at"})
+    config_dict = config.dict(exclude={"config_id", "creator_id", "created_at"}, exclude_unset=True)
 
-    await db.extension_configs.update_one(
+    await db.shared_configs.update_one(
         {"_id": ObjectId(config_id)},
         {"$set": config_dict}
     )
@@ -615,17 +689,17 @@ async def delete_shared_config(
     db: AsyncDatabase = Depends(get_db)
 ):
     """Delete a shared configuration (only creator can delete)"""
-    existing = await db.extension_configs.find_one({"_id": ObjectId(config_id)})
+    existing = await db.shared_configs.find_one({"_id": ObjectId(config_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Configuration not found")
 
-    if existing["created_by"] != user.id:
+    if existing.get("creator_id") != user.id:
         raise HTTPException(
             status_code=403,
             detail="Only the creator can delete this configuration"
         )
 
-    await db.extension_configs.delete_one({"_id": ObjectId(config_id)})
+    await db.shared_configs.delete_one({"_id": ObjectId(config_id)})
     return {"message": "Configuration deleted successfully"}
 
 
@@ -635,20 +709,30 @@ async def delete_shared_config(
 
 @router.post("/api/import/private-configs")
 async def create_private_config(
-    config: PrivateExtensionConfig,
+    config: PrivateConfig,
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
 ):
     """Create a new private configuration (links shared config to user's portfolio)"""
+    # Generate private_config_id if not provided
+    if not config.private_config_id:
+        config.private_config_id = f"pcfg_{user.id}_{config.shared_config_id}"
+
     config.user_id = user.id
     config.created_at = datetime.utcnow()
     config.updated_at = datetime.utcnow()
 
-    config_dict = config.dict(exclude={"id"})
-    result = await db.private_extension_configs.insert_one(config_dict)
+    # Upsert: one config per (user_id, shared_config_id) pair
+    config_dict = config.dict(exclude_unset=True)
+
+    await db.private_configs.update_one(
+        {"user_id": user.id, "shared_config_id": config.shared_config_id},
+        {"$set": config_dict},
+        upsert=True
+    )
 
     return {
-        "id": str(result.inserted_id),
+        "private_config_id": config.private_config_id,
         "message": "Private configuration created successfully"
     }
 
@@ -660,7 +744,7 @@ async def list_private_configs(
 ):
     """List all private configurations for current user"""
     configs = []
-    async for doc in db.private_extension_configs.find({"user_id": user.id}):
+    async for doc in db.private_configs.find({"user_id": user.id}):
         doc["id"] = str(doc.pop("_id"))
         configs.append(doc)
     return {"configs": configs}
@@ -673,7 +757,7 @@ async def get_private_config(
     db: AsyncDatabase = Depends(get_db)
 ):
     """Get a specific private configuration"""
-    doc = await db.private_extension_configs.find_one({
+    doc = await db.private_configs.find_one({
         "_id": ObjectId(config_id),
         "user_id": user.id
     })
@@ -687,12 +771,12 @@ async def get_private_config(
 @router.put("/api/import/private-configs/{config_id}")
 async def update_private_config(
     config_id: str,
-    config: PrivateExtensionConfig,
+    config: PrivateConfig,
     user=Depends(get_current_user),
     db: AsyncDatabase = Depends(get_db)
 ):
     """Update a private configuration"""
-    existing = await db.private_extension_configs.find_one({
+    existing = await db.private_configs.find_one({
         "_id": ObjectId(config_id),
         "user_id": user.id
     })
@@ -700,9 +784,9 @@ async def update_private_config(
         raise HTTPException(status_code=404, detail="Configuration not found")
 
     config.updated_at = datetime.utcnow()
-    config_dict = config.dict(exclude={"id", "user_id", "created_at"})
+    config_dict = config.dict(exclude={"private_config_id", "user_id", "created_at"}, exclude_unset=True)
 
-    await db.private_extension_configs.update_one(
+    await db.private_configs.update_one(
         {"_id": ObjectId(config_id)},
         {"$set": config_dict}
     )
@@ -717,7 +801,7 @@ async def delete_private_config(
     db: AsyncDatabase = Depends(get_db)
 ):
     """Delete a private configuration"""
-    result = await db.private_extension_configs.delete_one({
+    result = await db.private_configs.delete_one({
         "_id": ObjectId(config_id),
         "user_id": user.id
     })
@@ -726,3 +810,277 @@ async def delete_private_config(
         raise HTTPException(status_code=404, detail="Configuration not found")
 
     return {"message": "Private configuration deleted successfully"}
+
+
+@router.post("/api/import/autosync/enable")
+async def enable_autosync(
+    data: dict,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Enable auto-sync for a session or config. Creates/updates private config.
+
+    Request body (session-based):
+    {
+        "session_id": "string",  # Required if config_id not provided
+        "config_id": "string",   # Optional - will match from session URL if not provided
+        "portfolio_id": "string",  # Required (can use portfolio_name instead)
+        "portfolio_name": "string",  # Alternative to portfolio_id
+        "account_name": "string",  # Required
+        "account_type": "string",  # Optional
+        "notification_preference": "notification_only" | "auto_redirect"  # Optional, default: "notification_only"
+    }
+
+    Request body (direct config):
+    {
+        "config_id": "string",   # Required
+        "portfolio_name": "string",  # Required
+        "account_name": "string",  # Required
+    }
+    """
+    session_id = data.get("session_id")
+    config_id = data.get("config_id")
+    portfolio_id = data.get("portfolio_id")
+    portfolio_name = data.get("portfolio_name")
+    account_name = data.get("account_name")
+    account_type = data.get("account_type")
+    notification_preference = data.get("notification_preference", "notification_only")
+
+    # If portfolio_name provided instead of portfolio_id, look it up
+    if not portfolio_id and portfolio_name:
+        portfolio = await db.portfolios.find_one({
+            "user_id": user.id,
+            "portfolio_name": portfolio_name
+        })
+        if portfolio:
+            portfolio_id = portfolio.get("id")
+        else:
+            raise HTTPException(status_code=404, detail=f"Portfolio '{portfolio_name}' not found")
+
+    # Require either session_id or config_id (for direct enable from gallery)
+    if not session_id and not config_id:
+        raise HTTPException(status_code=400, detail="Either session_id or config_id is required")
+
+    if not portfolio_id:
+        raise HTTPException(status_code=400, detail="portfolio_id or portfolio_name is required")
+
+    if not account_name:
+        raise HTTPException(status_code=400, detail="account_name is required")
+
+    # Get session to extract source URL (if session_id provided)
+    session = None
+    if session_id:
+        session = await db.extraction_sessions.find_one({"session_id": session_id, "user_id": user.id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # If config_id not provided, try to match from session URL
+        if not config_id and session.get("source_url"):
+            # Try to find matching config
+            url = session["source_url"]
+            matching_config = None
+
+            async for doc in db.shared_configs.find({"status": "active", "is_public": True}):
+                try:
+                    pattern = doc.get("url_pattern", "")
+                    if re.search(pattern, url):
+                        matching_config = doc
+                        break
+                except re.error:
+                    continue
+
+            if matching_config:
+                config_id = matching_config.get("config_id") or str(matching_config["_id"])
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No config found for this session. Please provide config_id."
+                )
+
+    # If config_id still not found, error
+    if not config_id:
+        raise HTTPException(status_code=400, detail="config_id is required when session_id is not provided")
+
+    # Verify shared config exists
+    shared_config = await db.shared_configs.find_one({"config_id": config_id})
+    if not shared_config:
+        raise HTTPException(status_code=404, detail="Shared config not found")
+
+    # Create/update private config
+    private_config_id = f"pcfg_{user.id}_{config_id}"
+
+    private_config = {
+        "private_config_id": private_config_id,
+        "user_id": user.id,
+        "shared_config_id": config_id,
+        "portfolio_id": portfolio_id,
+        "account_name": account_name,
+        "account_type": account_type,
+        "enabled": True,
+        "notification_preference": notification_preference,
+        "last_sync_at": None,
+        "last_sync_status": None,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+
+    # Upsert
+    await db.private_configs.update_one(
+        {"user_id": user.id, "shared_config_id": config_id},
+        {"$set": private_config},
+        upsert=True
+    )
+
+    return {
+        "success": True,
+        "private_config_id": private_config_id,
+        "site_name": shared_config.get("site_name"),
+        "message": f"Auto-sync enabled for {shared_config.get('site_name')}"
+    }
+
+
+@router.post("/api/import/configs/enable")
+async def enable_config_manual(
+    data: dict,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Enable a shared config for manual use (no auto-sync).
+    Creates a private config with enabled=True but no portfolio/account mapping.
+
+    Request body:
+    {
+        "config_id": "string"  # Required - shared config ID to enable
+    }
+    """
+    config_id = data.get("config_id")
+
+    if not config_id:
+        raise HTTPException(status_code=400, detail="config_id is required")
+
+    # Verify shared config exists
+    shared_config = await db.shared_configs.find_one({"config_id": config_id})
+    if not shared_config:
+        raise HTTPException(status_code=404, detail="Shared config not found")
+
+    # Create/update private config for manual use
+    private_config_id = f"pcfg_{user.id}_{config_id}"
+
+    private_config = {
+        "private_config_id": private_config_id,
+        "user_id": user.id,
+        "shared_config_id": config_id,
+        "portfolio_id": None,  # No auto-sync mapping
+        "account_name": None,
+        "account_type": None,
+        "enabled": True,
+        "notification_preference": "notification_only",
+        "last_sync_at": None,
+        "last_sync_status": None,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+
+    # Upsert
+    await db.private_configs.update_one(
+        {"user_id": user.id, "shared_config_id": config_id},
+        {"$set": private_config},
+        upsert=True
+    )
+
+    return {
+        "success": True,
+        "private_config_id": private_config_id,
+        "site_name": shared_config.get("site_name"),
+        "mode": "manual",
+        "message": f"Config enabled for {shared_config.get('site_name')}"
+    }
+
+
+@router.post("/api/import/configs/disable")
+async def disable_config(
+    data: dict,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Disable a config (either manual or auto-sync).
+    Sets enabled=False on the private config.
+
+    Request body:
+    {
+        "config_id": "string"  # Required - shared config ID to disable
+    }
+    """
+    config_id = data.get("config_id")
+
+    if not config_id:
+        raise HTTPException(status_code=400, detail="config_id is required")
+
+    # Update private config to set enabled=False
+    result = await db.private_configs.update_one(
+        {"user_id": user.id, "shared_config_id": config_id},
+        {"$set": {"enabled": False, "updated_at": datetime.utcnow()}}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Config not enabled for this user")
+
+    return {
+        "success": True,
+        "message": "Config disabled successfully"
+    }
+
+
+@router.get("/api/import/configs/enabled")
+async def get_enabled_configs(
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Get all enabled configs for the current user.
+    Returns both manual and auto-sync configs.
+
+    Response:
+    {
+        "enabled_configs": [
+            {
+                "config_id": "string",
+                "mode": "manual" | "auto",
+                "portfolio_name": "string",  # Only for auto mode
+                "account_name": "string"     # Only for auto mode
+            }
+        ]
+    }
+    """
+    enabled_configs = []
+
+    async for private_config in db.private_configs.find({
+        "user_id": user.id,
+        "enabled": True
+    }):
+        config_id = private_config.get("shared_config_id")
+        portfolio_id = private_config.get("portfolio_id")
+
+        # Determine mode based on whether portfolio is set
+        mode = "auto" if portfolio_id else "manual"
+
+        # Get portfolio name if auto mode
+        portfolio_name = None
+        if mode == "auto" and portfolio_id:
+            portfolio = await db.portfolios.find_one({"id": portfolio_id})
+            if portfolio:
+                portfolio_name = portfolio.get("portfolio_name")
+
+        enabled_configs.append({
+            "config_id": config_id,
+            "mode": mode,
+            "portfolio_name": portfolio_name,
+            "account_name": private_config.get("account_name")
+        })
+
+    return {
+        "enabled_configs": enabled_configs
+    }
