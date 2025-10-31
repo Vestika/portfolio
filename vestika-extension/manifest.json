@@ -12,14 +12,14 @@
     "activeTab",
     "storage",
     "scripting",
-    "alarms"
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://app.vestika.io/*",
-    "http://localhost/*"
-  ],
-  "optional_host_permissions": [
-    "https://*/*"
+    "http://localhost/*",
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",

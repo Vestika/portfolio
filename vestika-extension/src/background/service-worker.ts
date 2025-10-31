@@ -53,6 +53,48 @@ const logger = new ServiceWorkerLogger();
 // Auth state - loaded from storage on startup
 let authState: AuthState | null = null;
 
+type AutoSyncNotificationStatus = 'start' | 'success' | 'failure';
+
+function showAutoSyncNotification(siteName: string, status: AutoSyncNotificationStatus, details?: string) {
+  if (!chrome.notifications || typeof chrome.notifications.create !== 'function') {
+    return;
+  }
+
+  const sanitize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const notificationId = `autosync-${sanitize(siteName)}-${status}`;
+
+  const iconUrl = chrome.runtime.getURL('assets/icon-128.png');
+  let title = 'Vestika Auto-sync';
+  let message = '';
+  const requireInteraction = status === 'failure';
+  const silent = status === 'start';
+
+  switch (status) {
+    case 'start':
+      title = `Auto-sync started`;
+      message = `Refreshing holdings from ${siteName}...`;
+      break;
+    case 'success':
+      title = `Auto-sync complete`;
+      message = details ? details : `Holdings from ${siteName} are up to date.`;
+      break;
+    case 'failure':
+      title = `Auto-sync failed`;
+      message = details ? details : `Check Vestika for details.`;
+      break;
+  }
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl,
+    title,
+    message,
+    priority: status === 'failure' ? 2 : 0,
+    requireInteraction,
+    silent,
+  });
+}
+
 // Badge state management
 let badgeClearTimer: number | null = null;
 
@@ -403,6 +445,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
 
     // Set syncing badge
     setBadge('⟳', '#2196F3', 'autosync in progress', 0);
+    showAutoSyncNotification(sharedConfig.site_name, 'start');
 
     // Get active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -411,6 +454,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       console.error('[Background]', errorMsg);
       logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
       setBadge('✗', '#F44336', 'autosync failed - no tab', 15000);
+      showAutoSyncNotification(sharedConfig.site_name, 'failure', 'No active tab available for auto-sync.');
       return;
     }
 
@@ -434,6 +478,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       console.error('[Background]', errorMsg);
       logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
       setBadge('✗', '#F44336', 'autosync failed - no HTML', 15000);
+      showAutoSyncNotification(sharedConfig.site_name, 'failure', 'Could not read the page content.');
       return;
     }
 
@@ -485,6 +530,10 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
 
     // Set success badge
     setBadge('✓', '#4CAF50', 'autosync success', 10000);
+    const successDetails = autoImportPayload
+      ? 'Holdings were refreshed automatically.'
+      : 'Data extracted, review in Vestika.';
+    showAutoSyncNotification(sharedConfig.site_name, 'success', successDetails);
 
     const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
 
@@ -503,6 +552,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
 
     // Set error badge
     setBadge('✗', '#F44336', 'autosync exception', 15000);
+    showAutoSyncNotification(sharedConfig.site_name, 'failure', errorMsg);
   }
 }
 
