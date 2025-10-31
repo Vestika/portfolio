@@ -638,6 +638,46 @@ async def list_shared_configs(
     return {"configs": configs}
 
 
+@router.get("/api/import/configs/enabled")
+async def get_enabled_configs(
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Get all enabled configs for the current user.
+    Returns both manual and auto-sync configs.
+    """
+    enabled_configs = []
+
+    async for private_config in db.private_configs.find({
+        "user_id": user.id,
+        "enabled": True
+    }):
+        config_id = private_config.get("shared_config_id")
+        portfolio_id = private_config.get("portfolio_id")
+
+        # Determine mode based on whether portfolio is set
+        mode = "auto" if portfolio_id else "manual"
+
+        # Get portfolio name if auto mode
+        portfolio_name = None
+        if mode == "auto" and portfolio_id:
+            portfolio = await db.portfolios.find_one({"id": portfolio_id})
+            if portfolio:
+                portfolio_name = portfolio.get("portfolio_name")
+
+        enabled_configs.append({
+            "config_id": config_id,
+            "mode": mode,
+            "portfolio_name": portfolio_name,
+            "account_name": private_config.get("account_name")
+        })
+
+    return {
+        "enabled_configs": enabled_configs
+    }
+
+
 @router.get("/api/import/configs/{config_id}")
 async def get_shared_config(
     config_id: str,
@@ -1031,56 +1071,4 @@ async def disable_config(
     return {
         "success": True,
         "message": "Config disabled successfully"
-    }
-
-
-@router.get("/api/import/configs/enabled")
-async def get_enabled_configs(
-    user=Depends(get_current_user),
-    db: AsyncDatabase = Depends(get_db)
-):
-    """
-    Get all enabled configs for the current user.
-    Returns both manual and auto-sync configs.
-
-    Response:
-    {
-        "enabled_configs": [
-            {
-                "config_id": "string",
-                "mode": "manual" | "auto",
-                "portfolio_name": "string",  # Only for auto mode
-                "account_name": "string"     # Only for auto mode
-            }
-        ]
-    }
-    """
-    enabled_configs = []
-
-    async for private_config in db.private_configs.find({
-        "user_id": user.id,
-        "enabled": True
-    }):
-        config_id = private_config.get("shared_config_id")
-        portfolio_id = private_config.get("portfolio_id")
-
-        # Determine mode based on whether portfolio is set
-        mode = "auto" if portfolio_id else "manual"
-
-        # Get portfolio name if auto mode
-        portfolio_name = None
-        if mode == "auto" and portfolio_id:
-            portfolio = await db.portfolios.find_one({"id": portfolio_id})
-            if portfolio:
-                portfolio_name = portfolio.get("portfolio_name")
-
-        enabled_configs.append({
-            "config_id": config_id,
-            "mode": mode,
-            "portfolio_name": portfolio_name,
-            "account_name": private_config.get("account_name")
-        })
-
-    return {
-        "enabled_configs": enabled_configs
     }
