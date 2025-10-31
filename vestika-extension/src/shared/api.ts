@@ -1,4 +1,5 @@
 // API client for Vestika backend
+import { logger } from './utils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -10,6 +11,12 @@ export class VestikaAPI {
   }
 
   private async request(endpoint: string, options: RequestInit = {}) {
+    const method = options.method || 'GET';
+    const startTime = Date.now();
+
+    // Log request
+    logger.logApiRequest(endpoint, method, options.body ? JSON.parse(options.body as string) : undefined);
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -19,17 +26,37 @@ export class VestikaAPI {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(error.detail || error.error || 'Request failed');
+      const duration = Date.now() - startTime;
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+
+        // Log error response
+        logger.logApiResponse(endpoint, method, duration, response.status, error);
+
+        throw new Error(error.detail || error.error || 'Request failed');
+      }
+
+      const data = await response.json();
+
+      // Log successful response
+      logger.logApiResponse(endpoint, method, duration, response.status, data);
+
+      return data;
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+
+      // Log network or other errors
+      logger.logApiResponse(endpoint, method, duration, 0, { error: error.message });
+
+      throw error;
     }
-
-    return response.json();
   }
 
   // Extract holdings from HTML - returns session_id

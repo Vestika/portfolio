@@ -3,6 +3,53 @@
 import { api } from '../shared/api';
 import type { Message, AuthState } from '../shared/types';
 
+// Logger needs to be initialized manually in service worker context
+// since import.meta.env is not available
+class ServiceWorkerLogger {
+  private isDevelopment: boolean = true; // Always enabled for now, can be configured
+
+  private formatMessage(category: string, message: string): string {
+    const timestamp = new Date().toISOString();
+    return `[${timestamp}] [${category}] ${message}`;
+  }
+
+  info(category: string, message: string, data?: any) {
+    if (!this.isDevelopment) return;
+    if (data) {
+      console.log(this.formatMessage(category, message), data);
+    } else {
+      console.log(this.formatMessage(category, message));
+    }
+  }
+
+  error(category: string, message: string, data?: any) {
+    if (!this.isDevelopment) return;
+    if (data) {
+      console.error(this.formatMessage(category, message), data);
+    } else {
+      console.error(this.formatMessage(category, message));
+    }
+  }
+
+  logAutoSyncTrigger(url: string, configName: string) {
+    this.info('AUTOSYNC', `Triggered for ${configName}`, { url });
+  }
+
+  logAutoSyncComplete(configName: string, sessionId: string, duration: number) {
+    this.info('AUTOSYNC', `Completed for ${configName} (${duration}ms)`, { sessionId });
+  }
+
+  logAutoSyncError(configName: string, error: string) {
+    this.error('AUTOSYNC', `Failed for ${configName}`, { error });
+  }
+
+  logBadgeChange(text: string, color: string, reason: string, autoClearMs?: number) {
+    this.info('BADGE', `Set to "${text}" (${color}) - ${reason}`, { autoClearMs });
+  }
+}
+
+const logger = new ServiceWorkerLogger();
+
 // Auth state - loaded from storage on startup
 let authState: AuthState | null = null;
 
@@ -10,9 +57,12 @@ let authState: AuthState | null = null;
 let badgeClearTimer: number | null = null;
 
 // Set badge with auto-clear
-function setBadge(text: string, color: string, autoCleanMs?: number) {
+function setBadge(text: string, color: string, reason: string, autoCleanMs?: number) {
   chrome.action.setBadgeText({ text });
   chrome.action.setBadgeBackgroundColor({ color });
+
+  // Log badge change
+  logger.logBadgeChange(text, color, reason, autoCleanMs);
 
   // Clear any existing timer
   if (badgeClearTimer) {
@@ -24,6 +74,7 @@ function setBadge(text: string, color: string, autoCleanMs?: number) {
   if (autoCleanMs) {
     badgeClearTimer = setTimeout(() => {
       chrome.action.setBadgeText({ text: '' });
+      logger.logBadgeChange('', 'none', 'auto-clear timer expired');
       badgeClearTimer = null;
     }, autoCleanMs);
   }
@@ -32,6 +83,7 @@ function setBadge(text: string, color: string, autoCleanMs?: number) {
 // Clear badge
 function clearBadge() {
   chrome.action.setBadgeText({ text: '' });
+  logger.logBadgeChange('', 'none', 'manual clear');
   if (badgeClearTimer) {
     clearTimeout(badgeClearTimer);
     badgeClearTimer = null;
@@ -195,19 +247,19 @@ async function handleMessage(message: Message) {
 
     case 'EXTRACTION_SUCCESS':
       // Show green badge for successful extraction
-      setBadge('✓', '#4CAF50', 10000); // Green, auto-clear in 10s
+      setBadge('✓', '#4CAF50', 'extraction success', 10000); // Green, auto-clear in 10s
       console.log('[Background] Extraction successful');
       return { success: true };
 
     case 'EXTRACTION_FAILED':
       // Show red badge for failed extraction
-      setBadge('✗', '#F44336', 15000); // Red, auto-clear in 15s
+      setBadge('✗', '#F44336', 'extraction failed', 15000); // Red, auto-clear in 15s
       console.log('[Background] Extraction failed');
       return { success: true };
 
     case 'EXTRACTION_CONFLICT':
       // Show blue badge for conflicts requiring review
-      setBadge('!', '#2196F3', 0); // Blue, don't auto-clear (user needs to review)
+      setBadge('!', '#2196F3', 'extraction conflict', 0); // Blue, don't auto-clear (user needs to review)
       console.log('[Background] Extraction has conflicts');
       return { success: true };
 
@@ -268,9 +320,12 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
 
 async function checkAutoSync(url: string) {
   try {
+    logger.info('AUTOSYNC', `Checking URL for autosync`, { url });
+
     // Check if auth is available
     if (!authState?.token || !authState?.isAuthenticated) {
       console.log('[Background] Auto-sync skipped (not authenticated)');
+      logger.info('AUTOSYNC', 'Skipped - not authenticated');
       return;
     }
 
@@ -282,8 +337,10 @@ async function checkAutoSync(url: string) {
     const domain = new URL(url).hostname;
     const lastSyncTime = lastSync[domain];
     if (lastSyncTime && Date.now() - lastSyncTime < 300000) {
+      const timeSince = Math.floor((Date.now() - lastSyncTime) / 1000);
       console.log('[Background] Auto-sync skipped (too recent):', domain);
-      return;
+      logger.info('AUTOSYNC', `Skipped - synced ${timeSince}s ago`, { domain });
+      // return;
     }
 
     // Fetch user's private configs
@@ -310,6 +367,10 @@ async function checkAutoSync(url: string) {
 
           if (regex.test(url)) {
             console.log('[Background] Auto-sync match found:', sharedConfig.site_name);
+            logger.info('AUTOSYNC', `Config match found: ${sharedConfig.site_name}`, {
+              configId: sharedConfig.config_id,
+              pattern: pattern
+            });
 
             // Trigger auto-sync
             await triggerAutoSync(url, sharedConfig, privateConfig);
@@ -334,17 +395,31 @@ async function checkAutoSync(url: string) {
 }
 
 async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: any) {
+  const startTime = Date.now();
+
   try {
     console.log('[Background] Triggering auto-sync for:', sharedConfig.site_name);
+    logger.logAutoSyncTrigger(url, sharedConfig.site_name);
+
+    // Set syncing badge
+    setBadge('⟳', '#2196F3', 'autosync in progress', 0);
 
     // Get active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]?.id) {
-      console.error('[Background] No active tab found');
+      const errorMsg = 'No active tab found';
+      console.error('[Background]', errorMsg);
+      logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+      setBadge('✗', '#F44336', 'autosync failed - no tab', 15000);
       return;
     }
 
     const tabId = tabs[0].id;
+
+    logger.info('AUTOSYNC', `Extracting HTML from page`, {
+      selector: sharedConfig.selector,
+      fullPage: sharedConfig.full_page
+    });
 
     // Extract HTML using the config
     const result = await chrome.scripting.executeScript({
@@ -355,9 +430,14 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
 
     const html = result[0]?.result;
     if (!html) {
-      console.error('[Background] Failed to extract HTML');
+      const errorMsg = 'Failed to extract HTML';
+      console.error('[Background]', errorMsg);
+      logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+      setBadge('✗', '#F44336', 'autosync failed - no HTML', 15000);
       return;
     }
+
+    logger.info('AUTOSYNC', `HTML extracted, calling API`, { htmlLength: html.length });
 
     // Call extract API
     const extractResponse = await api.extractHoldings(
@@ -366,7 +446,12 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       sharedConfig.selector
     );
 
+    const duration = Date.now() - startTime;
     console.log('[Background] Auto-sync extraction started, session:', extractResponse.session_id);
+    logger.logAutoSyncComplete(sharedConfig.site_name, extractResponse.session_id, duration);
+
+    // Set success badge
+    setBadge('✓', '#4CAF50', 'autosync success', 10000);
 
     // Decide what to do based on notification preference
     if (privateConfig.notification_preference === 'auto_redirect') {
@@ -380,8 +465,13 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       await injectNotificationBanner(tabId, extractResponse.session_id, sharedConfig);
     }
 
-  } catch (error) {
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error);
     console.error('[Background] Auto-sync trigger error:', error);
+    logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+
+    // Set error badge
+    setBadge('✗', '#F44336', 'autosync exception', 15000);
   }
 }
 
