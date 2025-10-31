@@ -1,6 +1,6 @@
 """Data models for browser extension functionality"""
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 import uuid
 
@@ -36,6 +36,14 @@ class SharedConfig(BaseModel):
 ExtensionConfig = SharedConfig
 
 
+class AutoImportOptions(BaseModel):
+    """Options for automatically importing holdings after extraction"""
+    portfolio_id: str
+    account_name: Optional[str] = None
+    account_type: Optional[str] = None
+    replace_holdings: bool = True
+
+
 class ExtractionSession(BaseModel):
     """Temporary storage for extraction results before import"""
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -50,7 +58,15 @@ class ExtractionSession(BaseModel):
 
     # Auto-Sync Specific (new fields)
     auto_sync: bool = False  # Was this triggered by auto-sync?
+    trigger: Literal["manual", "autosync", "upload"] = "manual"
+    shared_config_id: Optional[str] = None
     private_config_id: Optional[str] = None  # If auto-sync, which config?
+    auto_import: Optional[AutoImportOptions] = None
+    auto_import_status: Optional[str] = None  # "pending", "processing", "success", "failed"
+    auto_import_started_at: Optional[datetime] = None
+    auto_import_completed_at: Optional[datetime] = None
+    auto_import_error: Optional[str] = None
+    auto_import_result: Optional[dict] = None
     previous_holdings: Optional[List[dict]] = None  # For conflict detection
     conflict_detected: bool = False  # Significant changes detected?
     conflict_reason: Optional[str] = None  # Why conflict was triggered
@@ -100,6 +116,10 @@ class ExtractHoldingsRequest(BaseModel):
     html_body: str
     source_url: Optional[str] = None  # URL where extraction happened
     selector: Optional[str] = None  # CSS selector used
+    shared_config_id: Optional[str] = None
+    private_config_id: Optional[str] = None
+    trigger: Literal["manual", "autosync", "upload"] = "manual"
+    auto_import: Optional[AutoImportOptions] = None
 
 
 class ExtractHoldingsResponse(BaseModel):

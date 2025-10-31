@@ -3,9 +3,10 @@ import logging
 import json
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo.asynchronous.database import AsyncDatabase
 
 from google import genai
@@ -25,6 +26,7 @@ from models.extension_models import (
     ExtractionSession,
     ImportHoldingsRequest,
     ImportHoldingsResponse,
+    AutoImportOptions,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,9 @@ async def process_extraction_task(session_id: str, html_body: str, source_url: O
 
         # Get database connection
         db = await db_manager.get_database("vestika")
+
+        session_doc = await db.extraction_sessions.find_one({"_id": session_id})
+        auto_import_payload = session_doc.get("auto_import") if session_doc else None
 
         # Validate API key
         if not settings.google_ai_api_key:
@@ -169,6 +174,14 @@ Important rules:
 
         logger.info(f"Completed extraction for session {session_id}: {len(holdings)} holdings")
 
+        if auto_import_payload and session_doc:
+            await perform_auto_import(
+                db=db,
+                session_doc=session_doc,
+                holdings=holdings,
+                auto_import=auto_import_payload
+            )
+
     except Exception as e:
         logger.error(f"Error in background extraction task: {e}", exc_info=True)
         try:
@@ -182,6 +195,175 @@ Important rules:
             )
         except Exception as update_error:
             logger.error(f"Failed to update session status: {update_error}")
+
+
+async def perform_auto_import(
+    db: AsyncDatabase,
+    session_doc: Dict[str, Any],
+    holdings: List[ExtractedHolding],
+    auto_import: Any
+) -> None:
+    """
+    Automatically import extracted holdings into the user's portfolio.
+    """
+    session_id = session_doc.get("_id") or session_doc.get("session_id")
+    user_id = session_doc.get("user_id")
+    private_config_id = session_doc.get("private_config_id")
+
+    if not session_id or not user_id:
+        logger.warning("Auto-import skipped: missing session_id or user_id")
+        return
+
+    # Normalize auto_import payload to dict
+    if isinstance(auto_import, AutoImportOptions):
+        auto_import_dict = auto_import.dict()
+    else:
+        auto_import_dict = dict(auto_import)
+
+    started_at = datetime.utcnow()
+
+    await db.extraction_sessions.update_one(
+        {"_id": session_id},
+        {"$set": {
+            "auto_import_status": "processing",
+            "auto_import_started_at": started_at,
+            "auto_import_error": None
+        }}
+    )
+
+    try:
+        portfolio_id = auto_import_dict.get("portfolio_id")
+        if not portfolio_id:
+            raise ValueError("Missing portfolio_id for auto-import")
+
+        try:
+            portfolio_object_id = ObjectId(portfolio_id)
+        except (InvalidId, TypeError) as invalid_id:
+            raise ValueError(f"Invalid portfolio_id '{portfolio_id}': {invalid_id}") from invalid_id
+
+        portfolio_doc = await db.portfolios.find_one({
+            "_id": portfolio_object_id,
+            "user_id": user_id
+        })
+
+        if not portfolio_doc:
+            raise ValueError("Portfolio not found or access denied")
+
+        accounts = portfolio_doc.get("accounts", [])
+        account_name = auto_import_dict.get("account_name") or f"Imported Account {started_at.strftime('%Y-%m-%d %H:%M')}"
+        account_type = auto_import_dict.get("account_type")
+        replace_holdings = auto_import_dict.get("replace_holdings", True)
+
+        holdings_payload = [{"symbol": h.symbol, "units": h.units} for h in holdings]
+
+        account_index = None
+        for idx, account in enumerate(accounts):
+            if account.get("name") == account_name:
+                account_index = idx
+                break
+
+        if account_index is not None:
+            if not replace_holdings:
+                raise ValueError("Auto-import requires replace_holdings=True for existing accounts")
+
+            logger.info(f"Auto-import overriding holdings in account '{account_name}'")
+            accounts[account_index]["holdings"] = holdings_payload
+
+            await db.portfolios.update_one(
+                {"_id": portfolio_object_id},
+                {"$set": {"accounts": accounts}}
+            )
+
+            account_id = (
+                accounts[account_index].get("_id")
+                or accounts[account_index].get("id")
+                or str(ObjectId())
+            )
+        else:
+            logger.info(f"Auto-import creating new account '{account_name}'")
+            new_account_id = str(ObjectId())
+            new_account = {
+                "_id": new_account_id,
+                "name": account_name,
+                "properties": {
+                    "owners": ["me"]
+                },
+                "holdings": holdings_payload,
+                "rsu_plans": [],
+                "espp_plans": [],
+                "options_plans": []
+            }
+
+            fallback_account_type = account_type or "taxable-brokerage"
+
+            if fallback_account_type:
+                new_account["properties"]["type"] = fallback_account_type
+
+            accounts.append(new_account)
+
+            await db.portfolios.update_one(
+                {"_id": portfolio_object_id},
+                {"$set": {"accounts": accounts}}
+            )
+
+            account_id = new_account_id
+
+        completed_at = datetime.utcnow()
+
+        auto_import_result = {
+            "portfolio_id": str(portfolio_id),
+            "account_id": str(account_id),
+            "account_name": account_name,
+            "holdings_count": len(holdings_payload),
+            "replace_holdings": replace_holdings,
+            "completed_at": completed_at.isoformat()
+        }
+
+        await db.extraction_sessions.update_one(
+            {"_id": session_id},
+            {"$set": {
+                "auto_import_status": "success",
+                "auto_import_completed_at": completed_at,
+                "auto_import_result": auto_import_result
+            }}
+        )
+
+        if private_config_id:
+            await db.private_configs.update_one(
+                {"private_config_id": private_config_id, "user_id": user_id},
+                {"$set": {
+                    "last_sync_at": completed_at,
+                    "last_sync_status": "success",
+                    "updated_at": completed_at
+                }}
+            )
+
+        logger.info(f"Auto-import succeeded for session {session_id}")
+
+    except Exception as auto_error:
+        error_message = str(auto_error)
+        logger.error(f"Auto-import failed for session {session_id}: {error_message}", exc_info=True)
+
+        completed_at = datetime.utcnow()
+
+        await db.extraction_sessions.update_one(
+            {"_id": session_id},
+            {"$set": {
+                "auto_import_status": "failed",
+                "auto_import_completed_at": completed_at,
+                "auto_import_error": error_message
+            }}
+        )
+
+        if private_config_id:
+            await db.private_configs.update_one(
+                {"private_config_id": private_config_id, "user_id": user_id},
+                {"$set": {
+                    "last_sync_at": completed_at,
+                    "last_sync_status": "failed",
+                    "updated_at": completed_at
+                }}
+            )
 
 
 # ============================================================================
@@ -213,7 +395,13 @@ async def extract_holdings(
             extraction_metadata={},
             source_url=request.source_url,
             selector=request.selector,
-            html_body=request.html_body  # Store HTML temporarily for background task
+            html_body=request.html_body,  # Store HTML temporarily for background task
+            auto_sync=request.trigger == "autosync",
+            trigger=request.trigger,
+            shared_config_id=request.shared_config_id,
+            private_config_id=request.private_config_id,
+            auto_import=request.auto_import,
+            auto_import_status="pending" if request.auto_import else None
         )
 
         # Save to database (temporary collection with TTL)

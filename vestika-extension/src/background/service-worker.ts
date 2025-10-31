@@ -1,7 +1,7 @@
 // Background service worker for Vestika extension
 
 import { api } from '../shared/api';
-import type { Message, AuthState } from '../shared/types';
+import type { Message, AuthState, AutoImportOptions } from '../shared/types';
 
 // Logger needs to be initialized manually in service worker context
 // since import.meta.env is not available
@@ -439,11 +439,44 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
 
     logger.info('AUTOSYNC', `HTML extracted, calling API`, { htmlLength: html.length });
 
-    // Call extract API
+    const autoImportPayload: AutoImportOptions | undefined = (() => {
+      if (!privateConfig?.portfolio_id) {
+        return undefined;
+      }
+
+      const payload: AutoImportOptions = {
+        portfolio_id: privateConfig.portfolio_id,
+        replace_holdings: true,
+      };
+
+      if (privateConfig.account_name) {
+        payload.account_name = privateConfig.account_name;
+      }
+
+      if (privateConfig.account_type) {
+        payload.account_type = privateConfig.account_type;
+      }
+
+      return payload;
+    })();
+
+    if (!autoImportPayload) {
+      logger.info('AUTOSYNC', 'Auto-import skipped - missing portfolio mapping', {
+        privateConfigId: privateConfig?.private_config_id,
+      });
+    }
+
+    // Call extract API with auto-import options so the backend can finalize the sync
     const extractResponse = await api.extractHoldings(
       html,
       url,
-      sharedConfig.selector
+      sharedConfig.selector,
+      {
+        shared_config_id: sharedConfig.config_id,
+        private_config_id: privateConfig.private_config_id,
+        trigger: 'autosync',
+        auto_import: autoImportPayload,
+      }
     );
 
     const duration = Date.now() - startTime;
@@ -453,16 +486,14 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
     // Set success badge
     setBadge('✓', '#4CAF50', 'autosync success', 10000);
 
-    // Decide what to do based on notification preference
-    if (privateConfig.notification_preference === 'auto_redirect') {
-      // Redirect to import page immediately
-      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
-      const importUrl = `${vestikaUrl}/import?session=${extractResponse.session_id}&config=${sharedConfig.config_id}&autosync=true`;
+    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
 
-      await chrome.tabs.create({ url: importUrl });
-    } else {
-      // notification_only mode - inject banner
-      await injectNotificationBanner(tabId, extractResponse.session_id, sharedConfig);
+    // Notify the user in-page if they prefer non-intrusive updates
+    if (privateConfig.notification_preference === 'notification_only') {
+      await injectNotificationBanner(tabId, extractResponse.session_id, sharedConfig, {
+        vestikaUrl,
+        autoImportInitiated: Boolean(autoImportPayload),
+      });
     }
 
   } catch (error: any) {
@@ -475,14 +506,19 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
   }
 }
 
-async function injectNotificationBanner(tabId: number, sessionId: string, sharedConfig: any) {
+async function injectNotificationBanner(
+  tabId: number,
+  sessionId: string,
+  sharedConfig: any,
+  options?: { vestikaUrl: string; autoImportInitiated?: boolean }
+) {
   try {
     console.log('[Background] Injecting notification banner');
 
     // Inject banner into page
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (sessionId: string, siteName: string) => {
+      func: (sessionId: string, siteName: string, vestikaUrl: string, autoImportInitiated: boolean) => {
         // Check if banner already exists
         if (document.getElementById('vestika-autosync-banner')) {
           return;
@@ -521,8 +557,12 @@ async function injectNotificationBanner(tabId: number, sessionId: string, shared
               <path d="M20 6L9 17l-5-5"/>
             </svg>
             <div>
-              <div style="font-weight: 600;">Portfolio Updated from ${siteName}</div>
-              <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">Review your updated holdings in Vestika</div>
+              <div style="font-weight: 600;">
+                ${autoImportInitiated ? 'Vestika is refreshing your holdings' : `Portfolio updated from ${siteName}`}
+              </div>
+              <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
+                ${autoImportInitiated ? 'Holdings are being synced automatically. Open Vestika to review.' : 'Review your updated holdings in Vestika.'}
+              </div>
             </div>
           </div>
           <div style="display: flex; gap: 12px; align-items: center;">
@@ -555,7 +595,6 @@ async function injectNotificationBanner(tabId: number, sessionId: string, shared
         const dismissBtn = document.getElementById('vestika-dismiss-btn');
 
         viewBtn?.addEventListener('click', () => {
-          const vestikaUrl = 'http://localhost:5173'; // TODO: Use env var
           window.open(`${vestikaUrl}/import?session=${sessionId}&autosync=true`, '_blank');
           banner.remove();
         });
@@ -573,7 +612,7 @@ async function injectNotificationBanner(tabId: number, sessionId: string, shared
           }
         }, 15000);
       },
-      args: [sessionId, sharedConfig.site_name],
+      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'http://localhost:5173', Boolean(options?.autoImportInitiated)],
     });
 
     console.log('[Background] Banner injected successfully');

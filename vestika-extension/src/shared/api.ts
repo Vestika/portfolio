@@ -1,5 +1,6 @@
 // API client for Vestika backend
 import { logger } from './utils';
+import type { AutoImportOptions } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -60,14 +61,42 @@ export class VestikaAPI {
   }
 
   // Extract holdings from HTML - returns session_id
-  async extractHoldings(html: string, sourceUrl?: string, selector?: string) {
+  async extractHoldings(
+    html: string,
+    sourceUrl?: string,
+    selector?: string,
+    options?: {
+      shared_config_id?: string;
+      private_config_id?: string;
+      trigger?: 'manual' | 'autosync';
+      auto_import?: AutoImportOptions;
+    }
+  ) {
+    const body: Record<string, unknown> = {
+      html_body: html,
+      source_url: sourceUrl,
+      selector: selector,
+    };
+
+    if (options?.shared_config_id) {
+      body.shared_config_id = options.shared_config_id;
+    }
+
+    if (options?.private_config_id) {
+      body.private_config_id = options.private_config_id;
+    }
+
+    if (options?.trigger) {
+      body.trigger = options.trigger;
+    }
+
+    if (options?.auto_import) {
+      body.auto_import = options.auto_import;
+    }
+
     return this.request('/api/import/extract', {
       method: 'POST',
-      body: JSON.stringify({
-        html_body: html,
-        source_url: sourceUrl,
-        selector: selector,
-      }),
+      body: JSON.stringify(body),
     });
   }
 

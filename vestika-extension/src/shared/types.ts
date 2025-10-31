@@ -92,6 +92,13 @@ export interface ImportResponse {
   message: string;
 }
 
+export interface AutoImportOptions {
+  portfolio_id: string;
+  account_name?: string;
+  account_type?: string;
+  replace_holdings?: boolean;
+}
+
 export interface Portfolio {
   id: string;
   portfolio_name: string;
