@@ -332,9 +332,10 @@ export const ImportView: React.FC = () => {
     try {
       const portfolioId = portfolios.find(p => p.portfolio_name === selectedPortfolioName)?.id;
 
-      await api.post('/api/import/autosync/enable', {
+      await api.post('/api/import/configs/enable', {
         session_id: sessionId,
         config_id: config.config_id,
+        mode: 'auto',
         portfolio_id: portfolioId,
         account_name: selectedAccountName || undefined,
         account_type: newAccountType,
