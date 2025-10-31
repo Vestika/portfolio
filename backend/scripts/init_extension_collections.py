@@ -33,7 +33,8 @@ async def create_indexes():
         IndexModel([("url_pattern", ASCENDING)], name="url_pattern_1"),
         IndexModel([("creator_id", ASCENDING)], name="creator_id_1"),
         IndexModel([("status", ASCENDING), ("is_public", ASCENDING)], name="status_1_is_public_1"),
-        IndexModel([("success_rate", DESCENDING)], name="success_rate_-1"),
+        IndexModel([("successful_imports_count", DESCENDING)], name="successful_imports_count_-1"),
+        IndexModel([("enabled_users_count", DESCENDING)], name="enabled_users_count_-1"),
         IndexModel([("config_id", ASCENDING)], name="config_id_1", unique=True, sparse=True),
     ]
 

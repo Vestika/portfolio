@@ -108,10 +108,9 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({ onSuccess,
         is_public: isPublic,
         verified: false,
         status: 'active',
-        usage_count: 0,
-        success_count: 0,
+        enabled_users_count: 0,
+        successful_imports_count: 0,
         failure_count: 0,
-        success_rate: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       });

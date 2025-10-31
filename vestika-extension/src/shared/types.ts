@@ -16,10 +16,9 @@ export interface SharedConfig {
   status: 'active' | 'under_review' | 'deprecated';
 
   // Usage stats
-  usage_count: number;
-  success_count: number;
+  enabled_users_count: number;
+  successful_imports_count: number;
   failure_count: number;
-  success_rate: number;
   last_used_at?: string;
 
   // Timestamps
@@ -36,6 +35,7 @@ export interface PrivateConfig {
   account_name?: string;
   account_type?: string;
   enabled: boolean;
+  auto_sync_enabled?: boolean;
   notification_preference: 'notification_only' | 'auto_redirect';
   last_sync_at?: string;
   last_sync_status?: 'success' | 'failed' | 'conflict';

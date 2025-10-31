@@ -14,8 +14,8 @@ interface SharedConfig {
   creator_name?: string;
   verified: boolean;
   status: 'active' | 'under_review' | 'deprecated';
-  usage_count: number;
-  success_rate: number;
+  enabled_users_count?: number;
+  successful_imports_count?: number;
   created_at: string;
   is_public?: boolean;
   visibility?: 'public' | 'private';
@@ -411,13 +411,13 @@ export const ConfigGalleryView: React.FC = () => {
               {/* Stats */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="bg-gray-700 rounded p-3">
-                  <div className="text-gray-400 text-xs mb-1">Used by</div>
-                  <div className="text-white font-semibold">{config.usage_count.toLocaleString()}</div>
+                  <div className="text-gray-400 text-xs mb-1">Enabled Users</div>
+                  <div className="text-white font-semibold">{(config.enabled_users_count ?? 0).toLocaleString()}</div>
                 </div>
                 <div className="bg-gray-700 rounded p-3">
-                  <div className="text-gray-400 text-xs mb-1">Success Rate</div>
+                  <div className="text-gray-400 text-xs mb-1">Imports Completed</div>
                   <div className="text-white font-semibold">
-                    {config.success_rate > 0 ? `${(config.success_rate * 100).toFixed(0)}%` : 'N/A'}
+                    {(config.successful_imports_count ?? 0).toLocaleString()}
                   </div>
                 </div>
               </div>

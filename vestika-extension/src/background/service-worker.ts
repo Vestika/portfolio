@@ -393,6 +393,7 @@ async function checkAutoSync(url: string) {
       // Find matching config for this URL
       for (const privateConfig of configs) {
         if (!privateConfig.enabled) continue;
+        if (!privateConfig.auto_sync_enabled) continue;
 
         // Get the shared config to check URL pattern
         try {
@@ -443,6 +444,14 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
     console.log('[Background] Triggering auto-sync for:', sharedConfig.site_name);
     logger.logAutoSyncTrigger(url, sharedConfig.site_name);
 
+    const autoSyncEnabled = Boolean(privateConfig?.auto_sync_enabled);
+    if (!autoSyncEnabled) {
+      logger.info('AUTOSYNC', 'Skipped - config not flagged for auto-sync', {
+        privateConfigId: privateConfig?.private_config_id,
+      });
+      return;
+    }
+
     // Set syncing badge
     setBadge('⟳', '#2196F3', 'autosync in progress', 0);
     showAutoSyncNotification(sharedConfig.site_name, 'start');
@@ -485,7 +494,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
     logger.info('AUTOSYNC', `HTML extracted, calling API`, { htmlLength: html.length });
 
     const autoImportPayload: AutoImportOptions | undefined = (() => {
-      if (!privateConfig?.portfolio_id) {
+      if (!autoSyncEnabled || !privateConfig?.portfolio_id) {
         return undefined;
       }
 
@@ -542,6 +551,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       await injectNotificationBanner(tabId, extractResponse.session_id, sharedConfig, {
         vestikaUrl,
         autoImportInitiated: Boolean(autoImportPayload),
+        autoSyncEnabled,
       });
     }
 
@@ -560,7 +570,7 @@ async function injectNotificationBanner(
   tabId: number,
   sessionId: string,
   sharedConfig: any,
-  options?: { vestikaUrl: string; autoImportInitiated?: boolean }
+  options?: { vestikaUrl: string; autoImportInitiated?: boolean; autoSyncEnabled?: boolean }
 ) {
   try {
     console.log('[Background] Injecting notification banner');
@@ -568,7 +578,7 @@ async function injectNotificationBanner(
     // Inject banner into page
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (sessionId: string, siteName: string, vestikaUrl: string, autoImportInitiated: boolean) => {
+      func: (sessionId: string, siteName: string, vestikaUrl: string, autoImportInitiated: boolean, autoSyncEnabled: boolean) => {
         // Check if banner already exists
         if (document.getElementById('vestika-autosync-banner')) {
           return;
@@ -594,6 +604,8 @@ async function injectNotificationBanner(
           z-index: 999999;
           animation: slideDown 0.3s ease-out;
         `;
+
+        const buttonLabel = autoSyncEnabled ? 'Open Vestika' : 'Review Import';
 
         banner.innerHTML = `
           <style>
@@ -625,7 +637,7 @@ async function injectNotificationBanner(
               cursor: pointer;
               font-weight: 500;
               font-size: 13px;
-            ">View Import</button>
+            ">${buttonLabel}</button>
             <button id="vestika-dismiss-btn" style="
               background: transparent;
               border: none;
@@ -645,7 +657,10 @@ async function injectNotificationBanner(
         const dismissBtn = document.getElementById('vestika-dismiss-btn');
 
         viewBtn?.addEventListener('click', () => {
-          window.open(`${vestikaUrl}/import?session=${sessionId}&autosync=true`, '_blank');
+          const targetUrl = autoSyncEnabled
+            ? vestikaUrl
+            : `${vestikaUrl}/import?session=${sessionId}&autosync=true`;
+          window.open(targetUrl, '_blank');
           banner.remove();
         });
 
@@ -662,7 +677,7 @@ async function injectNotificationBanner(
           }
         }, 15000);
       },
-      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'http://localhost:5173', Boolean(options?.autoImportInitiated)],
+      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'http://localhost:5173', Boolean(options?.autoImportInitiated), Boolean(options?.autoSyncEnabled)],
     });
 
     console.log('[Background] Banner injected successfully');

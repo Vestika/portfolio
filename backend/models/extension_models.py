@@ -21,10 +21,9 @@ class SharedConfig(BaseModel):
     status: str = "active"  # "active", "under_review", "deprecated"
 
     # Usage stats (denormalized for performance)
-    usage_count: int = 0  # Total times used
-    success_count: int = 0  # Successful extractions
-    failure_count: int = 0  # Failed extractions
-    success_rate: float = 0.0  # Calculated: success_count / usage_count
+    enabled_users_count: int = 0  # Number of users who enabled this config
+    successful_imports_count: int = 0  # Total successful imports completed with this config
+    failure_count: int = 0  # Failed extractions/imports
     last_used_at: Optional[datetime] = None  # Last successful use
 
     # Timestamps
@@ -89,6 +88,7 @@ class PrivateConfig(BaseModel):
 
     # Auto-Sync Settings
     enabled: bool = False  # Auto-sync enabled?
+    auto_sync_enabled: bool = False  # Whether auto-sync should run automatically
     notification_preference: str = "notification_only"  # "notification_only" or "auto_redirect"
     last_sync_at: Optional[datetime] = None  # Last successful sync
     last_sync_status: Optional[str] = None  # "success", "failed", "conflict", null

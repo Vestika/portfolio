@@ -38,11 +38,71 @@ router = APIRouter()
 # BACKGROUND EXTRACTION TASK
 # ============================================================================
 
+
+async def refresh_enabled_users_count(db: AsyncDatabase, shared_config_id: Optional[str]) -> None:
+    """Recalculate how many users currently have this config enabled."""
+    if not shared_config_id:
+        return
+
+    enabled_count = await db.private_configs.count_documents({
+        "shared_config_id": shared_config_id,
+        "auto_sync_enabled": True
+    })
+
+    result = await db.shared_configs.update_one(
+        {"config_id": shared_config_id},
+        {"$set": {"enabled_users_count": enabled_count}}
+    )
+
+    if result.matched_count == 0:
+        logger.warning(f"Shared config {shared_config_id} not found while refreshing enabled_users_count")
+
+
+async def increment_successful_imports_count(
+    db: AsyncDatabase,
+    shared_config_id: Optional[str],
+    increment: int = 1
+) -> None:
+    """Increment the number of successful imports for a shared config."""
+    if not shared_config_id:
+        return
+
+    update_result = await db.shared_configs.update_one(
+        {"config_id": shared_config_id},
+        {
+            "$inc": {"successful_imports_count": increment},
+            "$set": {"last_used_at": datetime.utcnow()}
+        }
+    )
+
+    if update_result.matched_count == 0:
+        logger.warning(f"Shared config {shared_config_id} not found while updating successful imports")
+
+
+async def increment_failure_count(
+    db: AsyncDatabase,
+    shared_config_id: Optional[str],
+    increment: int = 1
+) -> None:
+    """Increment failure count for diagnostic tracking."""
+    if not shared_config_id:
+        return
+
+    result = await db.shared_configs.update_one(
+        {"config_id": shared_config_id},
+        {"$inc": {"failure_count": increment}}
+    )
+
+    if result.matched_count == 0:
+        logger.warning(f"Shared config {shared_config_id} not found while updating failure count")
+
 async def process_extraction_task(session_id: str, html_body: str, source_url: Optional[str], selector: Optional[str]):
     """
     Background task to extract holdings from HTML using AI.
     Updates the extraction session with results or error.
     """
+    shared_config_id: Optional[str] = None
+
     try:
         start_time = datetime.utcnow()
 
@@ -51,6 +111,7 @@ async def process_extraction_task(session_id: str, html_body: str, source_url: O
 
         session_doc = await db.extraction_sessions.find_one({"_id": session_id})
         auto_import_payload = session_doc.get("auto_import") if session_doc else None
+        shared_config_id = session_doc.get("shared_config_id") if session_doc else None
 
         # Validate API key
         if not settings.google_ai_api_key:
@@ -61,6 +122,7 @@ async def process_extraction_task(session_id: str, html_body: str, source_url: O
                     "error_message": "AI extraction service not configured"
                 }}
             )
+            await increment_failure_count(db, shared_config_id)
             return
 
         # Initialize Gemini client
@@ -140,6 +202,7 @@ Important rules:
                     "error_message": "AI returned invalid JSON format"
                 }}
             )
+            await increment_failure_count(db, shared_config_id)
             return
 
         # Convert to ExtractedHolding models
@@ -195,6 +258,10 @@ Important rules:
             )
         except Exception as update_error:
             logger.error(f"Failed to update session status: {update_error}")
+        try:
+            await increment_failure_count(db, shared_config_id)
+        except Exception as metrics_error:
+            logger.error(f"Failed to update shared config metrics after exception: {metrics_error}")
 
 
 async def perform_auto_import(
@@ -209,6 +276,7 @@ async def perform_auto_import(
     session_id = session_doc.get("_id") or session_doc.get("session_id")
     user_id = session_doc.get("user_id")
     private_config_id = session_doc.get("private_config_id")
+    shared_config_id = session_doc.get("shared_config_id")
 
     if not session_id or not user_id:
         logger.warning("Auto-import skipped: missing session_id or user_id")
@@ -338,6 +406,8 @@ async def perform_auto_import(
                 }}
             )
 
+        await increment_successful_imports_count(db, shared_config_id)
+
         logger.info(f"Auto-import succeeded for session {session_id}")
 
     except Exception as auto_error:
@@ -364,6 +434,8 @@ async def perform_auto_import(
                     "updated_at": completed_at
                 }}
             )
+
+        await increment_failure_count(db, shared_config_id)
 
 
 # ============================================================================
@@ -596,6 +668,8 @@ async def import_holdings(
     - If account_name is new: CREATE new account with the provided name and type
     - NOTE: We always OVERRIDE holdings, never merge/append
     """
+    session_shared_config_id: Optional[str] = None
+
     try:
         # Load extraction session
         session_doc = await db.extraction_sessions.find_one({"_id": request.session_id})
@@ -612,6 +686,8 @@ async def import_holdings(
                 status_code=403,
                 detail="Access denied to this session"
             )
+
+        session_shared_config_id = session_doc.get("shared_config_id")
 
         # Extract holdings from session
         session_holdings = session_doc.get("extracted_holdings", [])
@@ -662,6 +738,8 @@ async def import_holdings(
 
             account_id = accounts[account_index].get("_id") or accounts[account_index].get("id") or str(ObjectId())
 
+            await increment_successful_imports_count(db, session_shared_config_id)
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
@@ -698,6 +776,8 @@ async def import_holdings(
             # Delete extraction session after successful import
             await db.extraction_sessions.delete_one({"_id": request.session_id})
 
+            await increment_successful_imports_count(db, session_shared_config_id)
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
@@ -707,10 +787,14 @@ async def import_holdings(
                 message=f"Successfully created account '{request.account_name}' with {len(holdings)} holdings"
             )
 
-    except HTTPException:
-        raise
+    except HTTPException as http_err:
+        raise http_err
     except Exception as e:
         logger.error(f"Error in import_holdings: {e}", exc_info=True)
+        try:
+            await increment_failure_count(db, session_shared_config_id)
+        except Exception as metrics_error:
+            logger.error(f"Failed to record import failure metric: {metrics_error}")
         raise HTTPException(
             status_code=500,
             detail=f"Import failed: {str(e)}"
@@ -730,7 +814,7 @@ async def match_shared_configs(
     """
     Match URL to available shared configs.
 
-    Returns configs sorted by success_rate DESC, usage_count DESC.
+    Returns configs sorted by successful_imports_count DESC, enabled_users_count DESC.
     Returns top 3 matches.
     """
     try:
@@ -760,8 +844,8 @@ async def match_shared_configs(
                         "creator_name": doc.get("creator_name"),
                         "verified": doc.get("verified", False),
                         "status": doc.get("status", "active"),
-                        "usage_count": doc.get("usage_count", 0),
-                        "success_rate": doc.get("success_rate", 0.0),
+                        "enabled_users_count": doc.get("enabled_users_count", 0),
+                        "successful_imports_count": doc.get("successful_imports_count", 0),
                         "last_used_at": doc.get("last_used_at"),
                         "visibility": "public" if doc.get("is_public") else "private",
                         "is_owner": doc.get("creator_id") == user.id
@@ -771,9 +855,9 @@ async def match_shared_configs(
                 logger.warning(f"Invalid regex pattern in config {doc.get('_id')}: {e}")
                 continue
 
-        # Sort by success_rate DESC, then usage_count DESC
+        # Sort by successful_imports_count DESC, then enabled_users_count DESC
         matching_configs.sort(
-            key=lambda x: (x["success_rate"], x["usage_count"]),
+            key=lambda x: (x["successful_imports_count"], x["enabled_users_count"]),
             reverse=True
         )
 
@@ -974,6 +1058,8 @@ async def create_private_config(
         upsert=True
     )
 
+    await refresh_enabled_users_count(db, config.shared_config_id)
+
     return {
         "private_config_id": config.private_config_id,
         "message": "Private configuration created successfully"
@@ -1034,6 +1120,8 @@ async def update_private_config(
         {"$set": config_dict}
     )
 
+    await refresh_enabled_users_count(db, existing.get("shared_config_id"))
+
     return {"message": "Private configuration updated successfully"}
 
 
@@ -1044,13 +1132,18 @@ async def delete_private_config(
     db: AsyncDatabase = Depends(get_db)
 ):
     """Delete a private configuration"""
-    result = await db.private_configs.delete_one({
+    doc = await db.private_configs.find_one({
         "_id": ObjectId(config_id),
         "user_id": user.id
     })
 
-    if result.deleted_count == 0:
+    if not doc:
         raise HTTPException(status_code=404, detail="Configuration not found")
+
+    await db.private_configs.delete_one({"_id": doc["_id"]})
+
+    shared_config_id = doc.get("shared_config_id")
+    await refresh_enabled_users_count(db, shared_config_id)
 
     return {"message": "Private configuration deleted successfully"}
 
@@ -1114,6 +1207,7 @@ async def enable_config(
             "account_name": None,
             "account_type": None,
             "enabled": True,
+            "auto_sync_enabled": False,
             "notification_preference": "notification_only",
             "last_sync_at": None,
             "last_sync_status": None,
@@ -1126,6 +1220,8 @@ async def enable_config(
             {"$set": private_config},
             upsert=True
         )
+
+        await refresh_enabled_users_count(db, config_id)
 
         return {
             "success": True,
@@ -1195,6 +1291,7 @@ async def enable_config(
         "account_name": account_name,
         "account_type": account_type,
         "enabled": True,
+        "auto_sync_enabled": True,
         "notification_preference": notification_preference,
         "last_sync_at": None,
         "last_sync_status": None,
@@ -1207,6 +1304,8 @@ async def enable_config(
         {"$set": private_config},
         upsert=True
     )
+
+    await refresh_enabled_users_count(db, config_id)
 
     return {
         "success": True,
@@ -1240,11 +1339,17 @@ async def disable_config(
     # Update private config to set enabled=False
     result = await db.private_configs.update_one(
         {"user_id": user.id, "shared_config_id": config_id},
-        {"$set": {"enabled": False, "updated_at": datetime.utcnow()}}
+        {"$set": {
+            "enabled": False,
+            "auto_sync_enabled": False,
+            "updated_at": datetime.utcnow()
+        }}
     )
 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Config not enabled for this user")
+
+    await refresh_enabled_users_count(db, config_id)
 
     return {
         "success": True,

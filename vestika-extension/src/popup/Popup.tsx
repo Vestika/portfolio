@@ -515,9 +515,11 @@ function Popup() {
                 )}
               </div>
               <div className="config-stats">
-                <span>Used by: {matchedConfigs[0].usage_count.toLocaleString()} users</span>
-                {matchedConfigs[0].success_rate > 0 && (
-                  <span>Success rate: {(matchedConfigs[0].success_rate * 100).toFixed(0)}%</span>
+                <span>Enabled by: {(matchedConfigs[0].enabled_users_count ?? 0).toLocaleString()} users</span>
+                {(matchedConfigs[0].successful_imports_count ?? 0) > 0 && (
+                  <span>
+                    Imports completed: {(matchedConfigs[0].successful_imports_count ?? 0).toLocaleString()}
+                  </span>
                 )}
               </div>
             </div>

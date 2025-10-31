@@ -44,8 +44,8 @@ interface SharedConfig {
   url_pattern: string;
   creator_name?: string;
   verified: boolean;
-  usage_count: number;
-  success_rate: number;
+  enabled_users_count?: number;
+  successful_imports_count?: number;
 }
 
 interface Portfolio {
