@@ -65,11 +65,18 @@ function Options() {
 
     try {
       await api.createSharedConfig({
-        name: formData.name,
-        url: formData.url,
-        full_url: formData.fullPage,
+        site_name: formData.name,
+        url_pattern: formData.url,
+        full_page: formData.fullPage,
         selector: formData.selector || undefined,
         is_public: true,
+        verified: false,
+        status: 'active',
+        enabled_users_count: 0,
+        successful_imports_count: 0,
+        failure_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
 
       setShowCreateForm(false);
@@ -127,16 +134,16 @@ function Options() {
           ) : (
             <div className="config-list">
               {privateConfigs.map((config) => (
-                <div key={config.id} className="config-card">
+                <div key={config.private_config_id} className="config-card">
                   <div className="config-info">
                     <strong>Portfolio ID:</strong> {config.portfolio_id}
                     <br />
-                    <strong>Account ID:</strong> {config.account_id}
+                    <strong>Account:</strong> {config.account_name || 'Not specified'}
                     <br />
-                    <strong>Auto-sync:</strong> {config.auto_sync ? 'Yes' : 'No'}
+                    <strong>Auto-sync:</strong> {config.auto_sync_enabled ? 'Enabled' : 'Disabled'}
                   </div>
                   <button
-                    onClick={() => handleDeletePrivateConfig(config.id!)}
+                    onClick={() => handleDeletePrivateConfig(config.private_config_id!)}
                     className="btn-danger"
                   >
                     Delete
@@ -215,11 +222,12 @@ function Options() {
           ) : (
             <div className="config-list">
               {sharedConfigs.map((config) => (
-                <div key={config.id} className="config-card">
+                <div key={config.config_id} className="config-card">
                   <div className="config-info">
-                    <strong>{config.name}</strong>
+                    <strong>{config.site_name}</strong>
                     <br />
-                    <small>{config.url}</small>
+                    <small>{config.url_pattern}</small>
+                    {config.verified && <span className="badge-verified"> ✓ Verified</span>}
                   </div>
                   <button
                     onClick={() => alert('Link to portfolio (TODO)')}

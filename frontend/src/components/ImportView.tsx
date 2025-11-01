@@ -15,6 +15,7 @@ interface ExtractedHolding {
 interface ExtractionSession {
   session_id: string;
   user_id: string;
+  status: 'processing' | 'completed' | 'failed' | 'requires_review';
   extracted_holdings: ExtractedHolding[];
   extraction_metadata: {
     model_used: string;
@@ -25,7 +26,26 @@ interface ExtractionSession {
   };
   source_url?: string;
   selector?: string;
+  error_message?: string;
+
+  // Auto-sync fields
+  auto_sync?: boolean;
+  private_config_id?: string;
+  previous_holdings?: any[];
+  conflict_detected?: boolean;
+  conflict_reason?: string;
+
   created_at: string;
+}
+
+interface SharedConfig {
+  config_id: string;
+  site_name: string;
+  url_pattern: string;
+  creator_name?: string;
+  verified: boolean;
+  enabled_users_count?: number;
+  successful_imports_count?: number;
 }
 
 interface Portfolio {
@@ -44,11 +64,13 @@ interface Account {
 export const ImportView: React.FC = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session');
+  const configId = searchParams.get('config');
 
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(true); // New: track extraction status
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<ExtractionSession | null>(null);
+  const [config, setConfig] = useState<SharedConfig | null>(null);
   const [holdings, setHoldings] = useState<ExtractedHolding[]>([]);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
 
@@ -58,6 +80,16 @@ export const ImportView: React.FC = () => {
 
   const [importing, setImporting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [enablingAutoSync, setEnablingAutoSync] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [showConfigSuggestion, setShowConfigSuggestion] = useState(true);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  // Check user preference for config suggestion
+  useEffect(() => {
+    const hideConfigSuggestion = localStorage.getItem('hideConfigCreationSuggestion') === 'true';
+    setShowConfigSuggestion(!hideConfigSuggestion);
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
@@ -68,7 +100,12 @@ export const ImportView: React.FC = () => {
 
     loadSession();
     loadPortfolios();
-  }, [sessionId]);
+
+    // Load config if provided
+    if (configId) {
+      loadConfig();
+    }
+  }, [sessionId, configId]);
 
   async function loadSession() {
     try {
@@ -82,11 +119,21 @@ export const ImportView: React.FC = () => {
         // Still extracting, poll again in 2 seconds
         setExtracting(true);
         setTimeout(() => loadSession(), 2000);
-      } else if (sessionData.status === 'completed') {
-        // Extraction complete
+      } else if (sessionData.status === 'completed' || sessionData.status === 'requires_review') {
+        // Extraction complete (or has conflicts)
         setExtracting(false);
         setHoldings(sessionData.extracted_holdings || []);
         setLoading(false);
+
+        // Send conflict badge if status is requires_review
+        if (sessionData.status === 'requires_review' && sessionData.conflict_detected) {
+          // Notify extension (if available)
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage({ type: 'EXTRACTION_CONFLICT' }).catch(() => {
+              // Extension not available, that's ok
+            });
+          }
+        }
       } else if (sessionData.status === 'failed') {
         // Extraction failed
         setExtracting(false);
@@ -94,9 +141,26 @@ export const ImportView: React.FC = () => {
         setLoading(false);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load session');
-      setExtracting(false);
-      setLoading(false);
+      // Check if session expired (404 or specific error message)
+      if (err.response?.status === 404 || err.message?.includes('not found')) {
+        setError('Session expired. Sessions are valid for 24 hours. Please extract data again from the extension.');
+        setExtracting(false);
+        setLoading(false);
+      } else {
+        setError(err.message || 'Failed to load session');
+        setExtracting(false);
+        setLoading(false);
+      }
+    }
+  }
+
+  async function loadConfig() {
+    try {
+      const response = await api.get(`/api/import/configs/${configId}`);
+      setConfig(response.data);
+    } catch (err: any) {
+      console.error('Failed to load config:', err);
+      // Config loading is not critical, just log it
     }
   }
 
@@ -205,14 +269,126 @@ export const ImportView: React.FC = () => {
       setSuccess(true);
       setImporting(false);
 
-      // Redirect to portfolios after 2 seconds
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 2000);
+      // Clear any extension badge
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+      }
+
+      // Only auto-redirect if NOT showing config suggestion
+      // If showing suggestion, user needs time to read and decide
+      const hideConfigSuggestion = localStorage.getItem('hideConfigCreationSuggestion') === 'true';
+      const willShowSuggestion = !configId && session?.source_url && !hideConfigSuggestion;
+
+      if (!willShowSuggestion) {
+        // Redirect to portfolios after 2 seconds
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      }
+      // If showing suggestion, user will navigate via "Share Config" or "Maybe Later" buttons
 
     } catch (err: any) {
       setError(err.message || 'Import failed');
       setImporting(false);
+    }
+  }
+
+  async function handleShareConfig(visibility: 'public' | 'private') {
+    if (!session?.source_url) return;
+
+    const shareUrl = session.source_url;
+    let proposedPattern = '';
+
+    try {
+      // Escape special regex characters in host/path
+      const escaped = shareUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      proposedPattern = `^${escaped}$`;
+    } catch (e) {
+      proposedPattern = `^${shareUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    }
+
+    const siteHost = (() => {
+      try {
+        return new URL(shareUrl).hostname.replace(/^www\./, '');
+      } catch {
+        return shareUrl;
+      }
+    })();
+
+    const siteName = siteHost
+      .split('.')
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+    try {
+      await api.post('/api/import/configs', {
+        site_name: siteName || siteHost,
+        url_pattern: proposedPattern,
+        full_page: !session.selector,
+        selector: session.selector || undefined,
+        is_public: visibility === 'public',
+        verified: false,
+        status: 'active',
+        enabled_users_count: 0,
+        successful_imports_count: 0,
+        failure_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      if (dontShowAgain) {
+        localStorage.setItem('hideConfigCreationSuggestion', 'true');
+      }
+
+      setShowConfigSuggestion(false);
+
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1000);
+    } catch (error: any) {
+      setError(error?.message || 'Failed to save config');
+    }
+  }
+
+  function handleMaybeLater() {
+    // Save preference if "don't show again" is checked
+    if (dontShowAgain) {
+      localStorage.setItem('hideConfigCreationSuggestion', 'true');
+    }
+
+    // Hide the suggestion and redirect to portfolio
+    setShowConfigSuggestion(false);
+
+    // Redirect after a short delay so user sees the card disappear
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 500);
+  }
+
+  async function handleEnableAutoSync() {
+    if (!sessionId || !selectedPortfolioName || !config) return;
+
+    setEnablingAutoSync(true);
+
+    try {
+      const portfolioId = portfolios.find(p => p.portfolio_name === selectedPortfolioName)?.id;
+
+      await api.post('/api/import/configs/enable', {
+        session_id: sessionId,
+        config_id: config.config_id,
+        mode: 'auto',
+        portfolio_id: portfolioId,
+        account_name: selectedAccountName || undefined,
+        account_type: newAccountType,
+        notification_preference: 'notification_only' // Default to notification mode
+      });
+
+      setAutoSyncEnabled(true);
+      setEnablingAutoSync(false);
+    } catch (err: any) {
+      console.error('Auto-sync enable error:', err);
+      setEnablingAutoSync(false);
     }
   }
 
@@ -242,11 +418,35 @@ export const ImportView: React.FC = () => {
   }
 
   if (error && !session) {
+    // Session expired or failed to load
+    const isExpired = error.includes('expired') || error.includes('24 hours');
+
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
-          <div className="text-red-400 text-center mb-4">❌ Error</div>
-          <p className="text-gray-300 text-center">{error}</p>
+          <div className="text-red-400 text-6xl text-center mb-4">
+            {isExpired ? '⏰' : '❌'}
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2 text-center">
+            {isExpired ? 'Session Expired' : 'Error'}
+          </h2>
+          <p className="text-gray-300 text-center mb-6">{error}</p>
+          {isExpired && (
+            <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4 text-sm text-blue-300">
+              <p className="font-medium mb-2">To extract data again:</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Navigate to your brokerage site</li>
+                <li>Click the Vestika extension icon</li>
+                <li>Click "Extract Data" or pick elements manually</li>
+              </ol>
+            </div>
+          )}
+          <Button
+            onClick={() => window.location.href = '/'}
+            className="w-full mt-4"
+          >
+            Return to Portfolio
+          </Button>
         </div>
       </div>
     );
@@ -258,7 +458,98 @@ export const ImportView: React.FC = () => {
         <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
           <div className="text-green-400 text-6xl mb-4">✓</div>
           <h2 className="text-2xl font-bold text-white mb-2">Import Successful!</h2>
-          <p className="text-gray-300">Redirecting to your portfolio...</p>
+
+          {/* Auto-sync offer (only if config was used) */}
+          {config && !autoSyncEnabled && (
+            <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4 mt-6 mb-4 text-left">
+              <h3 className="text-blue-300 font-semibold mb-2">Want automatic updates?</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                Enable auto-sync to automatically update your portfolio when you visit {config.site_name}.
+                A notification will appear when updates are ready.
+              </p>
+              <Button
+                onClick={handleEnableAutoSync}
+                disabled={enablingAutoSync}
+                size="sm"
+                className="w-full"
+              >
+                {enablingAutoSync ? 'Enabling...' : 'Enable Auto-Sync'}
+              </Button>
+            </div>
+          )}
+
+          {autoSyncEnabled && (
+            <div className="bg-green-900/20 border border-green-500 rounded-lg p-4 mt-6 mb-4">
+              <p className="text-green-300 text-sm">
+                ✓ Auto-sync enabled for {config?.site_name}!<br />
+                Next time you visit, we'll automatically extract your holdings.
+              </p>
+            </div>
+          )}
+
+          {/* Config creation suggestion (only if no config was used and user hasn't hidden it) */}
+          {!config && session?.source_url && showConfigSuggestion && (
+            <div className="bg-purple-900/20 border border-purple-500 rounded-lg p-5 mt-6 mb-4 text-left">
+              <h3 className="text-purple-300 font-semibold mb-3 text-base">
+                💡 Help the Vestika Community
+              </h3>
+              <p className="text-gray-300 text-sm mb-3 leading-relaxed">
+                You just manually imported holdings from <strong className="text-white">{new URL(session.source_url).hostname}</strong>.
+                By creating an extraction config, you can:
+              </p>
+              <ul className="text-gray-300 text-sm mb-4 space-y-1 ml-4 list-disc">
+                <li>Make future imports from this site automatic</li>
+                <li>Enable auto-sync to keep your portfolio updated</li>
+                <li>Help other Vestika users import from {new URL(session.source_url).hostname}</li>
+              </ul>
+
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="dontShowAgain"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-500 bg-gray-700 text-purple-500 focus:ring-purple-500"
+                />
+                <label htmlFor="dontShowAgain" className="text-gray-400 text-xs cursor-pointer">
+                  Don't show this again
+                </label>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                <Button
+                  onClick={() => handleShareConfig('public')}
+                  size="sm"
+                  className="w-full sm:flex-1"
+                >
+                  Share as Public Config
+                </Button>
+                <Button
+                  onClick={() => handleShareConfig('private')}
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:flex-1 border-purple-500/60 text-purple-200 hover:bg-purple-900/30"
+                >
+                  Save as Private Config
+                </Button>
+                <Button
+                  onClick={handleMaybeLater}
+                  size="sm"
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                >
+                  Maybe Later
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Only show redirect message if NOT showing config suggestion OR if auto-sync was enabled */}
+          {(!showConfigSuggestion || autoSyncEnabled || config) && (
+            <p className="text-gray-300 text-sm mt-4">
+              {autoSyncEnabled ? 'Redirecting to your portfolio...' : 'Redirecting in 2 seconds...'}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -281,6 +572,41 @@ export const ImportView: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
           <h1 className="text-2xl font-bold text-white mb-2">Review Import</h1>
+
+          {/* Config info banner */}
+          {config && (
+            <div className="bg-green-900/20 border border-green-500 rounded-lg p-3 mb-3">
+              <div className="flex items-start gap-2">
+                <span className="text-green-400 text-lg">✓</span>
+                <div className="flex-1">
+                  <p className="text-green-300 text-sm font-medium">
+                    Extracted from <strong>{config.site_name}</strong> using {config.creator_name ? `${config.creator_name}'s` : 'a'} configuration
+                  </p>
+                  {config.verified && (
+                    <p className="text-green-400 text-xs mt-1">✓ Verified configuration</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Conflict warning */}
+          {session?.status === 'requires_review' && session.conflict_detected && (
+            <div className="bg-yellow-900/20 border border-yellow-500 rounded-lg p-3 mb-3">
+              <div className="flex items-start gap-2">
+                <span className="text-yellow-400 text-lg">⚠️</span>
+                <div className="flex-1">
+                  <p className="text-yellow-300 text-sm font-medium">
+                    Significant changes detected
+                  </p>
+                  <p className="text-yellow-200 text-xs mt-1">
+                    {session.conflict_reason || 'The new holdings differ significantly from your previous import. Please review carefully.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <p className="text-gray-400 text-sm">
             Review the extracted holdings and select where to import them
           </p>

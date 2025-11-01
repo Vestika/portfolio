@@ -306,6 +306,117 @@ body {
   border-color: hsl(var(--ring));
 }
 
+/* Config Card Styles */
+.loading-configs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: hsl(var(--muted));
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid hsl(var(--border));
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.config-card {
+  background: hsl(var(--card));
+  border: 2px solid #4CAF50;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.config-header .success-icon {
+  font-size: 20px;
+}
+
+.config-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.config-card > p {
+  margin: 4px 0;
+  font-size: 14px;
+  color: hsl(var(--foreground));
+}
+
+.config-card .subtitle {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 4px;
+}
+
+.config-details {
+  background: hsl(var(--muted));
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.config-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.config-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.badge-verified {
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+.config-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  flex-wrap: wrap;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: hsl(var(--primary));
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+  padding: 4px 0;
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;

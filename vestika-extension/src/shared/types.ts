@@ -1,27 +1,57 @@
 // Type definitions for the extension
 
-export interface ExtensionConfig {
-  id?: string;
-  name: string;
-  url: string; // URL pattern with wildcards
-  full_url: boolean;
+// Shared configuration for popular financial sites
+export interface SharedConfig {
+  config_id?: string;
+  site_name: string;
+  url_pattern: string; // Regex pattern
   selector?: string;
-  created_by: string;
+  full_page: boolean;
+
+  // Metadata
+  creator_id?: string;
+  creator_name?: string;
   is_public: boolean;
+  verified: boolean;
+  status: 'active' | 'under_review' | 'deprecated';
+
+  // Usage stats
+  enabled_users_count: number;
+  successful_imports_count: number;
+  failure_count: number;
+  last_used_at?: string;
+
+  // Timestamps
   created_at: string;
   updated_at: string;
 }
 
-export interface PrivateExtensionConfig {
-  id?: string;
+// Private config for auto-sync
+export interface PrivateConfig {
+  private_config_id?: string;
   user_id: string;
-  extension_config_id: string;
+  shared_config_id: string;
   portfolio_id: string;
-  account_id: string;
-  auto_sync: boolean;
+  account_name?: string;
+  account_type?: string;
+  enabled: boolean;
+  auto_sync_enabled?: boolean;
+  notification_preference: 'notification_only' | 'auto_redirect';
+  last_sync_at?: string;
+  last_sync_status?: 'success' | 'failed' | 'conflict' | 'processing';
   created_at: string;
   updated_at: string;
 }
+
+// Config match response
+export interface ConfigMatchResponse {
+  configs: SharedConfig[];
+  matched: boolean;
+}
+
+// Aliases for backwards compatibility
+export type ExtensionConfig = SharedConfig;
+export type PrivateExtensionConfig = PrivateConfig;
 
 export interface ExtractedHolding {
   symbol: string;
@@ -62,6 +92,13 @@ export interface ImportResponse {
   message: string;
 }
 
+export interface AutoImportOptions {
+  portfolio_id: string;
+  account_name?: string;
+  account_type?: string;
+  replace_holdings?: boolean;
+}
+
 export interface Portfolio {
   id: string;
   portfolio_name: string;
@@ -90,7 +127,7 @@ export interface AuthState {
 }
 
 export interface Message {
-  type: 'AUTH_STATE' | 'GET_AUTH_TOKEN' | 'EXTRACT_HTML' | 'AUTO_SYNC' | 'REQUEST_AUTH';
+  type: 'AUTH_STATE' | 'GET_AUTH_TOKEN' | 'EXTRACT_HTML' | 'AUTO_SYNC' | 'REQUEST_AUTH' | 'EXTRACTION_SUCCESS' | 'EXTRACTION_FAILED' | 'EXTRACTION_CONFLICT' | 'CLEAR_BADGE';
   payload?: any;
   forceRefresh?: boolean;
 }

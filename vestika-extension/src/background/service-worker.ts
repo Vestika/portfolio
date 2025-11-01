@@ -1,10 +1,136 @@
 // Background service worker for Vestika extension
 
 import { api } from '../shared/api';
-import type { Message, AuthState } from '../shared/types';
+import type { Message, AuthState, AutoImportOptions } from '../shared/types';
+
+// Logger needs to be initialized manually in service worker context
+// since import.meta.env is not available
+class ServiceWorkerLogger {
+  private isDevelopment: boolean = true; // Always enabled for now, can be configured
+
+  private formatMessage(category: string, message: string): string {
+    const timestamp = new Date().toISOString();
+    return `[${timestamp}] [${category}] ${message}`;
+  }
+
+  info(category: string, message: string, data?: any) {
+    if (!this.isDevelopment) return;
+    if (data) {
+      console.log(this.formatMessage(category, message), data);
+    } else {
+      console.log(this.formatMessage(category, message));
+    }
+  }
+
+  error(category: string, message: string, data?: any) {
+    if (!this.isDevelopment) return;
+    if (data) {
+      console.error(this.formatMessage(category, message), data);
+    } else {
+      console.error(this.formatMessage(category, message));
+    }
+  }
+
+  logAutoSyncTrigger(url: string, configName: string) {
+    this.info('AUTOSYNC', `Triggered for ${configName}`, { url });
+  }
+
+  logAutoSyncComplete(configName: string, sessionId: string, duration: number) {
+    this.info('AUTOSYNC', `Completed for ${configName} (${duration}ms)`, { sessionId });
+  }
+
+  logAutoSyncError(configName: string, error: string) {
+    this.error('AUTOSYNC', `Failed for ${configName}`, { error });
+  }
+
+  logBadgeChange(text: string, color: string, reason: string, autoClearMs?: number) {
+    this.info('BADGE', `Set to "${text}" (${color}) - ${reason}`, { autoClearMs });
+  }
+}
+
+const logger = new ServiceWorkerLogger();
 
 // Auth state - loaded from storage on startup
 let authState: AuthState | null = null;
+
+type AutoSyncNotificationStatus = 'start' | 'success' | 'failure';
+
+function showAutoSyncNotification(siteName: string, status: AutoSyncNotificationStatus, details?: string) {
+  if (!chrome.notifications || typeof chrome.notifications.create !== 'function') {
+    return;
+  }
+
+  const sanitize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const notificationId = `autosync-${sanitize(siteName)}-${status}`;
+
+  const iconUrl = chrome.runtime.getURL('assets/icon-128.png');
+  let title = 'Vestika Auto-sync';
+  let message = '';
+  const requireInteraction = status === 'failure';
+  const silent = status === 'start';
+
+  switch (status) {
+    case 'start':
+      title = `Auto-sync started`;
+      message = `Refreshing holdings from ${siteName}...`;
+      break;
+    case 'success':
+      title = `Auto-sync complete`;
+      message = details ? details : `Holdings from ${siteName} are up to date.`;
+      break;
+    case 'failure':
+      title = `Auto-sync failed`;
+      message = details ? details : `Check Vestika for details.`;
+      break;
+  }
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl,
+    title,
+    message,
+    priority: status === 'failure' ? 2 : 0,
+    requireInteraction,
+    silent,
+  });
+}
+
+// Badge state management
+let badgeClearTimer: number | null = null;
+
+// Set badge with auto-clear
+function setBadge(text: string, color: string, reason: string, autoCleanMs?: number) {
+  chrome.action.setBadgeText({ text });
+  chrome.action.setBadgeBackgroundColor({ color });
+
+  // Log badge change
+  logger.logBadgeChange(text, color, reason, autoCleanMs);
+
+  // Clear any existing timer
+  if (badgeClearTimer) {
+    clearTimeout(badgeClearTimer);
+    badgeClearTimer = null;
+  }
+
+  // Auto-clear after specified time
+  if (autoCleanMs) {
+    badgeClearTimer = setTimeout(() => {
+      chrome.action.setBadgeText({ text: '' });
+      logger.logBadgeChange('', 'none', 'auto-clear timer expired');
+      badgeClearTimer = null;
+    }, autoCleanMs);
+  }
+}
+
+// Clear badge
+function clearBadge() {
+  chrome.action.setBadgeText({ text: '' });
+  logger.logBadgeChange('', 'none', 'manual clear');
+  if (badgeClearTimer) {
+    clearTimeout(badgeClearTimer);
+    badgeClearTimer = null;
+  }
+}
 
 // Load auth state from storage on startup (survives service worker restarts)
 async function loadAuthFromStorage() {
@@ -146,7 +272,16 @@ async function handleMessage(message: Message) {
         const result = await chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           func: extractPageHTML,
-          args: [message.payload.selector, message.payload.fullPage],
+          args: [
+            message.payload.selector,
+            message.payload.fullPage !== false,
+            typeof message.payload.waitForSelectorMs === 'number'
+              ? message.payload.waitForSelectorMs
+              : (message.payload.selector ? 4000 : 0),
+            typeof message.payload.pollIntervalMs === 'number'
+              ? message.payload.pollIntervalMs
+              : 150
+          ],
         });
 
         return { html: result[0]?.result };
@@ -161,19 +296,66 @@ async function handleMessage(message: Message) {
       // TODO: Implement auto-sync logic
       return { success: true };
 
+    case 'EXTRACTION_SUCCESS':
+      // Show green badge for successful extraction
+      setBadge('✓', '#4CAF50', 'extraction success', 10000); // Green, auto-clear in 10s
+      console.log('[Background] Extraction successful');
+      return { success: true };
+
+    case 'EXTRACTION_FAILED':
+      // Show red badge for failed extraction
+      setBadge('✗', '#F44336', 'extraction failed', 15000); // Red, auto-clear in 15s
+      console.log('[Background] Extraction failed');
+      return { success: true };
+
+    case 'EXTRACTION_CONFLICT':
+      // Show blue badge for conflicts requiring review
+      setBadge('!', '#2196F3', 'extraction conflict', 0); // Blue, don't auto-clear (user needs to review)
+      console.log('[Background] Extraction has conflicts');
+      return { success: true };
+
+    case 'CLEAR_BADGE':
+      // Clear badge manually
+      clearBadge();
+      return { success: true };
+
     default:
       return { error: 'Unknown message type' };
   }
 }
 
 // Function to execute in page context to extract HTML
-function extractPageHTML(selector?: string, fullPage: boolean = true): string {
+async function extractPageHTML(
+  selector?: string,
+  fullPage: boolean = true,
+  waitForSelectorMs: number = 0,
+  pollIntervalMs: number = 100
+): Promise<string> {
   if (!fullPage && selector) {
-    const element = document.querySelector(selector);
-    if (!element) {
+    const waitTimeout = Math.max(0, waitForSelectorMs || 0);
+    const interval = Math.max(50, pollIntervalMs || 50);
+
+    if (waitTimeout > 0) {
+      const deadline = Date.now() + waitTimeout;
+      let element: Element | null = document.querySelector(selector);
+
+      while (!element && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, interval));
+        element = document.querySelector(selector);
+      }
+
+      if (!element) {
+        throw new Error(`Element not found for selector within ${waitTimeout}ms: ${selector}`);
+      }
+
+      return element.outerHTML;
+    }
+
+    const immediateElement = document.querySelector(selector);
+    if (!immediateElement) {
       throw new Error(`Element not found for selector: ${selector}`);
     }
-    return element.outerHTML;
+    return immediateElement.outerHTML;
   }
 
   // Clean HTML by removing scripts and styles
@@ -213,23 +395,332 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
 
 async function checkAutoSync(url: string) {
   try {
+    logger.info('AUTOSYNC', `Checking URL for autosync`, { url });
+
+    // Check if auth is available
+    if (!authState?.token || !authState?.isAuthenticated) {
+      console.log('[Background] Auto-sync skipped (not authenticated)');
+      logger.info('AUTOSYNC', 'Skipped - not authenticated');
+      return;
+    }
+
     // Get private configs with auto_sync enabled
     const result = await chrome.storage.local.get('lastSync');
     const lastSync = result.lastSync || {};
 
-    // Check if we've synced this URL recently (within 1 minute)
-    const lastSyncTime = lastSync[url];
-    if (lastSyncTime && Date.now() - lastSyncTime < 60000) {
-      console.log('[Background] Auto-sync skipped (too recent):', url);
-      return;
+    // Check if we've synced this URL recently (within 5 minutes to avoid spam)
+    const domain = new URL(url).hostname;
+    const lastSyncTime = lastSync[domain];
+    if (lastSyncTime && Date.now() - lastSyncTime < 300000) {
+      const timeSince = Math.floor((Date.now() - lastSyncTime) / 1000);
+      console.log('[Background] Auto-sync skipped (too recent):', domain);
+      logger.info('AUTOSYNC', `Skipped - synced ${timeSince}s ago`, { domain });
+      // return;
     }
 
-    // TODO: Fetch private configs and check if URL matches
-    // For now, just log
-    console.log('[Background] Checking auto-sync for URL:', url);
+    // Fetch user's private configs
+    try {
+      const response = await api.getPrivateConfigs();
+      const configs = response.configs || [];
+
+      // Find matching config for this URL
+      for (const privateConfig of configs) {
+        if (!privateConfig.enabled) continue;
+        if (!privateConfig.auto_sync_enabled) continue;
+
+        // Get the shared config to check URL pattern
+        try {
+          const sharedConfigResponse = await api.getSharedConfigs();
+          const sharedConfig = sharedConfigResponse.configs?.find(
+            (c: any) => c.config_id === privateConfig.shared_config_id
+          );
+
+          if (!sharedConfig) continue;
+
+          // Check if URL matches pattern
+          const pattern = sharedConfig.url_pattern;
+          const regex = new RegExp(pattern);
+
+          if (regex.test(url)) {
+            console.log('[Background] Auto-sync match found:', sharedConfig.site_name);
+            logger.info('AUTOSYNC', `Config match found: ${sharedConfig.site_name}`, {
+              configId: sharedConfig.config_id,
+              pattern: pattern
+            });
+
+            // Trigger auto-sync
+            await triggerAutoSync(url, sharedConfig, privateConfig);
+
+            // Update last sync time
+            lastSync[domain] = Date.now();
+            await chrome.storage.local.set({ lastSync });
+
+            break; // Only trigger one auto-sync per page load
+          }
+        } catch (error) {
+          console.error('[Background] Error checking shared config:', error);
+        }
+      }
+    } catch (error) {
+      console.error('[Background] Error fetching private configs:', error);
+    }
 
   } catch (error) {
     console.error('[Background] Auto-sync check error:', error);
+  }
+}
+
+async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: any) {
+  const startTime = Date.now();
+
+  try {
+    console.log('[Background] Triggering auto-sync for:', sharedConfig.site_name);
+    logger.logAutoSyncTrigger(url, sharedConfig.site_name);
+
+    const autoSyncEnabled = Boolean(privateConfig?.auto_sync_enabled);
+    if (!autoSyncEnabled) {
+      logger.info('AUTOSYNC', 'Skipped - config not flagged for auto-sync', {
+        privateConfigId: privateConfig?.private_config_id,
+      });
+      return;
+    }
+
+    // Set syncing badge
+    setBadge('⟳', '#2196F3', 'autosync in progress', 0);
+    showAutoSyncNotification(sharedConfig.site_name, 'start');
+
+    // Get active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs[0]?.id) {
+      const errorMsg = 'No active tab found';
+      console.error('[Background]', errorMsg);
+      logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+      setBadge('✗', '#F44336', 'autosync failed - no tab', 15000);
+      showAutoSyncNotification(sharedConfig.site_name, 'failure', 'No active tab available for auto-sync.');
+      return;
+    }
+
+    const tabId = tabs[0].id;
+
+    logger.info('AUTOSYNC', `Extracting HTML from page`, {
+      selector: sharedConfig.selector,
+      fullPage: sharedConfig.full_page
+    });
+
+    // Extract HTML using the config
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: extractPageHTML,
+      args: [
+        sharedConfig.selector,
+        Boolean(sharedConfig.full_page),
+        sharedConfig.selector ? 5000 : 0,
+        200
+      ],
+    });
+
+    const html = result[0]?.result;
+    if (!html) {
+      const errorMsg = 'Failed to extract HTML';
+      console.error('[Background]', errorMsg);
+      logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+      setBadge('✗', '#F44336', 'autosync failed - no HTML', 15000);
+      showAutoSyncNotification(sharedConfig.site_name, 'failure', 'Could not read the page content.');
+      return;
+    }
+
+    logger.info('AUTOSYNC', `HTML extracted, calling API`, { htmlLength: html.length });
+
+    const autoImportPayload: AutoImportOptions | undefined = (() => {
+      if (!autoSyncEnabled || !privateConfig?.portfolio_id) {
+        return undefined;
+      }
+
+      const payload: AutoImportOptions = {
+        portfolio_id: privateConfig.portfolio_id,
+        replace_holdings: true,
+      };
+
+      if (privateConfig.account_name) {
+        payload.account_name = privateConfig.account_name;
+      }
+
+      if (privateConfig.account_type) {
+        payload.account_type = privateConfig.account_type;
+      }
+
+      return payload;
+    })();
+
+    if (!autoImportPayload) {
+      logger.info('AUTOSYNC', 'Auto-import skipped - missing portfolio mapping', {
+        privateConfigId: privateConfig?.private_config_id,
+      });
+    }
+
+    // Call extract API with auto-import options so the backend can finalize the sync
+    const extractResponse = await api.extractHoldings(
+      html,
+      url,
+      sharedConfig.selector,
+      {
+        shared_config_id: sharedConfig.config_id,
+        private_config_id: privateConfig.private_config_id,
+        trigger: 'autosync',
+        auto_import: autoImportPayload,
+      }
+    );
+
+    const duration = Date.now() - startTime;
+    console.log('[Background] Auto-sync extraction started, session:', extractResponse.session_id);
+    logger.logAutoSyncComplete(sharedConfig.site_name, extractResponse.session_id, duration);
+
+    // Set success badge
+    setBadge('✓', '#4CAF50', 'autosync success', 10000);
+    const successDetails = autoImportPayload
+      ? 'Holdings were refreshed automatically.'
+      : 'Data extracted, review in Vestika.';
+    showAutoSyncNotification(sharedConfig.site_name, 'success', successDetails);
+
+    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+
+    // Notify the user in-page if they prefer non-intrusive updates
+    if (privateConfig.notification_preference === 'notification_only') {
+      await injectNotificationBanner(tabId, extractResponse.session_id, sharedConfig, {
+        vestikaUrl,
+        autoImportInitiated: Boolean(autoImportPayload),
+        autoSyncEnabled,
+      });
+    }
+
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error);
+    console.error('[Background] Auto-sync trigger error:', error);
+    logger.logAutoSyncError(sharedConfig.site_name, errorMsg);
+
+    // Set error badge
+    setBadge('✗', '#F44336', 'autosync exception', 15000);
+    showAutoSyncNotification(sharedConfig.site_name, 'failure', errorMsg);
+  }
+}
+
+async function injectNotificationBanner(
+  tabId: number,
+  sessionId: string,
+  sharedConfig: any,
+  options?: { vestikaUrl: string; autoImportInitiated?: boolean; autoSyncEnabled?: boolean }
+) {
+  try {
+    console.log('[Background] Injecting notification banner');
+
+    // Inject banner into page
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sessionId: string, siteName: string, vestikaUrl: string, autoImportInitiated: boolean, autoSyncEnabled: boolean) => {
+        // Check if banner already exists
+        if (document.getElementById('vestika-autosync-banner')) {
+          return;
+        }
+
+        // Create banner
+        const banner = document.createElement('div');
+        banner.id = 'vestika-autosync-banner';
+        banner.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 16px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 14px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 999999;
+          animation: slideDown 0.3s ease-out;
+        `;
+
+        const buttonLabel = autoSyncEnabled ? 'Open Vestika' : 'Review Import';
+
+        banner.innerHTML = `
+          <style>
+            @keyframes slideDown {
+              from { transform: translateY(-100%); }
+              to { transform: translateY(0); }
+            }
+          </style>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <div>
+              <div style="font-weight: 600;">
+                ${autoImportInitiated ? 'Vestika is refreshing your holdings' : `Portfolio updated from ${siteName}`}
+              </div>
+              <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
+                ${autoImportInitiated ? 'Holdings are being synced automatically. Open Vestika to review.' : 'Review your updated holdings in Vestika.'}
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button id="vestika-view-btn" style="
+              background: rgba(255, 255, 255, 0.2);
+              border: 1px solid rgba(255, 255, 255, 0.3);
+              color: white;
+              padding: 8px 16px;
+              border-radius: 6px;
+              cursor: pointer;
+              font-weight: 500;
+              font-size: 13px;
+            ">${buttonLabel}</button>
+            <button id="vestika-dismiss-btn" style="
+              background: transparent;
+              border: none;
+              color: white;
+              cursor: pointer;
+              font-size: 24px;
+              opacity: 0.8;
+              padding: 0 4px;
+            ">&times;</button>
+          </div>
+        `;
+
+        document.body.appendChild(banner);
+
+        // Add event listeners
+        const viewBtn = document.getElementById('vestika-view-btn');
+        const dismissBtn = document.getElementById('vestika-dismiss-btn');
+
+        viewBtn?.addEventListener('click', () => {
+          const targetUrl = autoSyncEnabled
+            ? vestikaUrl
+            : `${vestikaUrl}/import?session=${sessionId}&autosync=true`;
+          window.open(targetUrl, '_blank');
+          banner.remove();
+        });
+
+        dismissBtn?.addEventListener('click', () => {
+          banner.style.animation = 'slideDown 0.3s ease-out reverse';
+          setTimeout(() => banner.remove(), 300);
+        });
+
+        // Auto-dismiss after 15 seconds
+        setTimeout(() => {
+          if (document.getElementById('vestika-autosync-banner')) {
+            banner.style.animation = 'slideDown 0.3s ease-out reverse';
+            setTimeout(() => banner.remove(), 300);
+          }
+        }, 15000);
+      },
+      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'http://localhost:5173', Boolean(options?.autoImportInitiated), Boolean(options?.autoSyncEnabled)],
+    });
+
+    console.log('[Background] Banner injected successfully');
+  } catch (error) {
+    console.error('[Background] Banner injection error:', error);
   }
 }
 
