@@ -903,9 +903,18 @@ async def create_shared_config(
     """Create a new shared extension configuration"""
     # Generate config_id if not provided
     if not config.config_id:
-        # Generate from site_name (e.g., "Robinhood" → "cfg_robinhood_v1")
-        site_slug = config.site_name.lower().replace(" ", "_")
-        config.config_id = f"cfg_{site_slug}_v1"
+        import time
+
+        site_slug = re.sub(r'[^a-z0-9]+', '_', config.site_name.lower()).strip('_') or "config"
+        timestamp = int(time.time())
+        config.config_id = f"cfg_{site_slug}_{timestamp}"
+    else:
+        existing = await db.shared_configs.find_one({"config_id": config.config_id})
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Configuration ID already exists"
+            )
 
     config.creator_id = user.id
     config.created_at = datetime.utcnow()
