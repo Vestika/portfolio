@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -19,7 +19,8 @@ import {
   Info,
   ChevronDown,
   FileUp,
-  PenLine
+  PenLine,
+  Loader2
 } from 'lucide-react';
 import PortfolioSelector from "./PortfolioSelector.tsx";
 import { Button } from "@/components/ui/button";
@@ -286,6 +287,16 @@ const EnhancedSymbolDisplay: React.FC<{
   );
 };
 
+type AutoSyncStatus = 'processing' | 'success' | 'failed' | 'conflict' | null;
+
+interface PrivateConfigStatus {
+  enabled?: boolean;
+  auto_sync_enabled?: boolean;
+  portfolio_id?: string | null;
+  account_name?: string | null;
+  last_sync_status?: AutoSyncStatus | string | null;
+}
+
 const AccountSelector: React.FC<AccountSelectorProps> = ({
   portfolioMetadata,
   onAccountsChange,
@@ -356,6 +367,82 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [editCollapsedESPPPlans, setEditCollapsedESPPPlans] = useState<Set<string>>(new Set());
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const [autoSyncStatuses, setAutoSyncStatuses] = useState<Record<string, AutoSyncStatus>>({});
+
+  const fetchAutoSyncStatuses = useCallback(async () => {
+    if (!selectedFile) {
+      setAutoSyncStatuses({});
+      return;
+    }
+
+    try {
+      const response = await api.get('/api/import/private-configs');
+      const rawConfigs = response.data?.configs;
+      const configs: PrivateConfigStatus[] = Array.isArray(rawConfigs)
+        ? rawConfigs.reduce<PrivateConfigStatus[]>((acc, cfg) => {
+            if (typeof cfg === 'object' && cfg !== null) {
+              acc.push(cfg as PrivateConfigStatus);
+            }
+            return acc;
+          }, [])
+        : [];
+
+      const nextStatuses: Record<string, AutoSyncStatus> = {};
+
+      configs.forEach(cfg => {
+        if (!cfg?.enabled || !cfg.auto_sync_enabled) {
+          return;
+        }
+
+        if (!cfg.portfolio_id || cfg.portfolio_id !== selectedFile) {
+          return;
+        }
+
+        if (typeof cfg.account_name !== 'string' || cfg.account_name.length === 0) {
+          return;
+        }
+
+        const rawStatus = cfg.last_sync_status;
+        const status: AutoSyncStatus =
+          rawStatus === 'processing' ||
+          rawStatus === 'success' ||
+          rawStatus === 'failed' ||
+          rawStatus === 'conflict'
+            ? rawStatus
+            : null;
+
+        if (!nextStatuses[cfg.account_name] || status === 'processing') {
+          nextStatuses[cfg.account_name] = status;
+        }
+      });
+
+      setAutoSyncStatuses(nextStatuses);
+    } catch (error) {
+      console.error('Failed to fetch auto-sync statuses:', error);
+    }
+  }, [selectedFile]);
+
+  useEffect(() => {
+    fetchAutoSyncStatuses();
+  }, [fetchAutoSyncStatuses]);
+
+  const hasProcessingAutoSync = useMemo(
+    () => Object.values(autoSyncStatuses).some(status => status === 'processing'),
+    [autoSyncStatuses]
+  );
+
+  useEffect(() => {
+    if (!selectedFile) {
+      return;
+    }
+
+    const intervalMs = hasProcessingAutoSync ? 5000 : 20000;
+    const intervalId = setInterval(() => {
+      fetchAutoSyncStatuses();
+    }, intervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [selectedFile, hasProcessingAutoSync, fetchAutoSyncStatuses]);
 
   // IBKR Flex (Add modal)
   const [ibkrAccessToken, setIbkrAccessToken] = useState<string>('');
@@ -620,6 +707,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       // Trigger refresh to reload the portfolio with new account
       await onAccountAdded();
+      await fetchAutoSyncStatuses();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error adding account';
       alert(`Error adding account: ${errorMessage}`);
@@ -635,6 +723,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       // Trigger refresh to reload the portfolio without the deleted account
       await onAccountDeleted();
+      await fetchAutoSyncStatuses();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error deleting account';
       alert(`Error deleting account: ${errorMessage}`);
@@ -882,6 +971,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       
       // Trigger refresh to reload the portfolio with updated account
       await onAccountAdded();
+      await fetchAutoSyncStatuses();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error updating account';
       alert(`Error updating account: ${errorMessage}`);
@@ -991,40 +1081,51 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         {/* Full Header for Desktop */}
         <div className="hidden md:flex items-center space-x-4">
           <div className="flex space-x-2">
-            {accounts.map(account => (
+            {accounts.map(account => {
+              const syncStatus = autoSyncStatuses[account.account_name];
+              const isSyncing = syncStatus === 'processing';
+
+              return (
                 <div
-                    key={account.account_name}
-                    className="relative"
-                    onMouseEnter={() => setHoveredAccount(account.account_name)}
-                    onMouseLeave={() => setHoveredAccount(null)}
+                  key={account.account_name}
+                  className="relative"
+                  onMouseEnter={() => setHoveredAccount(account.account_name)}
+                  onMouseLeave={() => setHoveredAccount(null)}
                 >
                   {/* Account Card */}
                   <div
-                    className={`
-                  group cursor-pointer flex items-center space-x-2 
-                  pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105
-                  ${account.isSelected
-                        ? 'bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 shadow-blue-500/10'
-                        : 'bg-gray-500/10 backdrop-blur-sm border border-gray-400/20 shadow-gray-500/5 hover:bg-gray-400/15 hover:border-gray-300/30'}
-                `}
+                    className={cn(
+                      'group relative cursor-pointer flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105 backdrop-blur-sm border',
+                      account.isSelected
+                        ? 'bg-blue-500/20 border-blue-400/30 shadow-blue-500/10'
+                        : 'bg-gray-500/10 border-gray-400/20 shadow-gray-500/5 hover:bg-gray-400/15 hover:border-gray-300/30',
+                      isSyncing && 'bg-blue-500/25 border-blue-300/60 shadow-blue-500/30 animate-pulse'
+                    )}
                     onClick={() => toggleAccountSelection(account.account_name)}
                   >
-                    {account.isSelected ? (
-                        <CheckCircle2 size={16}/>
+                    {isSyncing ? (
+                      <Loader2 size={16} className="text-blue-100 animate-spin" />
+                    ) : account.isSelected ? (
+                      <CheckCircle2 size={16}/>
                     ) : (
-                        <Circle size={16}/>
+                      <Circle size={16}/>
                     )}
                     <div>
                       <p className="text-xs font-medium">{account.account_name}</p>
+                      {isSyncing && (
+                        <p className="mt-0.5 text-[11px] text-blue-100">
+                          Auto-sync in progress
+                        </p>
+                      )}
                       {isValueVisible ? (
-                          <p className="text-xs text-gray-300">
+                          <p className={`text-xs ${isSyncing ? 'text-blue-100' : 'text-gray-300'} ${isSyncing ? 'mt-0.5' : ''}`}>
                             {new Intl.NumberFormat('en-US', {
                               maximumFractionDigits: 0
                             }).format(calculateAccountTotal(account))} {' '}
                             {portfolioMetadata.base_currency}
                           </p>
                       ) : (
-                          <p className="text-xs text-gray-300 flex items-center">
+                          <p className={`text-xs ${isSyncing ? 'text-blue-100' : 'text-gray-300'} flex items-center ${isSyncing ? 'mt-0.5' : ''}`}>
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
@@ -1066,7 +1167,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </div>
                   )}
                 </div>
-            ))}
+              );
+            })}
 
             {/* Add New Account Dropdown */}
             <DropdownMenu open={addAccountDropdownOpen} onOpenChange={setAddAccountDropdownOpen}>

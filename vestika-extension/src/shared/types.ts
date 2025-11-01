@@ -38,7 +38,7 @@ export interface PrivateConfig {
   auto_sync_enabled?: boolean;
   notification_preference: 'notification_only' | 'auto_redirect';
   last_sync_at?: string;
-  last_sync_status?: 'success' | 'failed' | 'conflict';
+  last_sync_status?: 'success' | 'failed' | 'conflict' | 'processing';
   created_at: string;
   updated_at: string;
 }

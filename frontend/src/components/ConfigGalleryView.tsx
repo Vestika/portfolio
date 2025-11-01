@@ -53,9 +53,11 @@ export const ConfigGalleryView: React.FC = () => {
   const [enabledConfigs, setEnabledConfigs] = useState<EnabledConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
+  const [highlightedConfigId, setHighlightedConfigId] = useState<string | null>(null);
 
   // Config enablement modal state
   const [showEnableModal, setShowEnableModal] = useState(false);
@@ -72,6 +74,7 @@ export const ConfigGalleryView: React.FC = () => {
   const shouldOpenCreator = sessionStorage.getItem('openConfigCreator') === 'true';
   const sourceUrl = sessionStorage.getItem('configCreatorSourceUrl') || undefined;
   const [showCreator, setShowCreator] = useState(shouldOpenCreator);
+  const [creatorVisibility, setCreatorVisibility] = useState<'public' | 'private'>('public');
 
   useEffect(() => {
     loadConfigs();
@@ -81,7 +84,19 @@ export const ConfigGalleryView: React.FC = () => {
     if (shouldOpenCreator) {
       sessionStorage.removeItem('openConfigCreator');
     }
+    const storedVisibilityValue = sessionStorage.getItem('configCreatorVisibility');
+    if (storedVisibilityValue) {
+      setCreatorVisibility(storedVisibilityValue === 'private' ? 'private' : 'public');
+      sessionStorage.removeItem('configCreatorVisibility');
+    }
+
   }, [shouldOpenCreator]);
+
+  useEffect(() => {
+    if (!highlightedConfigId) return;
+    const timeout = window.setTimeout(() => setHighlightedConfigId(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [highlightedConfigId]);
 
   // Ensure portfolio data is available (mirrors ImportView auto-population)
   useEffect(() => {
@@ -290,9 +305,10 @@ export const ConfigGalleryView: React.FC = () => {
             onSuccess={() => {
               setShowCreator(false);
               sessionStorage.removeItem('configCreatorSourceUrl'); // Clear stored URL
-              loadConfigs(); // Reload configs after creation
+              loadConfigs();
             }}
             initialSourceUrl={sourceUrl}
+            initialVisibility={creatorVisibility}
           />
         </div>
       </div>
@@ -311,7 +327,10 @@ export const ConfigGalleryView: React.FC = () => {
             </p>
           </div>
           <Button
-            onClick={() => setShowCreator(true)}
+            onClick={() => {
+              setCreatorVisibility('public');
+              setShowCreator(true);
+            }}
             className="whitespace-nowrap"
           >
             + Create Config
@@ -376,11 +395,15 @@ export const ConfigGalleryView: React.FC = () => {
           {filteredConfigs.map((config) => {
             const enabledConfig = enabledConfigs.find(ec => ec.config_id === config.config_id);
             const isEnabled = !!enabledConfig;
+            const isHighlighted = config.config_id === highlightedConfigId;
 
             return (
-              <div key={config.config_id} className={`bg-gray-800 rounded-lg p-6 border transition-colors ${
-                isEnabled ? 'border-blue-500' : 'border-gray-700 hover:border-blue-500'
-              }`}>
+              <div
+                key={config.config_id}
+                className={`bg-gray-800 rounded-lg p-6 border transition-colors ${
+                  isEnabled ? 'border-blue-500' : 'border-gray-700 hover:border-blue-500'
+                } ${isHighlighted ? 'ring-2 ring-purple-400 shadow-purple-500/30' : ''}`}
+              >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>

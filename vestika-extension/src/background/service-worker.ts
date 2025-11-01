@@ -272,7 +272,16 @@ async function handleMessage(message: Message) {
         const result = await chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           func: extractPageHTML,
-          args: [message.payload.selector, message.payload.fullPage],
+          args: [
+            message.payload.selector,
+            message.payload.fullPage !== false,
+            typeof message.payload.waitForSelectorMs === 'number'
+              ? message.payload.waitForSelectorMs
+              : (message.payload.selector ? 4000 : 0),
+            typeof message.payload.pollIntervalMs === 'number'
+              ? message.payload.pollIntervalMs
+              : 150
+          ],
         });
 
         return { html: result[0]?.result };
@@ -316,13 +325,37 @@ async function handleMessage(message: Message) {
 }
 
 // Function to execute in page context to extract HTML
-function extractPageHTML(selector?: string, fullPage: boolean = true): string {
+async function extractPageHTML(
+  selector?: string,
+  fullPage: boolean = true,
+  waitForSelectorMs: number = 0,
+  pollIntervalMs: number = 100
+): Promise<string> {
   if (!fullPage && selector) {
-    const element = document.querySelector(selector);
-    if (!element) {
+    const waitTimeout = Math.max(0, waitForSelectorMs || 0);
+    const interval = Math.max(50, pollIntervalMs || 50);
+
+    if (waitTimeout > 0) {
+      const deadline = Date.now() + waitTimeout;
+      let element: Element | null = document.querySelector(selector);
+
+      while (!element && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, interval));
+        element = document.querySelector(selector);
+      }
+
+      if (!element) {
+        throw new Error(`Element not found for selector within ${waitTimeout}ms: ${selector}`);
+      }
+
+      return element.outerHTML;
+    }
+
+    const immediateElement = document.querySelector(selector);
+    if (!immediateElement) {
       throw new Error(`Element not found for selector: ${selector}`);
     }
-    return element.outerHTML;
+    return immediateElement.outerHTML;
   }
 
   // Clean HTML by removing scripts and styles
@@ -478,7 +511,12 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractPageHTML,
-      args: [sharedConfig.selector, sharedConfig.full_page],
+      args: [
+        sharedConfig.selector,
+        Boolean(sharedConfig.full_page),
+        sharedConfig.selector ? 5000 : 0,
+        200
+      ],
     });
 
     const html = result[0]?.result;

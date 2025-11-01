@@ -1,18 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { Button } from '@/components/ui/button';
 
 interface ConfigCreatorViewProps {
   onSuccess?: () => void;
   initialSourceUrl?: string;
+  initialVisibility?: 'public' | 'private';
 }
 
-export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({ onSuccess, initialSourceUrl }) => {
+export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
+  onSuccess,
+  initialSourceUrl,
+  initialVisibility = 'public'
+}) => {
   const [siteName, setSiteName] = useState('');
   const [urlPattern, setUrlPattern] = useState('');
   const [fullPage, setFullPage] = useState(true);
   const [selector, setSelector] = useState('');
-  const [isPublic, setIsPublic] = useState(true); // Default to public to help community
+  const [isPublic, setIsPublic] = useState(initialVisibility !== 'private'); // Default visibility can be overridden
   const [testUrl, setTestUrl] = useState(initialSourceUrl || '');
 
   const [creating, setCreating] = useState(false);
@@ -21,6 +26,10 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({ onSuccess,
   const [testResult, setTestResult] = useState<string | null>(null);
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string>('');
+
+  useEffect(() => {
+    setIsPublic(initialVisibility !== 'private');
+  }, [initialVisibility]);
 
   async function handleTestPattern() {
     setError(null);
@@ -100,7 +109,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({ onSuccess,
       // Test regex
       new RegExp(urlPattern);
 
-      await api.post('/api/import/configs', {
+      const response = await api.post('/api/import/configs', {
         site_name: siteName,
         url_pattern: urlPattern,
         full_page: fullPage,
@@ -121,9 +130,8 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({ onSuccess,
       // Reset form
       setSiteName('');
       setUrlPattern('');
-      setFullPage(true);
       setSelector('');
-      setIsPublic(false);
+      setIsPublic(initialVisibility !== 'private');
       setTestUrl('');
       setTestResult(null);
 

@@ -46,7 +46,7 @@ async def refresh_enabled_users_count(db: AsyncDatabase, shared_config_id: Optio
 
     enabled_count = await db.private_configs.count_documents({
         "shared_config_id": shared_config_id,
-        "auto_sync_enabled": True
+        "enabled": True
     })
 
     result = await db.shared_configs.update_one(
@@ -298,6 +298,23 @@ async def perform_auto_import(
             "auto_import_error": None
         }}
     )
+
+    # Mark the related private config as processing so the UI can surface in-progress auto-sync
+    if private_config_id:
+        try:
+            await db.private_configs.update_one(
+                {"private_config_id": private_config_id, "user_id": user_id},
+                {"$set": {
+                    "last_sync_status": "processing",
+                    "updated_at": started_at
+                }}
+            )
+        except Exception as status_error:
+            logger.warning(
+                "Failed to mark private_config %s as processing: %s",
+                private_config_id,
+                status_error
+            )
 
     try:
         portfolio_id = auto_import_dict.get("portfolio_id")

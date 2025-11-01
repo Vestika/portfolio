@@ -293,20 +293,63 @@ export const ImportView: React.FC = () => {
     }
   }
 
-  function handleShareConfig() {
+  async function handleShareConfig(visibility: 'public' | 'private') {
     if (!session?.source_url) return;
 
-    // Save preference if "don't show again" is checked
-    if (dontShowAgain) {
-      localStorage.setItem('hideConfigCreationSuggestion', 'true');
+    const shareUrl = session.source_url;
+    let proposedPattern = '';
+
+    try {
+      const urlObj = new URL(shareUrl);
+      // Escape special regex characters in host/path
+      const escaped = shareUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      proposedPattern = `^${escaped}$`;
+    } catch (e) {
+      proposedPattern = `^${shareUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
     }
 
-    // Store URL and flag in sessionStorage
-    sessionStorage.setItem('configCreatorSourceUrl', session.source_url);
-    sessionStorage.setItem('openConfigCreator', 'true');
+    const siteHost = (() => {
+      try {
+        return new URL(shareUrl).hostname.replace(/^www\./, '');
+      } catch {
+        return shareUrl;
+      }
+    })();
 
-    // Navigate to home
-    window.location.href = '/';
+    const siteName = siteHost
+      .split('.')
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+    try {
+      await api.post('/api/import/configs', {
+        site_name: siteName || siteHost,
+        url_pattern: proposedPattern,
+        full_page: !session.selector,
+        selector: session.selector || undefined,
+        is_public: visibility === 'public',
+        verified: false,
+        status: 'active',
+        enabled_users_count: 0,
+        successful_imports_count: 0,
+        failure_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      if (dontShowAgain) {
+        localStorage.setItem('hideConfigCreationSuggestion', 'true');
+      }
+
+      setShowConfigSuggestion(false);
+
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1000);
+    } catch (error: any) {
+      setError(error?.message || 'Failed to save config');
+    }
   }
 
   function handleMaybeLater() {
@@ -474,19 +517,27 @@ export const ImportView: React.FC = () => {
                 </label>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
                 <Button
-                  onClick={handleShareConfig}
+                  onClick={() => handleShareConfig('public')}
                   size="sm"
-                  className="flex-1"
+                  className="w-full sm:flex-1"
                 >
-                  Share Config
+                  Share as Public Config
+                </Button>
+                <Button
+                  onClick={() => handleShareConfig('private')}
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:flex-1 border-purple-500/60 text-purple-200 hover:bg-purple-900/30"
+                >
+                  Save as Private Config
                 </Button>
                 <Button
                   onClick={handleMaybeLater}
                   size="sm"
                   variant="secondary"
-                  className="flex-1"
+                  className="w-full sm:w-auto"
                 >
                   Maybe Later
                 </Button>
