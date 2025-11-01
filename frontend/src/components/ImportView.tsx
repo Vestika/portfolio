@@ -300,7 +300,6 @@ export const ImportView: React.FC = () => {
     let proposedPattern = '';
 
     try {
-      const urlObj = new URL(shareUrl);
       // Escape special regex characters in host/path
       const escaped = shareUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       proposedPattern = `^${escaped}$`;

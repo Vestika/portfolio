@@ -123,6 +123,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       });
+      console.log(response.status)
 
       setSuccess('Configuration created successfully!');
       setCreating(false);
