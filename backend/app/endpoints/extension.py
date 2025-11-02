@@ -1174,6 +1174,50 @@ async def delete_private_config(
     return {"message": "Private configuration deleted successfully"}
 
 
+@router.patch("/api/import/configs/{config_id}/visibility")
+async def toggle_config_visibility(
+    config_id: str,
+    data: dict,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+):
+    """
+    Toggle the visibility of a shared config between public and private.
+    Only the creator can change visibility.
+    """
+    visibility = data.get("visibility")
+    if visibility not in ["public", "private"]:
+        raise HTTPException(status_code=400, detail="visibility must be 'public' or 'private'")
+
+    # Find the shared config
+    shared_config = await db.shared_configs.find_one({"config_id": config_id})
+    if not shared_config:
+        raise HTTPException(status_code=404, detail="Config not found")
+
+    # Check ownership
+    creator_id = shared_config.get("creator_id") or shared_config.get("user_id")
+    if creator_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the config creator can change visibility")
+
+    # Update visibility
+    is_public = visibility == "public"
+    await db.shared_configs.update_one(
+        {"config_id": config_id},
+        {"$set": {
+            "is_public": is_public,
+            "visibility": visibility,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+
+    return {
+        "success": True,
+        "message": f"Config visibility updated to {visibility}",
+        "config_id": config_id,
+        "visibility": visibility
+    }
+
+
 @router.post("/api/import/configs/enable")
 async def enable_config(
     data: dict,
@@ -1229,6 +1273,11 @@ async def enable_config(
             "private_config_id": private_config_id,
             "user_id": user.id,
             "shared_config_id": config_id,
+            # Copy config data as snapshot so user isn't affected by visibility changes
+            "site_name": shared_config.get("site_name"),
+            "url_pattern": shared_config.get("url_pattern"),
+            "selector": shared_config.get("selector"),
+            "full_page": shared_config.get("full_page", True),
             "portfolio_id": None,
             "account_name": None,
             "account_type": None,
@@ -1313,6 +1362,11 @@ async def enable_config(
         "private_config_id": private_config_id,
         "user_id": user.id,
         "shared_config_id": config_id,
+        # Copy config data as snapshot so user isn't affected by visibility changes
+        "site_name": shared_config.get("site_name"),
+        "url_pattern": shared_config.get("url_pattern"),
+        "selector": shared_config.get("selector"),
+        "full_page": shared_config.get("full_page", True),
         "portfolio_id": portfolio_id,
         "account_name": account_name,
         "account_type": account_type,
