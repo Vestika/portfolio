@@ -4,6 +4,13 @@ import { Button } from '@/components/ui/button';
 import { ConfigCreatorView } from './ConfigCreatorView';
 import { ComboBox } from './ui/combobox';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { MoreVertical, FileText, Download, Eye, Upload } from 'lucide-react';
 
 interface SharedConfig {
   config_id: string;
@@ -69,6 +76,15 @@ export const ConfigGalleryView: React.FC = () => {
   const [enableError, setEnableError] = useState<string | null>(null);
 
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+
+  // Config view/edit state
+  const [viewingConfig, setViewingConfig] = useState<SharedConfig | null>(null);
+
+  // Import modal state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Check sessionStorage for config creator trigger
   const shouldOpenCreator = sessionStorage.getItem('openConfigCreator') === 'true';
@@ -270,6 +286,111 @@ export const ConfigGalleryView: React.FC = () => {
     }
   }
 
+  function handleViewConfig(config: SharedConfig) {
+    setViewingConfig(config);
+  }
+
+  function handleExportConfig(config: SharedConfig) {
+    const exportData = {
+      config_id: config.config_id,
+      site_name: config.site_name,
+      url_pattern: config.url_pattern,
+      selector: config.selector,
+      full_page: config.full_page,
+      status: config.status,
+      visibility: config.visibility || (config.is_public === false ? 'private' : 'public'),
+    };
+
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${config.site_name.replace(/\s+/g, '_')}_config.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportClick() {
+    setImportFile(null);
+    setImportError(null);
+    setShowImportModal(true);
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+        setImportError('Please select a valid JSON file');
+        setImportFile(null);
+        return;
+      }
+      setImportFile(file);
+      setImportError(null);
+    }
+  }
+
+  async function handleImportConfig() {
+    if (!importFile) {
+      setImportError('Please select a file to import');
+      return;
+    }
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const fileContent = await importFile.text();
+      const configData = JSON.parse(fileContent);
+
+      // Validate required fields
+      if (!configData.site_name || !configData.url_pattern) {
+        setImportError('Invalid config file: missing required fields (site_name, url_pattern)');
+        setImporting(false);
+        return;
+      }
+
+      // Test regex pattern
+      try {
+        new RegExp(configData.url_pattern);
+      } catch (err) {
+        setImportError('Invalid URL pattern: must be a valid regular expression');
+        setImporting(false);
+        return;
+      }
+
+      // Import the config
+      await api.post('/api/import/configs', {
+        site_name: configData.site_name,
+        url_pattern: configData.url_pattern,
+        full_page: configData.full_page ?? true,
+        selector: configData.selector,
+        is_public: configData.visibility === 'public',
+        verified: false,
+        status: 'active',
+        enabled_users_count: 0,
+        successful_imports_count: 0,
+        failure_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      setImporting(false);
+      setShowImportModal(false);
+      alert(`Config "${configData.site_name}" imported successfully!`);
+      loadConfigs(); // Reload configs to show the new one
+    } catch (err: any) {
+      if (err instanceof SyntaxError) {
+        setImportError('Invalid JSON file format');
+      } else {
+        setImportError(err.message || 'Failed to import config');
+      }
+      setImporting(false);
+    }
+  }
+
   const filteredConfigs = configs.filter(config => {
     const matchesSearch = config.site_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           config.url_pattern.toLowerCase().includes(searchTerm.toLowerCase());
@@ -289,13 +410,16 @@ export const ConfigGalleryView: React.FC = () => {
     );
   }
 
-  // If showing creator, render it instead
-  if (showCreator) {
+  // If showing creator or viewing a config, render it instead
+  if (showCreator || viewingConfig) {
     return (
       <div className="min-h-screen bg-gray-900 p-8">
         <div className="max-w-4xl mx-auto">
           <Button
-            onClick={() => setShowCreator(false)}
+            onClick={() => {
+              setShowCreator(false);
+              setViewingConfig(null);
+            }}
             variant="secondary"
             className="mb-6"
           >
@@ -304,11 +428,13 @@ export const ConfigGalleryView: React.FC = () => {
           <ConfigCreatorView
             onSuccess={() => {
               setShowCreator(false);
+              setViewingConfig(null);
               sessionStorage.removeItem('configCreatorSourceUrl'); // Clear stored URL
               loadConfigs();
             }}
             initialSourceUrl={sourceUrl}
             initialVisibility={creatorVisibility}
+            viewingConfig={viewingConfig || undefined}
           />
         </div>
       </div>
@@ -326,15 +452,25 @@ export const ConfigGalleryView: React.FC = () => {
               Browse and enable prebuilt configurations for automatic portfolio extraction
             </p>
           </div>
-          <Button
-            onClick={() => {
-              setCreatorVisibility('public');
-              setShowCreator(true);
-            }}
-            className="whitespace-nowrap"
-          >
-            + Create Config
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={handleImportClick}
+              variant="secondary"
+              className="whitespace-nowrap"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import Config
+            </Button>
+            <Button
+              onClick={() => {
+                setCreatorVisibility('public');
+                setShowCreator(true);
+              }}
+              className="whitespace-nowrap"
+            >
+              + Create Config
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -405,14 +541,44 @@ export const ConfigGalleryView: React.FC = () => {
                 } ${isHighlighted ? 'ring-2 ring-purple-400 shadow-purple-500/30' : ''}`}
               >
                 {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white mb-1">{config.site_name}</h3>
+                <div className="mb-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="text-xl font-semibold text-white">{config.site_name}</h3>
+
+                    {/* Three-dot menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="text-gray-400 hover:text-white p-2 rounded hover:bg-gray-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center bg-transparent data-[state=open]:bg-gray-700 data-[state=open]:text-white"
+                          aria-label="Config options"
+                        >
+                          <MoreVertical className="h-5 w-5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-gray-800 border-gray-700 text-gray-300">
+                        <DropdownMenuItem
+                          onClick={() => handleViewConfig(config)}
+                          className="text-gray-300 hover:text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white cursor-pointer"
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Config
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleExportConfig(config)}
+                          className="text-gray-300 hover:text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white cursor-pointer"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Config
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* Creator and badges row */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     {config.creator_name && (
                       <p className="text-gray-400 text-sm">by {config.creator_name}</p>
                     )}
-                  </div>
-                  <div className="flex flex-col gap-1 items-end">
                     {config.visibility === 'private' && (
                       <span className="text-purple-300 text-xs font-semibold bg-purple-900/30 px-2 py-1 rounded">
                         Private
@@ -516,6 +682,74 @@ export const ConfigGalleryView: React.FC = () => {
             <Button onClick={() => setShowCreator(true)}>
               + Create Your First Config
             </Button>
+          </div>
+        )}
+
+        {/* Import Config Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg max-w-lg w-full">
+              <div className="flex items-center justify-between p-6 border-b border-gray-700">
+                <h2 className="text-xl font-bold text-white">Import Configuration</h2>
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Error Display */}
+                {importError && (
+                  <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                    <p className="text-red-400 text-sm">{importError}</p>
+                  </div>
+                )}
+
+                {/* File Upload */}
+                <div>
+                  <label className="block text-gray-400 text-sm font-medium mb-2">
+                    Select Config File
+                  </label>
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleFileChange}
+                    className="w-full text-gray-300 bg-gray-700 border border-gray-500 rounded px-3 py-2 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
+                  />
+                  {importFile && (
+                    <p className="text-green-400 text-sm mt-2">
+                      ✓ Selected: {importFile.name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-4">
+                  <p className="text-blue-300 text-sm">
+                    Import a previously exported config JSON file. The config will be validated and added to your library.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-700 flex gap-3">
+                <Button
+                  onClick={handleImportConfig}
+                  disabled={importing || !importFile}
+                  className="flex-1"
+                >
+                  {importing ? 'Importing...' : 'Import Config'}
+                </Button>
+                <Button
+                  onClick={() => setShowImportModal(false)}
+                  variant="secondary"
+                  disabled={importing}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

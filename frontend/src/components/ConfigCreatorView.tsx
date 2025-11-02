@@ -2,16 +2,29 @@ import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { Button } from '@/components/ui/button';
 
+interface SharedConfig {
+  config_id: string;
+  site_name: string;
+  url_pattern: string;
+  selector?: string;
+  full_page: boolean;
+  status: 'active' | 'under_review' | 'deprecated';
+  visibility?: 'public' | 'private';
+  is_public?: boolean;
+}
+
 interface ConfigCreatorViewProps {
   onSuccess?: () => void;
   initialSourceUrl?: string;
   initialVisibility?: 'public' | 'private';
+  viewingConfig?: SharedConfig;
 }
 
 export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
   onSuccess,
   initialSourceUrl,
-  initialVisibility = 'public'
+  initialVisibility = 'public',
+  viewingConfig
 }) => {
   const [siteName, setSiteName] = useState('');
   const [urlPattern, setUrlPattern] = useState('');
@@ -30,6 +43,19 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
   useEffect(() => {
     setIsPublic(initialVisibility !== 'private');
   }, [initialVisibility]);
+
+  // Populate fields when viewing an existing config
+  useEffect(() => {
+    if (viewingConfig) {
+      setSiteName(viewingConfig.site_name);
+      setUrlPattern(viewingConfig.url_pattern);
+      setFullPage(viewingConfig.full_page);
+      setSelector(viewingConfig.selector || '');
+      const configVisibility = viewingConfig.visibility || (viewingConfig.is_public === false ? 'private' : 'public');
+      setIsPublic(configVisibility === 'public');
+      setTestUrl(''); // Clear test URL when viewing
+    }
+  }, [viewingConfig]);
 
   async function handleTestPattern() {
     setError(null);
@@ -153,10 +179,33 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Create Configuration</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {viewingConfig ? 'View Configuration' : 'Create Configuration'}
+          </h1>
           <p className="text-gray-400">
-            Create a new extraction configuration for a financial site
+            {viewingConfig
+              ? 'View and inspect this extraction configuration'
+              : 'Create a new extraction configuration for a financial site'}
           </p>
+          {viewingConfig && (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-xs text-gray-500">Config ID: {viewingConfig.config_id}</span>
+              <span className={`text-xs font-medium px-2 py-1 rounded ${
+                viewingConfig.status === 'active'
+                  ? 'bg-green-900/30 text-green-400'
+                  : viewingConfig.status === 'under_review'
+                  ? 'bg-yellow-900/30 text-yellow-400'
+                  : 'bg-gray-700 text-gray-400'
+              }`}>
+                {viewingConfig.status.replace('_', ' ').toUpperCase()}
+              </span>
+              {(viewingConfig.visibility === 'private' || viewingConfig.is_public === false) && (
+                <span className="text-purple-300 text-xs font-semibold bg-purple-900/30 px-2 py-1 rounded">
+                  Private
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -187,6 +236,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
                 onChange={(e) => setSiteName(e.target.value)}
                 placeholder="e.g., Robinhood, Coinbase, Vanguard"
                 className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                readOnly={!!viewingConfig}
               />
               <p className="text-gray-500 text-xs mt-1">Human-readable name for the financial site</p>
             </div>
@@ -202,6 +252,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
                 onChange={(e) => setUrlPattern(e.target.value)}
                 placeholder="e.g., ^https://(www\.)?robinhood\.com/(account|portfolio)"
                 className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                readOnly={!!viewingConfig}
               />
               <p className="text-gray-500 text-xs mt-1">
                 Regular expression to match URLs where this config should be used
@@ -244,6 +295,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
                   checked={fullPage}
                   onChange={(e) => setFullPage(e.target.checked)}
                   className="w-4 h-4"
+                  disabled={!!viewingConfig}
                 />
                 <span>Extract full page HTML</span>
               </label>
@@ -259,6 +311,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
                     onChange={(e) => setSelector(e.target.value)}
                     placeholder="e.g., table.holdings, #portfolio-table"
                     className="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none font-mono text-sm"
+                    readOnly={!!viewingConfig}
                   />
                   <p className="text-gray-500 text-xs mt-1">
                     CSS selector to target specific element containing holdings
@@ -275,6 +328,7 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
                   checked={isPublic}
                   onChange={(e) => setIsPublic(e.target.checked)}
                   className="w-4 h-4"
+                  disabled={!!viewingConfig}
                 />
                 <span>Share with community (Public)</span>
               </label>
@@ -353,21 +407,23 @@ export const ConfigCreatorView: React.FC<ConfigCreatorViewProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-4">
-          <Button
-            onClick={handleCreate}
-            disabled={creating}
-            className="flex-1"
-          >
-            {creating ? 'Creating...' : 'Create Configuration'}
-          </Button>
-          <Button
-            onClick={() => window.history.back()}
-            variant="secondary"
-          >
-            Cancel
-          </Button>
-        </div>
+        {!viewingConfig && (
+          <div className="flex gap-4">
+            <Button
+              onClick={handleCreate}
+              disabled={creating}
+              className="flex-1"
+            >
+              {creating ? 'Creating...' : 'Create Configuration'}
+            </Button>
+            <Button
+              onClick={() => window.history.back()}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
