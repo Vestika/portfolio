@@ -1,0 +1,215 @@
+name: Build and Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build Extension (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        mode: [dev, prod]
+        include:
+          - mode: dev
+            env_file: .env.example
+            artifact_name: vestika-extension-dev
+          - mode: prod
+            env_file: .env.production
+            artifact_name: vestika-extension-prod
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: vestika-extension/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: vestika-extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Copy environment file
+        working-directory: vestika-extension
+        run: cp ${{ matrix.env_file }} .env
+
+      - name: Build extension
+        working-directory: vestika-extension
+        run: pnpm build
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create zip archive
+        working-directory: vestika-extension
+        run: |
+          cd dist
+          zip -r ../${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip .
+          cd ..
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}
+          path: vestika-extension/${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download dev artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vestika-extension-dev-v${{ steps.version.outputs.version }}
+          path: ./artifacts
+
+      - name: Download prod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vestika-extension-prod-v${{ steps.version.outputs.version }}
+          path: ./artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            CHANGELOG="Initial release"
+          else
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges | grep -v "Merge pull request" || echo "- Bug fixes and improvements")
+          fi
+
+          # Write changelog to file
+          cat > release_notes.md << EOF
+          ## Vestika Extension v${{ steps.version.outputs.version }}
+
+          ### What's Changed
+          ${CHANGELOG}
+
+          ### Installation
+
+          **Production Build** (Recommended):
+          - Download \`vestika-extension-prod-v${{ steps.version.outputs.version }}.zip\`
+          - Extract the zip file
+          - Open Chrome and navigate to \`chrome://extensions/\`
+          - Enable "Developer mode" in the top right
+          - Click "Load unpacked" and select the extracted folder
+
+          **Development Build**:
+          - Download \`vestika-extension-dev-v${{ steps.version.outputs.version }}.zip\`
+          - Connects to localhost:8080 for testing
+          - Follow same installation steps as production
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.version.outputs.version }}
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./artifacts/*.zip
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  manual-release:
+    name: Create Manual Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download dev artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vestika-extension-dev-v${{ inputs.version }}
+          path: ./artifacts
+
+      - name: Download prod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vestika-extension-prod-v${{ inputs.version }}
+          path: ./artifacts
+
+      - name: Create manual release notes
+        run: |
+          cat > release_notes.md << EOF
+          ## Vestika Extension v${{ inputs.version }}
+
+          This is a manual release.
+
+          ### Installation
+
+          **Production Build** (Recommended):
+          - Download \`vestika-extension-prod-v${{ inputs.version }}.zip\`
+          - Extract the zip file
+          - Open Chrome and navigate to \`chrome://extensions/\`
+          - Enable "Developer mode" in the top right
+          - Click "Load unpacked" and select the extracted folder
+
+          **Development Build**:
+          - Download \`vestika-extension-dev-v${{ inputs.version }}.zip\`
+          - Connects to localhost:8080 for testing
+          - Follow same installation steps as production
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Extension v${{ inputs.version }}
+          files: ./artifacts/*.zip
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

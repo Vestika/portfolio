@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, FileText, Download, Eye, Upload } from 'lucide-react';
+import { MoreVertical, Download, Eye, Upload, Globe, Lock } from 'lucide-react';
 
 interface SharedConfig {
   config_id: string;
@@ -391,6 +391,28 @@ export const ConfigGalleryView: React.FC = () => {
     }
   }
 
+  async function handleToggleVisibility(config: SharedConfig) {
+    const currentVisibility = config.visibility || (config.is_public === false ? 'private' : 'public');
+    const newVisibility = currentVisibility === 'public' ? 'private' : 'public';
+
+    const confirmMessage = newVisibility === 'private'
+      ? `Make "${config.site_name}" private?\n\nThis config will only be visible to you. Users who already enabled it will keep their copy.`
+      : `Make "${config.site_name}" public?\n\nThis config will be shared with the community and appear in the gallery for all users.`;
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      await api.patch(`/api/import/configs/${config.config_id}/visibility`, {
+        visibility: newVisibility
+      });
+
+      alert(`Config visibility updated to ${newVisibility}`);
+      loadConfigs(); // Reload to show updated visibility
+    } catch (err: any) {
+      alert(`Failed to update visibility: ${err.message || 'Unknown error'}`);
+    }
+  }
+
   const filteredConfigs = configs.filter(config => {
     const matchesSearch = config.site_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           config.url_pattern.toLowerCase().includes(searchTerm.toLowerCase());
@@ -570,6 +592,24 @@ export const ConfigGalleryView: React.FC = () => {
                           <Download className="mr-2 h-4 w-4" />
                           Export Config
                         </DropdownMenuItem>
+                        {config.is_owner && (
+                          <DropdownMenuItem
+                            onClick={() => handleToggleVisibility(config)}
+                            className="text-gray-300 hover:text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white cursor-pointer"
+                          >
+                            {(config.visibility === 'private' || config.is_public === false) ? (
+                              <>
+                                <Globe className="mr-2 h-4 w-4" />
+                                Make Public
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="mr-2 h-4 w-4" />
+                                Make Private
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
