@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
-import { Maximize2, X } from 'lucide-react'
-import { usePortfolioData } from '../contexts/PortfolioDataContext'
+import { Maximize2, X, Info } from 'lucide-react'
+import { usePortfolioData, type AccountData, type HoldingData, type PriceData } from '../contexts/PortfolioDataContext'
 
 type Scope = 'portfolio' | 'accounts'
 
@@ -29,6 +29,9 @@ export function CompoundInterestTool() {
   const [years, setYears] = useState<number>(10)
   const [monthlyDeposit, setMonthlyDeposit] = useState<number>(500)
   const [annualRatePercent, setAnnualRatePercent] = useState<number>(7)
+  const [advancedMode, setAdvancedMode] = useState<boolean>(false)
+  const [accountReturns, setAccountReturns] = useState<Record<string, number>>({})
+  const [showFormulaInfo, setShowFormulaInfo] = useState<boolean>(false)
 
   const portfolio = useMemo(() => {
     if (!allPortfoliosData || !selectedPortfolioId) return null
@@ -42,45 +45,85 @@ export function CompoundInterestTool() {
     return (portfolio.accounts || []).map((a) => a.account_name)
   }, [portfolio])
 
-  const { initialPrincipal } = useMemo(() => {
-    if (!portfolio || !allPortfoliosData) return { initialPrincipal: 0 }
+  const { initialPrincipal, accountPrincipals } = useMemo<{ initialPrincipal: number; accountPrincipals: Record<string, number> }>(() => {
+    if (!portfolio || !allPortfoliosData) return { initialPrincipal: 0, accountPrincipals: {} as Record<string, number> }
 
     const accountsToUse = scope === 'portfolio' || selectedAccounts.length === 0
       ? (portfolio.accounts || []).map((a) => a.account_name)
       : selectedAccounts
 
-    const currentPrices = allPortfoliosData.global_current_prices || {}
+    const currentPrices = (allPortfoliosData.global_current_prices || {}) as Record<string, PriceData>
+    const principals = {} as Record<string, number>
 
-    // Sum holdings value across selected accounts
-    const total = (portfolio.accounts || [])
-      .filter((a) => accountsToUse.includes(a.account_name))
-      .reduce((sum, account) => {
+    // Calculate value for each account
+    (portfolio.accounts || [])
+      .filter((a: AccountData) => accountsToUse.includes(a.account_name))
+      .forEach((account: AccountData) => {
         const holdings = account.holdings || []
-        const accountTotal = holdings.reduce((acc, h) => {
+        const accountTotal = holdings.reduce((acc: number, h: HoldingData) => {
           const price = currentPrices[h.symbol]?.price || 0
           return acc + h.units * price
         }, 0)
-        return sum + accountTotal
-      }, 0)
+        principals[account.account_name] = Math.max(0, Math.round(accountTotal * 100) / 100)
+      })
 
-    return { initialPrincipal: Math.max(0, Math.round(total * 100) / 100) }
+    const total = Object.values(principals).reduce((sum, val) => sum + val, 0)
+
+    return {
+      initialPrincipal: Math.max(0, Math.round(total * 100) / 100),
+      accountPrincipals: principals
+    }
   }, [portfolio, allPortfoliosData, scope, selectedAccounts])
 
   const seriesData = useMemo<ProjectionPoint[]>(() => {
     const months = Math.max(1, Math.min(50, years)) * 12
-    const monthlyRate = (annualRatePercent / 100) / 12
-    let total = initialPrincipal
-    let contributions = 0
     const points: ProjectionPoint[] = []
-    for (let m = 1; m <= months; m++) {
-      total = total * (1 + monthlyRate) + monthlyDeposit
-      contributions += monthlyDeposit
-      const year = Math.ceil(m / 12)
-      const interest = total - initialPrincipal - contributions
-      points.push({ month: m, year, total, contributions, interest })
+    let contributions = 0
+
+    if (advancedMode && Object.keys(accountPrincipals).length > 0) {
+      // Advanced mode: track each account separately with its own return rate
+      const accountStates: Record<string, number> = {}
+      Object.keys(accountPrincipals).forEach((accountName) => {
+        accountStates[accountName] = accountPrincipals[accountName]
+      })
+
+      // Distribute monthly deposit proportionally to account values
+      const totalPrincipal = Object.values(accountPrincipals).reduce((sum, val) => sum + val, 0)
+
+      for (let m = 1; m <= months; m++) {
+        let monthTotal = 0
+
+        // Grow each account with its own rate
+        Object.keys(accountStates).forEach((accountName) => {
+          const rate = (accountReturns[accountName] ?? annualRatePercent) / 100 / 12
+          const proportion = totalPrincipal > 0 ? accountPrincipals[accountName] / totalPrincipal : 1 / Object.keys(accountStates).length
+          const accountDeposit = monthlyDeposit * proportion
+
+          accountStates[accountName] = accountStates[accountName] * (1 + rate) + accountDeposit
+          monthTotal += accountStates[accountName]
+        })
+
+        contributions += monthlyDeposit
+        const year = Math.ceil(m / 12)
+        const interest = monthTotal - initialPrincipal - contributions
+        points.push({ month: m, year, total: monthTotal, contributions, interest })
+      }
+    } else {
+      // Simple mode: single rate for entire portfolio
+      const monthlyRate = (annualRatePercent / 100) / 12
+      let total = initialPrincipal
+
+      for (let m = 1; m <= months; m++) {
+        total = total * (1 + monthlyRate) + monthlyDeposit
+        contributions += monthlyDeposit
+        const year = Math.ceil(m / 12)
+        const interest = total - initialPrincipal - contributions
+        points.push({ month: m, year, total, contributions, interest })
+      }
     }
+
     return points
-  }, [initialPrincipal, monthlyDeposit, annualRatePercent, years])
+  }, [initialPrincipal, accountPrincipals, monthlyDeposit, annualRatePercent, accountReturns, years, advancedMode])
 
   const yearlyPoints = useMemo(() => {
     // Take last month of each year for chart readability
@@ -239,9 +282,117 @@ export function CompoundInterestTool() {
             </div>
           </div>
 
+          <div className="mt-3">
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-blue-600"
+                checked={advancedMode}
+                onChange={(e) => setAdvancedMode(e.target.checked)}
+              />
+              Advanced: Set per-account expected returns
+            </label>
+          </div>
+
+          {advancedMode && Object.keys(accountPrincipals).length > 0 && (
+            <div className="mt-3 border border-gray-700 rounded-md p-3 bg-gray-900">
+              <div className="text-sm text-gray-300 mb-2">Per-Account Expected Returns (%)</div>
+              <div className="space-y-2">
+                {Object.entries(accountPrincipals).map(([accountName, principal]) => (
+                  <div key={accountName} className="flex items-center gap-2">
+                    <div className="flex-1 text-sm text-gray-200 truncate" title={accountName}>
+                      {accountName}
+                    </div>
+                    <div className="text-xs text-gray-400 whitespace-nowrap">
+                      {numberFmt(principal)} {baseCurrency}
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      className="w-20 bg-gray-800 text-white rounded px-2 py-1 border border-gray-600 text-sm"
+                      placeholder={annualRatePercent.toString()}
+                      value={accountReturns[accountName] ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setAccountReturns((prev) => ({
+                          ...prev,
+                          [accountName]: val === '' ? annualRatePercent : Math.max(0, Math.min(100, Number(val) || 0))
+                        }))
+                      }}
+                    />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-xs text-gray-400">
+                Leave blank to use default rate ({annualRatePercent}%)
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 text-sm text-gray-400">
             <div>Base currency: <span className="text-gray-200">{baseCurrency}</span></div>
             <div>Initial principal: <span className="text-gray-200">{numberFmt(initialPrincipal)} {baseCurrency}</span></div>
+          </div>
+
+          <div className="mt-3 text-xs text-gray-400 border-t border-gray-700 pt-3 flex items-start gap-2">
+            <div className="flex-shrink-0">
+              <div
+                className="relative group inline-block"
+                onMouseLeave={() => setShowFormulaInfo(false)}
+              >
+                <button
+                  type="button"
+                  aria-label="Interest calculation formula"
+                  className="p-1 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                  onClick={() => setShowFormulaInfo((v) => !v)}
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+                <div
+                  className={`absolute left-0 mt-2 z-50 w-[320px] max-w-[80vw] ${showFormulaInfo ? 'block' : 'hidden'} group-hover:block`}
+                >
+                  <div className="rounded-md border border-gray-700 bg-gray-800 text-white shadow-lg p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <p className="text-sm font-semibold">Monthly Compound Interest Formula</p>
+                      <button
+                        type="button"
+                        className="text-gray-400 hover:text-white"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setShowFormulaInfo(false)
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-2 text-xs text-gray-200">
+                      <p>
+                        Returns are compounded <span className="font-medium text-white">monthly</span>, not annually.
+                      </p>
+                      <div className="bg-gray-900 rounded p-2 font-mono text-[11px]">
+                        Final = Principal × (1 + r/12)^(12×years)
+                      </div>
+                      <p className="mt-2">
+                        Where <span className="font-medium">r</span> is the annual rate. Monthly compounding results in a higher effective annual rate.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-gray-700">
+                        <p className="font-medium text-white mb-1">Example:</p>
+                        <p>
+                          10% annual rate = (1 + 0.10/12)^12 - 1 = <span className="text-green-400">10.47%</span> effective
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1">
+              <span className="font-medium text-gray-300">Note:</span> Returns are compounded monthly. A 10% annual rate results in ~10.47% effective annual return due to monthly compounding.
+            </div>
           </div>
         </div>
 
