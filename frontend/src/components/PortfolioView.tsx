@@ -1,9 +1,11 @@
 // React is not needed for JSX in modern React
+import { useMemo } from 'react'
 import PieChart from '../PieChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
 import ESPPView from './ESPPView'
+import { usePortfolioData } from '../contexts/PortfolioDataContext'
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -35,6 +37,42 @@ export function PortfolioView({
   mainESPPPlans,
   globalPrices
 }: PortfolioViewProps) {
+  // Get autocomplete data from context for symbol name resolution
+  const { getAutocompleteData } = usePortfolioData();
+  const autocompleteData = getAutocompleteData();
+
+  // Create a name resolver function similar to HoldingsTable's getHoldingFullName
+  const getSymbolName = useMemo(() => {
+    const nameCache = new Map<string, string>();
+    if (!autocompleteData) {
+      return (symbol: string) => symbol;
+    }
+
+    return (symbol: string): string => {
+      if (nameCache.has(symbol)) return nameCache.get(symbol)!;
+
+      const symbolUpper = symbol.toUpperCase();
+
+      // Find matching symbol in autocomplete data
+      const symbolData = autocompleteData.find(s => {
+        const sUpper = s.symbol.toUpperCase();
+        if (sUpper === symbolUpper) return true;
+
+        // TASE symbols are numeric
+        if (s.symbol_type === 'tase' && /^\d+$/.test(symbolUpper)) {
+          const taseNumPart = sUpper.replace('TASE:', '').split('.')[0];
+          if (taseNumPart === symbolUpper) return true;
+        }
+
+        return false;
+      });
+      
+      const name = symbolData ? symbolData.name : symbol;
+      nameCache.set(symbol, name);
+      return name;
+    }
+  }, [autocompleteData]);
+
   const showEmptyState = availablePortfolios.length === 0
   
   // Create mock metadata for empty state to keep UI working
@@ -89,6 +127,7 @@ export function PortfolioView({
               total={chart.chart_total}
               baseCurrency={displayMetadata.base_currency}
               hideValues={!isValueVisible}
+              getSymbolName={getSymbolName}
             />
           ))}
           {/* RSU Vesting grouped by symbol */}
