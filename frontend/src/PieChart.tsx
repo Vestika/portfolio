@@ -10,13 +10,15 @@ interface PieChartProps {
   total: number;
   baseCurrency: string;
   hideValues?: boolean;
+  getSymbolName?: (symbol: string) => string; // Function to resolve symbol names (e.g., TASE numeric to text)
 }
 
 const PieChart: React.FC<PieChartProps> = ({
   title,
   data,
   baseCurrency,
-  hideValues = false
+  hideValues = false,
+  getSymbolName
 }) => {
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -26,6 +28,14 @@ const PieChart: React.FC<PieChartProps> = ({
       maximumFractionDigits: 0,
       minimumFractionDigits: 0
     }).format(value);
+
+  // Helper to get display name for a label (symbol)
+  const getDisplayName = (label: string): string => {
+    if (getSymbolName) {
+      return getSymbolName(label);
+    }
+    return label;
+  };
 
   const chartOptions: Highcharts.Options = {
     chart: {
@@ -66,7 +76,9 @@ const PieChart: React.FC<PieChartProps> = ({
     },
     tooltip: {
       pointFormatter: function() {
-        const dataPoint = data.find(item => item.label === this.name);
+        // Use custom property to get original label for lookup
+        const originalLabel = (this as any).originalLabel || this.name;
+        const dataPoint = data.find(item => item.label === originalLabel);
 
         if (hideValues) {
           return `<b>${this.name}</b> (${dataPoint?.percentage.toFixed(2)}%)`;
@@ -108,10 +120,11 @@ const PieChart: React.FC<PieChartProps> = ({
       type: 'pie',
       name: title,
       data: data.map(item => ({
-        name: item.label,
+        name: getDisplayName(item.label), // Use display name (resolves TASE numeric to text)
         y: item.value,
         sliced: false,
-        selected: false
+        selected: false,
+        originalLabel: item.label // Store original label for data lookup
       }))
     }]
   };
