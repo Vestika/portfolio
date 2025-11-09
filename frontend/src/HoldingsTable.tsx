@@ -83,6 +83,26 @@ const getSecurityTypeIcon = (type: string) => {
   }
 };
 
+// Helper to format units with appropriate decimal places
+const formatUnits = (units: number, securityType?: string): string => {
+  // For crypto and fractional assets, show up to 8 decimal places (trimming trailing zeros)
+  if (securityType?.toLowerCase() === 'crypto') {
+    return units.toLocaleString(undefined, { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 8 
+    });
+  }
+  // For stocks/ETFs, show up to 4 decimal places (for fractional shares)
+  if (units % 1 !== 0) {
+    return units.toLocaleString(undefined, { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 4 
+    });
+  }
+  // For whole numbers, no decimal places
+  return Math.round(units).toLocaleString();
+};
+
 // Helper to get logo URL
 const getLogoUrl = (holding: SecurityHolding) => {
     const symbol = holding.symbol;
@@ -412,7 +432,7 @@ const AccountBreakdownRow: React.FC<{
                   <>
                     <span className="flex items-center gap-1">
                       <span className="text-gray-400">Units:</span>
-                      <span className="font-medium">{Math.round(account.units).toLocaleString()}</span>
+                      <span className="font-medium">{formatUnits(account.units)}</span>
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="text-gray-400">Value:</span>
@@ -1331,7 +1351,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           {isValueVisible && (
                             <>
                               <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
-                                {Math.round(holding.total_units).toLocaleString()}
+                                {formatUnits(holding.total_units, holding.security_type)}
                               </td>
                               <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
                                 {Math.round(holding.total_value).toLocaleString()}
@@ -1510,7 +1530,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                                 {isValueVisible && (
                                   <div>
                                     <p className="font-bold text-gray-400">Units</p>
-                                    <p>{Math.round(holding.total_units).toLocaleString()}</p>
+                                    <p>{formatUnits(holding.total_units, holding.security_type)}</p>
                                   </div>
                                 )}
                                 {holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
@@ -1675,7 +1695,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     {isValueVisible && (
                       <>
                         <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
-                          {Math.round(holding.total_units).toLocaleString()}
+                          {formatUnits(holding.total_units, holding.security_type)}
                         </td>
                         <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
                           {Math.round(holding.total_value).toLocaleString()}
@@ -1858,7 +1878,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           {isValueVisible && (
                             <div>
                               <p className="font-bold text-gray-400">Units</p>
-                              <p>{Math.round(holding.total_units).toLocaleString()}</p>
+                              <p>{formatUnits(holding.total_units, holding.security_type)}</p>
                             </div>
                           )}
                           {holding.earnings_calendar && holding.earnings_calendar.length > 0 && (
