@@ -5,11 +5,11 @@ from typing import Any, Self
 @dataclass
 class Holding:
     symbol: str
-    units: int
+    units: float
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(
             symbol=data["symbol"],
-            units=int(data["units"]),
+            units=float(data["units"]),
         )

@@ -821,7 +821,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ user, onPortfolioCreate
                           <Input
                             placeholder="0"
                             type="number"
-                            step="1"
+                            step="any"
                             value={holding.units}
                             onChange={(e) => updateHoldingUnits(index, e.target.value)}
                             className="border-0 rounded-none shadow-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-3 h-auto text-white placeholder:text-gray-400"
