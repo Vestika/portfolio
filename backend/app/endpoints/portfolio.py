@@ -187,13 +187,17 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                         "security_name": security.name,
                         "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
                     }
-                    
+
                     # Include custom holding metadata if it's a custom holding
                     if security.is_custom if hasattr(security, 'is_custom') else False:
                         holding_data["custom_price"] = security.custom_price if hasattr(security, 'custom_price') else None
                         holding_data["custom_currency"] = security.currency.value
                         holding_data["custom_name"] = security.name
-                    
+
+                    # Include property_metadata for real estate holdings
+                    if hasattr(holding, 'property_metadata') and holding.property_metadata:
+                        holding_data["property_metadata"] = holding.property_metadata
+
                     holdings_with_values.append(holding_data)
 
                 # Add RSU virtual holdings
@@ -1883,11 +1887,15 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             if symbol:
                 # Check if this is a custom holding
                 is_custom = holding.get('is_custom', False)
+                # Check if this has property_metadata (real estate)
+                property_metadata = holding.get('property_metadata')
+
                 if is_custom:
-                    # For custom holdings, always update (to allow price changes)
+                    # For custom holdings (including real estate), always update (to allow price changes)
+                    security_type = 'real-estate' if property_metadata else 'stock'
                     portfolio_data['securities'][symbol] = {
                         'name': holding.get('custom_name', symbol),
-                        'type': 'stock',  # Default to stock for custom holdings
+                        'type': security_type,
                         'currency': holding.get('custom_currency', 'USD'),
                         'is_custom': True,
                         'custom_price': holding.get('custom_price')

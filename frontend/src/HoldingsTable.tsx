@@ -387,6 +387,60 @@ const MiniChart: React.FC<{
   );
 };
 
+const PropertyDetailsRow: React.FC<{
+  propertyMetadata: SecurityHolding['property_metadata'],
+  baseCurrency: string
+}> = ({ propertyMetadata, baseCurrency }) => {
+  if (!propertyMetadata) {
+    return null;
+  }
+
+  return (
+    <div className="bg-gray-800/40 border-t border-blue-400/20 p-4">
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
+          <Building2 size={16} className="text-blue-400" />
+          Property Details
+        </h4>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30">
+          <span className="text-xs text-gray-400 block mb-1">Location</span>
+          <span className="text-sm font-medium text-blue-200">{propertyMetadata.location}</span>
+        </div>
+        <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30">
+          <span className="text-xs text-gray-400 block mb-1">Rooms</span>
+          <span className="text-sm font-medium text-blue-200">{propertyMetadata.rooms}</span>
+        </div>
+        <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30">
+          <span className="text-xs text-gray-400 block mb-1">Size</span>
+          <span className="text-sm font-medium text-blue-200">{propertyMetadata.sqm} sqm</span>
+        </div>
+        <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30">
+          <span className="text-xs text-gray-400 block mb-1">Pricing Method</span>
+          <span className="text-sm font-medium text-blue-200 capitalize">{propertyMetadata.pricing_method}</span>
+        </div>
+        {propertyMetadata.estimated_price && (
+          <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30 col-span-2">
+            <span className="text-xs text-gray-400 block mb-1">Estimated Price</span>
+            <span className="text-sm font-medium text-green-300">
+              {Math.round(propertyMetadata.estimated_price).toLocaleString()} {baseCurrency}
+            </span>
+          </div>
+        )}
+        {propertyMetadata.estimation_params && (
+          <div className="p-3 bg-gray-700/40 rounded-lg border border-gray-600/30 col-span-2">
+            <span className="text-xs text-gray-400 block mb-1">Estimation Parameters</span>
+            <span className="text-sm font-medium text-gray-300">
+              {propertyMetadata.estimation_params.query} • {propertyMetadata.estimation_params.rooms} rooms
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AccountBreakdownRow: React.FC<{
   accountBreakdown: SecurityHolding['account_breakdown'],
   baseCurrency: string,
@@ -1278,7 +1332,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                         >
                           <td className="px-2 md:px-4">
-                            {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                            {((holding.account_breakdown && holding.account_breakdown.length > 1) || holding.property_metadata) && (
                               <div className="flex items-center justify-center">
                                 {expandedRow === holding.symbol ? (
                                   <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
@@ -1291,8 +1345,17 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
                           <td className="px-2 md:px-4 font-medium text-blue-400">
                             <div className="flex items-center gap-2">
-                              {/* Logo image */}
+                              {/* Logo image or icon */}
                               {(() => {
+                                // Show house icon for real estate
+                                if (holding.security_type === 'real-estate' || holding.property_metadata) {
+                                  return (
+                                    <div className="w-5 h-5 flex items-center justify-center mr-1">
+                                      <Building2 size={20} className="text-blue-400" />
+                                    </div>
+                                  );
+                                }
+
                                 const logoUrl = getLogoUrl(holding);
                                 const isUsFlag = logoUrl === usFlag;
                                 const isFlag = logoUrl === israelFlag || isUsFlag;
@@ -1474,6 +1537,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                             })()}
                           </td>
                         </tr>
+                        {expandedRow === holding.symbol && holding.property_metadata && (
+                          <tr>
+                            <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                              <PropertyDetailsRow
+                                propertyMetadata={holding.property_metadata}
+                                baseCurrency={dataWithRealEarnings.base_currency}
+                              />
+                            </td>
+                          </tr>
+                        )}
                         {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
                           <tr>
                             <td colSpan={isValueVisible ? 11 : 9} className="p-0">
@@ -1622,7 +1695,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                   >
                     <td className="px-2 md:px-4">
-                      {holding.account_breakdown && holding.account_breakdown.length > 1 && (
+                      {((holding.account_breakdown && holding.account_breakdown.length > 1) || holding.property_metadata) && (
                         <div className="flex items-center justify-center">
                           {expandedRow === holding.symbol ? (
                             <ChevronDown size={18} className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer" />
@@ -1635,8 +1708,17 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     <td className="px-2 md:px-4">{getSecurityTypeIcon(holding.security_type)}</td>
                     <td className="px-2 md:px-4 font-medium text-blue-400">
                       <div className="flex items-center gap-2">
-                        {/* Logo image */}
+                        {/* Logo image or icon */}
                         {(() => {
+                          // Show house icon for real estate
+                          if (holding.security_type === 'real-estate' || holding.property_metadata) {
+                            return (
+                              <div className="w-5 h-5 flex items-center justify-center mr-1">
+                                <Building2 size={20} className="text-blue-400" />
+                              </div>
+                            );
+                          }
+
                           const logoUrl = getLogoUrl(holding);
                           const isUsFlag = logoUrl === usFlag;
                           const isFlag = logoUrl === israelFlag || isUsFlag;
@@ -1822,6 +1904,16 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       })()}
                     </td>
                   </tr>
+                  {expandedRow === holding.symbol && holding.property_metadata && (
+                    <tr>
+                      <td colSpan={isValueVisible ? 11 : 9} className="p-0">
+                        <PropertyDetailsRow
+                          propertyMetadata={holding.property_metadata}
+                          baseCurrency={dataWithRealEarnings.base_currency}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {expandedRow === holding.symbol && holding.account_breakdown && holding.account_breakdown.length > 1 && (
                     <tr>
                       <td colSpan={isValueVisible ? 11 : 9} className="p-0">
