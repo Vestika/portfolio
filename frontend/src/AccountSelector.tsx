@@ -1740,7 +1740,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               <Input
                                 placeholder="0"
                                 type="number"
-                                step="1"
+                                step="any"
                                 value={holding.units}
                                 onChange={(e) => {
                                   updateHoldingUnits(index, e.target.value);
@@ -2320,7 +2320,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               <Input
                                 placeholder="0"
                                 type="number"
-                                step="1"
+                                step="any"
                                 value={holding.units}
                                 onChange={(e) => {
                                   updateEditHoldingUnits(index, e.target.value);
