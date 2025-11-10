@@ -149,6 +149,19 @@ export interface SecurityHolding {
   custom_currency?: string;
   custom_name?: string;
   earnings_calendar?: EarningsData[];
+  // Real estate specific fields
+  property_metadata?: {
+    location: string;
+    rooms: number;
+    sqm: number;
+    pricing_method: 'estimated' | 'custom';
+    estimated_price?: number;
+    estimation_params?: {
+      query: string;
+      type: 'sell' | 'rent';
+      rooms: number;
+    };
+  };
 }
 
 export enum TagType {

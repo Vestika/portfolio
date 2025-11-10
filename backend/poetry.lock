@@ -1900,6 +1900,21 @@ test = ["pytest (>=8.2)", "pytest-asyncio (>=0.24.0)"]
 zstd = ["zstandard"]
 
 [[package]]
+name = "pynadlan"
+version = "0.2.0"
+description = "A Python wrapper for the israel Nadlan prices."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pynadlan-0.2.0-py3-none-any.whl", hash = "sha256:739b6c3d8f26534ad80674c5b070bcec302066b9e3d6a9f5440f78db3cfad4b8"},
+    {file = "pynadlan-0.2.0.tar.gz", hash = "sha256:8ba3db82e484ceee5b3598d6dc3a2bfbbee47cbcb3f8308085fe3a0d9f329120"},
+]
+
+[package.dependencies]
+httpx = "*"
+
+[[package]]
 name = "pyparsing"
 version = "3.2.3"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
@@ -2404,4 +2419,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "465c9ad491876be06fccc754e6018b65da0a8d9a21daf79f144d7125cc27262a"
+content-hash = "0eda7f6cc9f620dc989c283d6e81ac62b95059f6b294dbbc5202f4034933a16f"
