@@ -47,7 +47,7 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
     },
     {
       name: "Dan",
-      title: "Backend Software Engineer @ Avalor", 
+      title: "Backend Software Engineer @ Zscaler", 
       linkedinUrl: "https://www.linkedin.com/in/dansterenson/",
       imageUrl: danSterensonImage
     },
@@ -133,6 +133,19 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
                   </div>
                 </div>
               ))}
+          </div>
+        </div>
+
+        {/* Early Adopters Section */}
+        <div className="mb-8 border-t border-gray-700 pt-8">
+          <h2 className="text-2xl font-semibold text-white mb-4">Special Thanks</h2>
+          <p className="text-gray-300 mb-4">
+            We're grateful to our early adopters who helped shape this product:
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <div className="px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
+              <span className="text-white font-medium">Yoav Y.</span>
+            </div>
           </div>
         </div>
 
