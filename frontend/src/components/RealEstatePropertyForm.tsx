@@ -5,7 +5,6 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { RealEstateLocationAutocomplete } from './RealEstateLocationAutocomplete';
 import { X, Loader2, AlertCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
 import RealEstateAPI, { RealEstateAutocompleteResponse } from '../utils/real-estate-api';
 
 export interface RealEstateProperty {
@@ -80,7 +79,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
 
   // Auto-fetch estimation when all required fields are filled (debounced)
   useEffect(() => {
-    const timeoutIds: NodeJS.Timeout[] = [];
+    const timeoutIds: number[] = [];
 
     formStates.forEach((state, index) => {
       if (
