@@ -44,9 +44,10 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         # Initialize Firebase if not already done (only in production)
         _initialize_firebase()
         
-        # Skip authentication for excluded paths
-        if any(request.url.path.startswith(path) for path in self.exclude_paths):
-            return await call_next(request)
+        # Skip authentication for excluded paths (use startswith for pattern matching)
+        for excluded_path in self.exclude_paths:
+            if request.url.path.startswith(excluded_path):
+                return await call_next(request)
         
         # Check for Authorization header
         auth_header = request.headers.get("Authorization")

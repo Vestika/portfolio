@@ -57,6 +57,7 @@ class TrackedSymbol(BaseModel):
     market: Literal["US", "TASE", "CURRENCY", "CRYPTO"]
     added_at: datetime
     last_queried_at: datetime
+    last_update: Optional[datetime] = None  # Last time historical data was synced for this symbol
     
     @field_validator('id', mode='before')
     @classmethod
@@ -68,6 +69,25 @@ class TrackedSymbol(BaseModel):
         if isinstance(v, ObjectId):
             return PyObjectId(v)
         return v
+
+
+class HistoricalPrice(BaseModel):
+    """Model for time-series historical price data"""
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+    
+    timestamp: datetime  # timeField - the date of the price (end of trading day)
+    symbol: str  # metaField - identifies the stock
+    close: float  # Closing price for the day
+    
+    # Optional metadata
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    volume: Optional[int] = None
 
 
 class PriceResponse(BaseModel):

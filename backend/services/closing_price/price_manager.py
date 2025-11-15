@@ -2,7 +2,7 @@ import json
 import httpx
 from datetime import datetime, timedelta
 from loguru import logger
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
@@ -445,4 +445,67 @@ class PriceManager:
             date=stock_price.date,
             fetched_at=stock_price.fetched_at,
             change_percent=stock_price.change_percent
-        ) 
+        )
+    
+    async def get_historical_prices(
+        self, 
+        symbols: list[str], 
+        days: int = 7
+    ) -> Dict[str, list[Dict[str, Any]]]:
+        """
+        Get historical prices for multiple symbols from MongoDB (FAST!).
+        
+        This retrieves pre-cached historical data from the time-series collection,
+        which is much faster than fetching from yfinance on every request.
+        
+        Args:
+            symbols: List of symbols to fetch
+            days: Number of days of history (default: 7)
+        
+        Returns:
+            Dictionary mapping symbol to list of historical price points
+            Format: {"AAPL": [{"date": "2025-11-14", "price": 150.50}, ...]}
+        """
+        try:
+            await ensure_connections()
+            
+            # Calculate date range
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            
+            logger.info(f"[GET HISTORICAL] Fetching {days}-day history for {len(symbols)} symbols from MongoDB")
+            
+            # Query time-series collection (optimized for this!)
+            cursor = db.database.historical_prices.find({
+                "symbol": {"$in": symbols},
+                "timestamp": {"$gte": start_date}
+            }).sort("timestamp", 1)
+            
+            # Fetch all data
+            all_data = await cursor.to_list(length=None)
+            
+            # Group by symbol
+            result: Dict[str, list[Dict[str, Any]]] = {symbol: [] for symbol in symbols}
+            
+            for doc in all_data:
+                symbol = doc["symbol"]
+                if symbol in result:
+                    result[symbol].append({
+                        "date": doc["timestamp"].strftime("%Y-%m-%d"),
+                        "price": doc["close"]
+                    })
+            
+            # Log statistics
+            total_records = sum(len(prices) for prices in result.values())
+            symbols_with_data = sum(1 for prices in result.values() if prices)
+            
+            logger.info(
+                f"[GET HISTORICAL] Retrieved {total_records} records for "
+                f"{symbols_with_data}/{len(symbols)} symbols"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"[GET HISTORICAL] Error fetching historical prices: {e}")
+            return {symbol: [] for symbol in symbols} 

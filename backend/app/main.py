@@ -50,7 +50,14 @@ app.add_middleware(
 # Add Firebase authentication middleware
 app.add_middleware(
     FirebaseAuthMiddleware,
-    exclude_paths=["/docs", "/openapi.json", "/redoc"]
+    exclude_paths=[
+        "/docs", 
+        "/openapi.json", 
+        "/redoc",
+        "/cache/status",
+        "/cache/historical",
+        "/cache/scheduler/status"
+    ]
 )
 
 @app.on_event("startup")
@@ -78,6 +85,16 @@ async def startup_event():
                 logger.info("Created TTL index for extraction_sessions")
             except Exception as index_err:
                 logger.warning(f"Failed to create extraction_sessions index: {index_err}")
+            
+            # Start the background scheduler for historical price caching
+            # Scheduler now runs initial sync at T+0 automatically!
+            try:
+                from services.closing_price.scheduler import start_scheduler
+                start_scheduler()
+                logger.info("Historical price caching scheduler started successfully")
+                logger.info("Initial sync will run immediately (T+0), then every 3 hours")
+            except Exception as scheduler_err:
+                logger.warning(f"Failed to start scheduler: {scheduler_err}")
             
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")
@@ -141,6 +158,14 @@ async def shutdown_event():
     """Clean up resources on application shutdown"""
     try:
         logger.info("Shutting down Portfolio API...")
+        
+        # Stop the scheduler
+        try:
+            from services.closing_price.scheduler import stop_scheduler
+            stop_scheduler()
+            logger.info("Scheduler stopped successfully")
+        except Exception as scheduler_err:
+            logger.warning(f"Error stopping scheduler: {scheduler_err}")
         
         # Clean up the closing price service
         await closing_price_service.cleanup()

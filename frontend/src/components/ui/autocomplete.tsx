@@ -26,7 +26,8 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   const [open, setOpen] = useState(true); // Default to open when rendered
   const [inputValue, setInputValue] = useState(value);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const isSelectingRef = useRef(false);
   
   const { suggestions, isLoading, fetchSuggestions, clearSuggestions } = useSymbolAutocomplete();
   
@@ -58,9 +59,14 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
+    console.log('✅ [AUTOCOMPLETE] Selecting:', suggestion.symbol);
     onSelect(suggestion);
     setOpen(false);
     onClose();
+    // Reset flag after selection completes
+    setTimeout(() => {
+      isSelectingRef.current = false;
+    }, 100);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -164,9 +170,20 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
             value={inputValue}
             onChange={(e) => handleInputChange(e.target.value)}
             onFocus={() => setOpen(true)}
-            onBlur={() => {
-              setOpen(false);
-              onClose();
+            onBlur={(e) => {
+              // Check if the focus is moving to the popover content
+              const relatedTarget = e.relatedTarget as Node;
+              if (relatedTarget && listRef.current?.contains(relatedTarget)) {
+                return;
+              }
+              
+              // Use setTimeout to allow mousedown to fire first
+              setTimeout(() => {
+                if (!isSelectingRef.current) {
+                  setOpen(false);
+                  onClose();
+                }
+              }, 150);
             }}
             onKeyDown={handleKeyDown}
             className={cn(
@@ -181,9 +198,15 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         </div>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-[400px] p-0" 
+        className="w-[400px] p-0 pointer-events-auto" 
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => {
+          // Prevent closing when interacting with the input
+          if (e.target === ref || (typeof ref !== 'function' && ref?.current && e.target === ref.current)) {
+            e.preventDefault();
+          }
+        }}
       >
         <div ref={listRef} className="max-h-80 overflow-y-auto">
           {isLoading && inputValue.trim().length >= 1 && suggestions.length === 0 ? (
@@ -198,9 +221,19 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                   className="relative flex cursor-pointer select-none items-center rounded-sm px-4 py-3 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
                   onMouseDown={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+                    isSelectingRef.current = true;
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    isSelectingRef.current = true;
                     onAddCustom(inputValue.trim());
                     setOpen(false);
                     onClose();
+                    setTimeout(() => {
+                      isSelectingRef.current = false;
+                    }, 200);
                   }}
                 >
                   <div className="flex items-center gap-3 w-full">
@@ -233,8 +266,14 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                     highlightedIndex === index && "bg-accent text-accent-foreground"
                   )}
                   onMouseDown={(e) => {
-                    // Use onMouseDown to prevent blur from closing before selection
                     e.preventDefault();
+                    e.stopPropagation();
+                    isSelectingRef.current = true;
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    isSelectingRef.current = true;
                     selectSuggestion(suggestion);
                   }}
                   onMouseEnter={() => setHighlightedIndex(index)}

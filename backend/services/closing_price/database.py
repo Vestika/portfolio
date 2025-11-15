@@ -50,12 +50,66 @@ async def create_index_safe(
         logger.error(f"[INDEX] Unexpected error creating index '{name}': {e}")
 
 
+async def setup_historical_prices_collection() -> None:
+    """
+    Create the time-series collection for historical prices.
+    This should be called once during initial setup.
+    """
+    try:
+        if db.database is None:
+            logger.error("Database not connected. Cannot create time-series collection.")
+            return
+        
+        # Check if collection already exists
+        existing_collections = await db.database.list_collection_names()
+        if "historical_prices" in existing_collections:
+            logger.info("[TIME-SERIES] historical_prices collection already exists")
+            return
+        
+        logger.info("[TIME-SERIES] Creating historical_prices time-series collection...")
+        
+        # Create time-series collection with MongoDB time-series features
+        await db.database.create_collection(
+            "historical_prices",
+            timeseries={
+                "timeField": "timestamp",     # The field that contains the date
+                "metaField": "symbol",        # The field that identifies the stock
+                "granularity": "hours"        # "hours" is appropriate for daily data
+            },
+            expireAfterSeconds=31536000  # Automatically delete data older than 1 year (365 days)
+        )
+        
+        logger.info("[TIME-SERIES] Created historical_prices collection with 1-year TTL")
+        
+        # Create index on symbol for fast queries
+        await create_index_safe(
+            collection=db.database.historical_prices,
+            keys=[("symbol", 1)],
+            name="symbol_index"
+        )
+        
+        logger.info("[TIME-SERIES] historical_prices collection setup completed")
+        
+    except OperationFailure as e:
+        if "already exists" in str(e).lower():
+            logger.info("[TIME-SERIES] historical_prices collection already exists")
+        else:
+            logger.error(f"[TIME-SERIES] Error creating time-series collection: {e}")
+            raise
+    except Exception as e:
+        logger.error(f"[TIME-SERIES] Unexpected error creating time-series collection: {e}")
+        raise
+
+
 async def create_database_indexes() -> None:
     """Create database indexes - should only be called once during startup"""
     if db.indexes_created or db.database is None:
         return
     
     logger.info("[INDEX] Creating database indexes...")
+    
+    # Ensure time-series collection exists
+    await setup_historical_prices_collection()
     
     await create_index_safe(
         collection=db.database.stock_prices,
@@ -74,6 +128,29 @@ async def create_database_indexes() -> None:
         collection=db.database.tracked_symbols,
         keys=[("last_queried_at", 1)],
         name="last_queried_at_index"
+    )
+    
+    # Add index for last_update to support cron job queries
+    await create_index_safe(
+        collection=db.database.tracked_symbols,
+        keys=[("last_update", 1)],
+        name="last_update_index"
+    )
+    
+    # Create indexes for earnings cache (with TTL expiration)
+    await create_index_safe(
+        collection=db.database.earnings_cache,
+        keys=[("symbol", 1)],
+        name="symbol_index",
+        unique=True
+    )
+    
+    # TTL index to auto-expire earnings after 24 hours
+    await create_index_safe(
+        collection=db.database.earnings_cache,
+        keys=[("expires_at", 1)],
+        name="expires_at_ttl_index",
+        expireAfterSeconds=0  # Expire at the expires_at time
     )
     
     db.indexes_created = True
