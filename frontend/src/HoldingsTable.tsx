@@ -106,32 +106,40 @@ const formatUnits = (units: number, securityType?: string): string => {
 // Helper to get logo URL
 const getLogoUrl = (holding: SecurityHolding) => {
     const symbol = holding.symbol;
-    if (symbol.toUpperCase() === 'SMH') {
-        return smhLogo;
-    }
-
+    
+    // If holding has a logo from backend, use it first
     if (holding.logo) {
         return holding.logo;
     }
-
-  if (symbol.toUpperCase() === 'IBIT') {
-    return bitcoinLogo;
-  }
-
+    
+    // Special hardcoded logos for known symbols
+    if (symbol.toUpperCase() === 'SMH') {
+        return smhLogo;
+    }
+    if (symbol.toUpperCase() === 'IBIT') {
+        return bitcoinLogo;
+    }
     if (symbol.toUpperCase() === 'VTI' || symbol.toUpperCase() === 'VXUS') {
-    return vanguardLogo;
-  }
+        return vanguardLogo;
+    }
 
-  if (symbol.toUpperCase() === 'ILS' || /^\d+$/.test(symbol)) {
-    return israelFlag;
-  }
-  if (symbol.toUpperCase() === 'USD') {
-    return usFlag;
-  }
+    // Only show currency flags for actual cash holdings, not stocks with same symbol
+    if (holding.security_type === 'cash') {
+        if (symbol.toUpperCase() === 'ILS' || symbol === 'FX:ILS') {
+            return israelFlag;
+        }
+        if (symbol.toUpperCase() === 'USD' || symbol === 'FX:USD') {
+            return usFlag;
+        }
+    }
+    
+    // TASE stocks (numeric symbols) get Israel flag
+    if (holding.security_type !== 'cash' && /^\d+$/.test(symbol)) {
+        return israelFlag;
+    }
 
-
-  // Default to app logo for other types
-  return appLogo;
+    // Default to app logo for other types
+    return appLogo;
 };
 
 
@@ -146,18 +154,27 @@ const MiniChart: React.FC<{
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   
   // Determine colors based on trend
-  let lineColor = '#10b981'; // green by default
-  let gradientStart = 'rgba(16, 185, 129, 0.3)';
-  let gradientEnd = 'rgba(16, 185, 129, 0.0)';
+  let lineColor = '#9ca3af'; // gray by default (neutral)
+  let gradientStart = 'rgba(156, 163, 175, 0.3)';
+  let gradientEnd = 'rgba(156, 163, 175, 0.0)';
 
   if (data && data.length > 1) {
     const first = data[0].price;
     const last = data[data.length - 1].price;
-    if (last < first) {
+    const changePercent = ((last - first) / first) * 100;
+    
+    if (changePercent > 0.01) {
+      // Positive gain
+      lineColor = '#10b981'; // green
+      gradientStart = 'rgba(16, 185, 129, 0.3)';
+      gradientEnd = 'rgba(16, 185, 129, 0.0)';
+    } else if (changePercent < -0.01) {
+      // Negative gain
       lineColor = '#ef4444'; // red
       gradientStart = 'rgba(239, 68, 68, 0.3)';
       gradientEnd = 'rgba(239, 68, 68, 0.0)';
     }
+    // else: stays gray for ~0% change
   }
 
   // Calculate min and max for better scaling

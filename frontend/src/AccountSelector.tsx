@@ -85,7 +85,7 @@ const formatSymbolOnSelect = (suggestion: SymbolSuggestion): string => {
   if (suggestion.symbol_type === 'currency' || suggestion.symbol_type === 'crypto') {
     finalSymbol = suggestion.symbol.toUpperCase();
   }
-  // For stock symbols, remove exchange prefixes
+  // For stock symbols, remove exchange prefixes (now safe - no hardcoded securities!)
   else {
     if (finalSymbol.toUpperCase().startsWith('NYSE:')) {
       finalSymbol = finalSymbol.substring(5);
@@ -572,7 +572,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleHoldingSymbolSelect = (index: number, suggestion: SymbolSuggestion) => {
     const finalSymbol = formatSymbolOnSelect(suggestion);
-    console.log(`🎯 [HOLDINGS] handleHoldingSymbolSelect: index=${index}, finalSymbol="${finalSymbol}"`);
+    console.log(`🎯 [HOLDINGS] handleHoldingSymbolSelect: index=${index}, finalSymbol="${finalSymbol}", suggestion=`, suggestion);
 
     const updatedHoldings = newAccount.holdings.map((holding, i) =>
       i === index ? { ...holding, symbol: finalSymbol } : holding
@@ -584,7 +584,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     if (index === newAccount.holdings.length - 1) {
       setTimeout(() => addNewRowIfNeeded(updatedHoldings, index, false), 10);
     }
-    setEditingSymbolIndex(null); // Exit edit mode after selection
+    
+    // Exit edit mode after selection
+    setEditingSymbolIndex(null);
+    
+    // Focus on units field for convenience
+    setTimeout(() => {
+      const unitsInput = holdingRefs.current[`${index}-units`];
+      if (unitsInput) {
+        unitsInput.focus();
+        unitsInput.select();
+      }
+    }, 50);
   };
 
   const handleAddCustomHolding = (searchTerm: string) => {
@@ -848,7 +859,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
   const handleEditHoldingSymbolSelect = (index: number, suggestion: SymbolSuggestion) => {
     const finalSymbol = formatSymbolOnSelect(suggestion);
-    console.log(`🎯 [EDIT HOLDINGS] handleEditHoldingSymbolSelect: index=${index}, finalSymbol="${finalSymbol}"`);
+    console.log(`🎯 [EDIT HOLDINGS] handleEditHoldingSymbolSelect: index=${index}, finalSymbol="${finalSymbol}", suggestion=`, suggestion);
 
     const updatedHoldings = editAccount.holdings.map((holding, i) =>
       i === index ? { ...holding, symbol: finalSymbol } : holding
@@ -860,7 +871,18 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     if (index === editAccount.holdings.length - 1) {
       setTimeout(() => addNewRowIfNeeded(updatedHoldings, index, true), 10);
     }
-    setEditEditingSymbolIndex(null); // Exit edit mode after selection
+    
+    // Exit edit mode after selection
+    setEditEditingSymbolIndex(null);
+    
+    // Focus on units field for convenience
+    setTimeout(() => {
+      const unitsInput = editHoldingRefs.current[`edit-${index}-units`];
+      if (unitsInput) {
+        unitsInput.focus();
+        unitsInput.select();
+      }
+    }, 50);
   };
 
   const handleEditAddCustomHolding = (searchTerm: string) => {

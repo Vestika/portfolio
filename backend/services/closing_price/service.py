@@ -259,6 +259,31 @@ class ClosingPriceService:
         result = self._run_async_operation(self.health_check())
         return result if result is not None else False
     
+    async def get_historical_prices(
+        self, 
+        symbols: list[str], 
+        days: int = 7
+    ) -> Optional[Dict[str, list[Dict[str, Any]]]]:
+        """
+        Get historical prices for multiple symbols from MongoDB (FAST!).
+        
+        Args:
+            symbols: List of symbols to fetch
+            days: Number of days of history (default: 7)
+            
+        Returns:
+            Dictionary mapping symbol to list of historical price points
+        """
+        try:
+            await self._ensure_initialized()
+            
+            result = await self.price_manager.get_historical_prices(symbols, days)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting historical prices: {e}")
+            return None
+    
     async def cleanup(self):
         """Clean up resources when shutting down"""
         try:

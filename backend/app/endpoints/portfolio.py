@@ -78,19 +78,30 @@ def determine_security_type_and_currency(symbol: str) -> tuple[str, str]:
         ETH-USD -> ('crypto', 'USD')
         629014 -> ('bond', 'ILS')  # TASE numeric
         AAPL -> ('stock', 'USD')
+        NYSE:USD -> ('stock', 'USD')  # Stock, not cash!
     """
-    # Handle forex symbols (FX:XXX format)
+    # Handle forex symbols (FX:XXX format) - these are actual currencies
     if symbol.startswith('FX:'):
         currency_code = symbol[3:]  # Extract currency after FX:
         return ('cash', currency_code)
     
-    # Handle crypto symbols (XXX-USD format)
-    if symbol.endswith('-USD') and not symbol.startswith('FX:'):
+    # Handle crypto symbols (XXX-USD format, but not exchange-prefixed stocks!)
+    if symbol.endswith('-USD') and not symbol.startswith('FX:') and not symbol.startswith('NYSE:') and not symbol.startswith('NASDAQ:'):
         return ('crypto', 'USD')
     
     # Handle TASE numeric symbols
     if symbol.isdigit() or (symbol.replace('.', '').replace('TA', '').isdigit()):
         return ('bond', 'ILS')
+    
+    # Handle symbols with exchange prefixes (NYSE:, NASDAQ:, etc.) - always stocks
+    if symbol.startswith('NYSE:') or symbol.startswith('NASDAQ:'):
+        return ('stock', 'USD')
+    
+    # Standalone currency codes WITHOUT FX: prefix are assumed to be cash
+    # (for backwards compatibility with existing portfolios)
+    currency_codes = ['USD', 'ILS', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'HKD']
+    if symbol.upper() in currency_codes and len(symbol) == 3:
+        return ('cash', symbol.upper())
     
     # Default to stock with USD currency
     return ('stock', 'USD')
@@ -273,6 +284,267 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
     return all_portfolios_data, global_securities, all_symbols
 
 
+async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -> tuple:
+    """
+    Collect global current and historical prices using CACHED data with smart fallback.
+    
+    Strategy:
+    1. Try to get historical data from MongoDB cache (FAST!)
+    2. If cache has <50% of symbols, fall back to old yfinance method
+    3. Trigger backfill in background for missing symbols
+    
+    Returns: (global_current_prices, global_historical_prices)
+    """
+    start_time = time.time()
+    global_current_prices = {}
+    global_historical_prices = {}
+    
+    print(f"📈 [COLLECT PRICES CACHED] Collecting prices for {len(all_symbols)} symbols")
+    
+    # Get the first available portfolio and calculator
+    first_portfolio = None
+    first_calculator = None
+    for doc in portfolio_docs:
+        try:
+            portfolio = Portfolio.from_dict(doc)
+            calculator = get_or_create_calculator(str(doc["_id"]), portfolio)
+            first_portfolio = portfolio
+            first_calculator = calculator
+            break
+        except:
+            continue
+    
+    if not first_portfolio or not first_calculator:
+        logger.warning("[COLLECT PRICES CACHED] No valid portfolio found")
+        return global_current_prices, global_historical_prices
+    
+    # Step 1: Calculate current prices (fast - no API calls)
+    current_prices_start = time.time()
+    symbol_securities = {}
+    
+    for symbol in all_symbols:
+        # Find the security from any portfolio
+        security = None
+        for doc in portfolio_docs:
+            try:
+                portfolio = Portfolio.from_dict(doc)
+                if symbol in portfolio.securities:
+                    security = portfolio.securities[symbol]
+                    break
+            except:
+                continue
+        
+        if security:
+            # Calculate current price
+            price_info = first_calculator.calc_holding_value(security, 1)
+            
+            global_current_prices[symbol] = {
+                "price": price_info["value"],
+                "original_price": price_info["unit_price"],
+                "currency": security.currency.value,
+                "last_updated": datetime.utcnow().isoformat(),
+                "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
+            }
+            
+            # Skip historical for custom holdings
+            if security.is_custom if hasattr(security, 'is_custom') else False:
+                global_historical_prices[symbol] = []
+            else:
+                symbol_securities[symbol] = security
+    
+    current_prices_time = time.time() - current_prices_start
+    print(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s")
+    
+    # Step 2: Ensure all symbols are tracked (add to tracked_symbols if missing)
+    try:
+        from services.closing_price.database import db, ensure_connections
+        await ensure_connections()
+        
+        for symbol in symbol_securities.keys():
+            security = symbol_securities[symbol]
+            
+            # Determine market type
+            if symbol.startswith("FX:"):
+                market = "CURRENCY"
+            elif symbol.endswith("-USD") and not symbol.isdigit() and not symbol.startswith("NYSE:") and not symbol.startswith("NASDAQ:"):
+                market = "CRYPTO"
+            elif symbol.isdigit():
+                market = "TASE"
+            else:
+                market = "US"
+            
+            # Add to tracked_symbols if not exists (upsert)
+            # NOTE: Do NOT set last_update here! Let Stage 2 backfill it properly.
+            # Setting last_update would cause Stage 1 to try using live cache before it's populated.
+            await db.database.tracked_symbols.update_one(
+                {"symbol": symbol},
+                {
+                    "$set": {
+                        "symbol": symbol,
+                        "market": market,
+                        "last_queried_at": datetime.utcnow()
+                        # Intentionally NOT setting last_update - let Stage 2 handle backfill
+                    },
+                    "$setOnInsert": {
+                        "added_at": datetime.utcnow()
+                        # last_update left as None initially
+                    }
+                },
+                upsert=True
+            )
+        
+        print(f"✅ [COLLECT PRICES CACHED] Ensured {len(symbol_securities)} symbols are tracked")
+        
+    except Exception as e:
+        logger.warning(f"[COLLECT PRICES CACHED] Error ensuring symbols tracked: {e}")
+    
+    # Step 3: Get historical prices from MongoDB cache
+    historical_start = time.time()
+    symbols_with_data = 0
+    
+    try:
+        # Get historical data from cache
+        manager = PriceManager()
+        cached_historical = await manager.get_historical_prices(list(symbol_securities.keys()), days=7)
+        
+        # Use cached data for symbols that have it
+        # Ensure symbol keys match exactly what was requested (defensive normalization)
+        for symbol, price_list in cached_historical.items():
+            if price_list and len(price_list) > 0:
+                # Use the original symbol from all_symbols to ensure exact match
+                matched_symbol = None
+                for orig_symbol in symbol_securities.keys():
+                    if orig_symbol.upper() == symbol.upper():
+                        matched_symbol = orig_symbol
+                        break
+                
+                if matched_symbol:
+                    global_historical_prices[matched_symbol] = price_list
+                    symbols_with_data += 1
+                else:
+                    # Fallback to original symbol if no match found
+                    global_historical_prices[symbol] = price_list
+                    symbols_with_data += 1
+        
+        # For symbols without cached data, use simple fallback (flat line at current price)
+        # This is MUCH faster than calling yfinance on every request!
+        missing_symbols = []
+        for symbol in symbol_securities.keys():
+            if symbol not in global_historical_prices or not global_historical_prices[symbol]:
+                # Simple fallback: flat line at current price
+                current_price = global_current_prices.get(symbol, {}).get('original_price', 100.0)
+                fallback_data = []
+                today = date.today()
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    fallback_data.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": current_price
+                    })
+                global_historical_prices[symbol] = fallback_data
+                missing_symbols.append(symbol)
+        
+        cache_coverage = (symbols_with_data / len(symbol_securities)) * 100 if symbol_securities else 0
+        print(f"📊 [COLLECT PRICES CACHED] Cache coverage: {cache_coverage:.1f}% ({symbols_with_data}/{len(symbol_securities)} symbols)")
+        
+        if missing_symbols:
+            print(f"⚠️  [COLLECT PRICES CACHED] {len(missing_symbols)} symbols using fallback (flat line)")
+            
+            # Trigger background backfill for missing symbols (async, doesn't block!)
+            try:
+                from services.closing_price.historical_sync import get_sync_service
+                
+                async def background_backfill():
+                    """Backfill missing symbols in background"""
+                    sync_service = get_sync_service()
+                    for symbol in missing_symbols[:10]:  # Limit to 10 per request
+                        try:
+                            market = "US"  # Default
+                            if symbol in symbol_securities:
+                                sec = symbol_securities[symbol]
+                                if symbol.startswith("FX:"):
+                                    market = "CURRENCY"
+                                elif symbol.endswith("-USD"):
+                                    market = "CRYPTO"
+                                elif symbol.isdigit():
+                                    market = "TASE"
+                            
+                            await sync_service.backfill_new_symbol(symbol, market)
+                        except Exception as e:
+                            logger.warning(f"Background backfill failed for {symbol}: {e}")
+                
+                # Start background task (doesn't block the response!)
+                asyncio.create_task(background_backfill())
+                print(f"🔄 [COLLECT PRICES CACHED] Triggered background backfill for {min(len(missing_symbols), 10)} symbols")
+                
+            except Exception as e:
+                logger.warning(f"[COLLECT PRICES CACHED] Failed to trigger background backfill: {e}")
+        
+        historical_time = time.time() - historical_start
+        print(f"⏱️ [COLLECT PRICES CACHED] Historical fetch completed in {historical_time:.3f}s")
+        
+    except Exception as e:
+        logger.error(f"[COLLECT PRICES CACHED] Error fetching from cache: {e}")
+        # Use fallback for all symbols (flat line at current price)
+        for symbol in symbol_securities.keys():
+            current_price = global_current_prices.get(symbol, {}).get('original_price', 100.0)
+            fallback_data = []
+            today = date.today()
+            for i in range(7, 0, -1):
+                day = today - timedelta(days=i)
+                fallback_data.append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "price": current_price
+                })
+            global_historical_prices[symbol] = fallback_data
+    
+    duration = time.time() - start_time
+    print(f"✅ [COLLECT PRICES CACHED] Total time: {duration:.3f}s - ALWAYS FAST, NO YFINANCE CALLS!")
+    
+    # Debug: Comprehensive symbol key analysis
+    print(f"\n🔍 [DEBUG] Symbol Key Analysis:")
+    print(f"  Total input symbols: {len(all_symbols)}")
+    print(f"  Symbol_securities (non-custom): {len(symbol_securities)}")
+    print(f"  Historical prices keys: {len(global_historical_prices)}")
+    
+    # Show first 10 symbols with their data
+    print(f"\n  First 10 symbols and their historical data:")
+    for i, symbol in enumerate(list(all_symbols)[:10]):
+        has_data = symbol in global_historical_prices
+        data_count = len(global_historical_prices.get(symbol, [])) if has_data else 0
+        in_cache = symbol in cached_historical if 'cached_historical' in locals() else False
+        print(f"    {i+1}. {symbol}: {('✅ ' + str(data_count) + ' records') if has_data else '❌ NO DATA'} (in_cache: {in_cache})")
+    
+    # Check for exact mismatches
+    symbols_set = set(all_symbols)
+    hist_keys_set = set(global_historical_prices.keys())
+    
+    if symbols_set != hist_keys_set:
+        missing_hist = symbols_set - hist_keys_set
+        extra_hist = hist_keys_set - symbols_set
+        if missing_hist:
+            print(f"\n  ⚠️ Symbols WITHOUT historical data: {list(missing_hist)[:10]}")
+        if extra_hist:
+            print(f"  ⚠️ Historical keys WITHOUT matching symbol: {list(extra_hist)[:10]}")
+    else:
+        print(f"\n  ✅ Perfect match: All {len(all_symbols)} symbols have historical keys")
+    
+    # CRITICAL: Verify keys in response match original symbols exactly
+    print(f"\n  Response validation:")
+    mismatched_keys = []
+    for symbol in list(all_symbols)[:10]:
+        key_in_response = symbol in global_historical_prices
+        if not key_in_response:
+            mismatched_keys.append(symbol)
+    
+    if mismatched_keys:
+        print(f"    ⚠️ MISMATCH DETECTED: {mismatched_keys}")
+    else:
+        print(f"    ✅ Keys match perfectly for sampled symbols")
+    
+    return global_current_prices, global_historical_prices
+
+
 async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple:
     """
     Collect global current and historical prices for all symbols.
@@ -412,32 +684,66 @@ async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple
 
 async def collect_global_logos(all_symbols: set) -> dict:
     """
-    Collect logos for all symbols globally (no duplication per holding).
+    Collect logos for all symbols from CACHE ONLY (no API calls!).
+    
+    Logos are cached in the symbols collection and refreshed by background jobs.
+    This ensures instant portfolio loads without hitting Finnhub rate limits.
+    
     Returns: global_logos dict
     """
     start_time = time.time()
-    print(f"🖼️ [COLLECT LOGOS] Collecting logos for {len(all_symbols)} symbols")
+    print(f"🖼️ [COLLECT LOGOS] Collecting logos for {len(all_symbols)} symbols from cache")
     global_logos = {}
     
     try:
-        manager = PriceManager()
+        # Get logos from symbols collection (cache only, no API calls!)
+        collection = db_manager.get_collection("symbols")
         
-        # Collect logos for all symbols in parallel  
-        logo_tasks = [manager.get_logo(symbol) for symbol in all_symbols]
-        logo_results = await asyncio.gather(*logo_tasks, return_exceptions=True)
+        # Build queries for both exact match and with exchange prefix
+        # Since symbols might be stored as "NASDAQ:AAPL" but we search for "AAPL"
+        symbol_patterns = []
+        for symbol in all_symbols:
+            # Add exact match
+            symbol_patterns.append(symbol)
+            # Add common exchange prefixes
+            if not symbol.startswith(('NYSE:', 'NASDAQ:', 'TASE:', 'FX:')):
+                symbol_patterns.append(f"NASDAQ:{symbol}")
+                symbol_patterns.append(f"NYSE:{symbol}")
         
-        for symbol, logo in zip(all_symbols, logo_results):
-            if isinstance(logo, Exception):
+        # Query all symbols at once (handles both formats)
+        cursor = collection.find(
+            {"symbol": {"$in": symbol_patterns}},
+            {"symbol": 1, "logo_url": 1, "_id": 0}
+        )
+        
+        # Map logos back to clean symbols
+        async for doc in cursor:
+            symbol_with_prefix = doc.get("symbol")
+            logo_url = doc.get("logo_url")
+            
+            if symbol_with_prefix and logo_url:
+                # Extract clean symbol (remove exchange prefix)
+                clean_symbol = symbol_with_prefix
+                for prefix in ['NASDAQ:', 'NYSE:', 'TASE:']:
+                    if symbol_with_prefix.startswith(prefix):
+                        clean_symbol = symbol_with_prefix[len(prefix):]
+                        break
+                
+                # Only set if it's one of our requested symbols
+                if clean_symbol in all_symbols:
+                    global_logos[clean_symbol] = logo_url
+        
+        # For symbols not in cache, set to None (frontend can handle this)
+        for symbol in all_symbols:
+            if symbol not in global_logos:
                 global_logos[symbol] = None
-            else:
-                global_logos[symbol] = logo
                 
         successful_logos = sum(1 for logo in global_logos.values() if logo is not None)
-        print(f"✅ [COLLECT LOGOS] Retrieved {successful_logos}/{len(all_symbols)} logos")
+        print(f"✅ [COLLECT LOGOS] Retrieved {successful_logos}/{len(all_symbols)} logos from cache (NO API CALLS!)")
         
     except Exception as e:
         print(f"❌ [COLLECT LOGOS] Error collecting logos: {e}")
-        global_logos = {}
+        global_logos = {symbol: None for symbol in all_symbols}
     
     duration = time.time() - start_time
     print(f"⏱️ [COLLECT LOGOS] Completed in {duration:.3f}s - {len(global_logos)} logo entries")
@@ -446,17 +752,21 @@ async def collect_global_logos(all_symbols: set) -> dict:
 
 async def collect_earnings_data(all_symbols: set, global_securities: dict) -> dict:
     """
-    Collect earnings calendar data for all stock/ETF symbols.
+    Collect earnings calendar data from CACHE ONLY (no API calls!).
+    
+    Earnings are fetched periodically by background job and stored in MongoDB.
+    This ensures instant portfolio loads without hitting Finnhub rate limits.
+    
     Returns: global_earnings_data dict
     """
     start_time = time.time()
-    print("📅 [COLLECT EARNINGS] Fetching earnings calendar data for stock/ETF symbols")
+    print("📅 [COLLECT EARNINGS] Fetching earnings from cache (NO API CALLS)")
     global_earnings_data = {}
     
     try:
-        earnings_service = get_earnings_service()
+        from services.earnings_cache import get_earnings_cache_service
         
-        # Filter to only stock/ETF symbols for earnings data
+        # Filter to only stock/ETF symbols
         stock_etf_symbols = [
             symbol for symbol in all_symbols 
             if symbol in global_securities and 
@@ -464,27 +774,23 @@ async def collect_earnings_data(all_symbols: set, global_securities: dict) -> di
         ]
         
         if stock_etf_symbols:
-            print(f"📊 [COLLECT EARNINGS] Fetching earnings for {len(stock_etf_symbols)} stock/ETF symbols")
+            print(f"📊 [COLLECT EARNINGS] Fetching cached earnings for {len(stock_etf_symbols)} stock/ETF symbols")
             
-            # Get earnings data for all symbols at once
-            earnings_data = await earnings_service.get_earnings_calendar(stock_etf_symbols)
-            
-            # Format the earnings data (1 upcoming + 3 previous per symbol)
-            for symbol, raw_earnings in earnings_data.items():
-                formatted_earnings = earnings_service.format_earnings_data(raw_earnings)
-                global_earnings_data[symbol] = formatted_earnings
+            # Get from cache only (no API calls!)
+            cache_service = get_earnings_cache_service()
+            global_earnings_data = await cache_service.get_cached_earnings(stock_etf_symbols)
             
             total_earnings_records = sum(len(earnings) for earnings in global_earnings_data.values())
-            print(f"✅ [COLLECT EARNINGS] Fetched {total_earnings_records} total earnings records for {len(global_earnings_data)} symbols")
+            print(f"✅ [COLLECT EARNINGS] Retrieved {total_earnings_records} cached earnings for {len(global_earnings_data)}/{len(stock_etf_symbols)} symbols (NO API CALLS!)")
         else:
-            print("📭 [COLLECT EARNINGS] No stock/ETF symbols found for earnings data")
+            print("📭 [COLLECT EARNINGS] No stock/ETF symbols found")
             
     except Exception as e:
-        print(f"❌ [COLLECT EARNINGS] Error fetching earnings data: {e}")
+        print(f"❌ [COLLECT EARNINGS] Error fetching cached earnings: {e}")
         global_earnings_data = {}
     
     duration = time.time() - start_time
-    print(f"⏱️ [COLLECT EARNINGS] Completed in {duration:.3f}s - {len(global_earnings_data)} earnings symbols")
+    print(f"⏱️ [COLLECT EARNINGS] Completed in {duration:.3f}s")
     return global_earnings_data
 
 
@@ -1323,6 +1629,32 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         
         # Step 1: Process portfolios (sequential - provides dependencies)
         step1_start = time.time()
+        
+        # First, upgrade any hardcoded USD/ILS securities to stocks if they exist in symbols collection
+        for doc in portfolio_docs:
+            if 'securities' in doc:
+                for symbol in ['USD', 'ILS', 'EUR', 'GBP', 'JPY']:
+                    if symbol in doc['securities']:
+                        sec = doc['securities'][symbol]
+                        # Check if it's a basic hardcoded currency
+                        if sec.get('type') == 'cash' and sec.get('name') == symbol:
+                            try:
+                                symbols_collection = db_manager.get_collection("symbols")
+                                symbol_doc = await symbols_collection.find_one({"symbol": f"NYSE:{symbol}"})
+                                if not symbol_doc:
+                                    symbol_doc = await symbols_collection.find_one({"symbol": f"NASDAQ:{symbol}"})
+                                
+                                if symbol_doc and symbol_doc.get('symbol_type') in ['nyse', 'nasdaq']:
+                                    # Found a stock! Upgrade in memory for this request
+                                    doc['securities'][symbol] = {
+                                        'name': symbol_doc.get('name', symbol),
+                                        'type': 'stock',
+                                        'currency': symbol_doc.get('currency', 'USD')
+                                    }
+                                    print(f"🔧 [UPGRADE] Upgraded {symbol} from cash to stock: {symbol_doc.get('name')}")
+                            except:
+                                pass  # Keep as cash if lookup fails
+        
         all_portfolios_data, global_securities, all_symbols = await process_portfolio_data(portfolio_docs, user)
         step1_time = time.time() - step1_start
         print(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
@@ -1338,7 +1670,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
             (user_tag_library, all_holding_tags),
             all_options_vesting
         ) = await asyncio.gather(
-            collect_global_prices(all_symbols, portfolio_docs),
+            collect_global_prices_cached(all_symbols, portfolio_docs),  # CHANGED: Use cached version!
             collect_global_logos(all_symbols),  # NEW: Logo collection in parallel
             collect_earnings_data(all_symbols, global_securities),  # NEW: Earnings collection in parallel
             collect_user_tags(user),
@@ -1836,16 +2168,11 @@ async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_cur
                 }
             },
             "securities": {
-                "USD": {
-                    "name": "USD",
-                    "type": "cash",
-                    "currency": "USD"
-                },
-                "ILS": {
-                    "name": "ILS",
-                    "type": "cash",
-                    "currency": "ILS"
-                }
+                # Don't hardcode USD/ILS securities!
+                # They'll be created properly based on what user actually adds:
+                # - If user adds cash USD → will be created as cash
+                # - If user adds NYSE:USD stock → will be created as stock
+                # This prevents symbol collision and wrong categorization
             },
             "accounts": []
         }
@@ -1900,15 +2227,69 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
                         'is_custom': True,
                         'custom_price': holding.get('custom_price')
                     }
-                elif symbol not in portfolio_data['securities']:
-                    # Only create non-custom securities if they don't exist
-                    # Determine security type and currency based on symbol format
-                    security_type, currency = determine_security_type_and_currency(symbol)
-                    portfolio_data['securities'][symbol] = {
-                        'name': symbol,
-                        'type': security_type,
-                        'currency': currency
-                    }
+                else:
+                    # Symbol exists - but check if we should update it with better data
+                    # This fixes the issue where hardcoded USD/ILS securities override stocks
+                    existing_security = portfolio_data['securities'].get(symbol, {})
+                    
+                    # If existing security is just a basic currency (type=cash, name=symbol),
+                    # try to find better data in symbols collection
+                    if (existing_security.get('type') == 'cash' and 
+                        existing_security.get('name') == symbol and
+                        len(symbol) == 3):
+                        
+                        try:
+                            symbols_collection = db_manager.get_collection("symbols")
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NYSE:{symbol}"})
+                            if not symbol_doc:
+                                symbol_doc = await symbols_collection.find_one({"symbol": f"NASDAQ:{symbol}"})
+                            
+                            if symbol_doc and symbol_doc.get('symbol_type') in ['nyse', 'nasdaq']:
+                                # Found a stock! Replace the cash security
+                                portfolio_data['securities'][symbol] = {
+                                    'name': symbol_doc.get('name', symbol),
+                                    'type': 'stock',
+                                    'currency': symbol_doc.get('currency', 'USD')
+                                }
+                        except:
+                            pass  # Keep existing if lookup fails
+                            
+                # If symbol doesn't exist, create it
+                if symbol not in portfolio_data['securities']:
+                    # Try to look up symbol in symbols collection first (most accurate!)
+                    try:
+                        symbols_collection = db_manager.get_collection("symbols")
+                        symbol_doc = await symbols_collection.find_one({"symbol": symbol})
+                        
+                        if not symbol_doc:
+                            # Try with exchange prefixes
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NYSE:{symbol}"})
+                        if not symbol_doc:
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NASDAQ:{symbol}"})
+                        
+                        if symbol_doc:
+                            # Found in symbols collection - use that data!
+                            portfolio_data['securities'][symbol] = {
+                                'name': symbol_doc.get('name', symbol),
+                                'type': 'stock' if symbol_doc.get('symbol_type') in ['nyse', 'nasdaq'] else 'stock',
+                                'currency': symbol_doc.get('currency', 'USD')
+                            }
+                        else:
+                            # Not found - fall back to auto-detection
+                            security_type, currency = determine_security_type_and_currency(symbol)
+                            portfolio_data['securities'][symbol] = {
+                                'name': symbol,
+                                'type': security_type,
+                                'currency': currency
+                            }
+                    except:
+                        # Fallback if symbols collection not available
+                        security_type, currency = determine_security_type_and_currency(symbol)
+                        portfolio_data['securities'][symbol] = {
+                            'name': symbol,
+                            'type': security_type,
+                            'currency': currency
+                        }
 
         # Add securities for options plans
         for plan in request.options_plans:
@@ -2033,15 +2414,68 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
                         'is_custom': True,
                         'custom_price': holding.get('custom_price')
                     }
-                elif symbol not in doc['securities']:
-                    # Only create non-custom securities if they don't exist
-                    # Determine security type and currency based on symbol format
-                    security_type, currency = determine_security_type_and_currency(symbol)
-                    doc['securities'][symbol] = {
-                        'name': symbol,
-                        'type': security_type,
-                        'currency': currency
-                    }
+                else:
+                    # Symbol exists - but check if we should upgrade it with better data
+                    # This fixes hardcoded USD/ILS securities being used for stocks
+                    existing_security = doc['securities'].get(symbol, {})
+                    
+                    # If existing is just a basic currency, try to find stock data
+                    if (existing_security.get('type') == 'cash' and 
+                        existing_security.get('name') == symbol and
+                        len(symbol) == 3):
+                        
+                        try:
+                            symbols_collection = db_manager.get_collection("symbols")
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NYSE:{symbol}"})
+                            if not symbol_doc:
+                                symbol_doc = await symbols_collection.find_one({"symbol": f"NASDAQ:{symbol}"})
+                            
+                            if symbol_doc and symbol_doc.get('symbol_type') in ['nyse', 'nasdaq']:
+                                # Found a stock! Upgrade the security
+                                doc['securities'][symbol] = {
+                                    'name': symbol_doc.get('name', symbol),
+                                    'type': 'stock',
+                                    'currency': symbol_doc.get('currency', 'USD')
+                                }
+                        except:
+                            pass  # Keep existing if lookup fails
+                
+                # If symbol doesn't exist, create it
+                if symbol not in doc['securities']:
+                    # Try to look up symbol in symbols collection first (most accurate!)
+                    try:
+                        symbols_collection = db_manager.get_collection("symbols")
+                        symbol_doc = await symbols_collection.find_one({"symbol": symbol})
+                        
+                        if not symbol_doc:
+                            # Try with exchange prefixes
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NYSE:{symbol}"})
+                        if not symbol_doc:
+                            symbol_doc = await symbols_collection.find_one({"symbol": f"NASDAQ:{symbol}"})
+                        
+                        if symbol_doc:
+                            # Found in symbols collection - use that data!
+                            doc['securities'][symbol] = {
+                                'name': symbol_doc.get('name', symbol),
+                                'type': 'stock' if symbol_doc.get('symbol_type') in ['nyse', 'nasdaq'] else 'stock',
+                                'currency': symbol_doc.get('currency', 'USD')
+                            }
+                        else:
+                            # Not found - fall back to auto-detection
+                            security_type, currency = determine_security_type_and_currency(symbol)
+                            doc['securities'][symbol] = {
+                                'name': symbol,
+                                'type': security_type,
+                                'currency': currency
+                            }
+                    except:
+                        # Fallback if symbols collection not available
+                        security_type, currency = determine_security_type_and_currency(symbol)
+                        doc['securities'][symbol] = {
+                            'name': symbol,
+                            'type': security_type,
+                            'currency': currency
+                        }
 
         # Add securities for options plans
         for plan in request.options_plans:
