@@ -799,13 +799,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       return matchesSymbol && matchesType && matchesTag;
     })
     .sort((a, b) => {
-      // Stocks first, then by total_value desc (default)
-      const aIsStock = a.security_type.toLowerCase() === 'stock';
-      const bIsStock = b.security_type.toLowerCase() === 'stock';
-      if (aIsStock !== bIsStock) {
-        return aIsStock ? -1 : 1;
-      }
-      // Then sort by the selected key
+      // Sort by the selected key
       const key = sortConfig.key;
       let aValue, bValue;
       
