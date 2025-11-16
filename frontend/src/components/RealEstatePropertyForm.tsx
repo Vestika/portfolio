@@ -79,7 +79,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
 
   // Auto-fetch estimation when all required fields are filled (debounced)
   useEffect(() => {
-    const timeoutIds: number[] = [];
+    const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     formStates.forEach((state, index) => {
       if (

@@ -10,7 +10,7 @@ interface PortfolioValueLineChartProps {
   baseCurrency: string
   isValueVisible: boolean
   globalSecurities: Record<string, { symbol: string; name: string; security_type: string; currency: string }>
-  globalCurrentPrices: Record<string, { price: number; original_price: number; currency: string }>
+  globalCurrentPrices: Record<string, { price: number; original_price?: number; currency: string }>
 }
 
 export function PortfolioValueLineChart({
