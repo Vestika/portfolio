@@ -96,6 +96,52 @@ export function BarChartSkeleton() {
   )
 }
 
+// Portfolio Value Line Chart Skeleton - mimics the portfolio value line chart
+export function PortfolioValueLineChartSkeleton() {
+  return (
+    <div className="w-full rounded-lg mb-6 animate-pulse">
+      {/* Header with title and toggle skeleton */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="h-5 w-64 bg-gray-700 rounded" />
+        <div className="h-9 w-56 bg-gray-700 rounded" />
+      </div>
+      
+      {/* Chart Container - 400px height to match actual chart */}
+      <div className="relative h-96 w-full">
+        {/* Y-axis labels */}
+        <div className="absolute left-0 top-8 bottom-2 w-12 flex flex-col justify-between">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-3 bg-gray-700 rounded w-10" />
+          ))}
+        </div>
+        
+        {/* Chart area with thicker line path */}
+        <div className="absolute left-14 right-2 top-8 bottom-2">
+          {/* Simulated line chart - zigzag pattern */}
+          <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <path
+              d="M 0,80 L 10,70 L 20,75 L 30,60 L 40,65 L 50,50 L 60,55 L 70,40 L 80,45 L 90,35 L 100,30"
+              stroke="#4b5563"
+              strokeWidth="3"
+              fill="none"
+              className="opacity-60"
+            />
+            {/* Gradient fill under line */}
+            <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#4b5563" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#4b5563" stopOpacity="0" />
+            </linearGradient>
+            <path
+              d="M 0,80 L 10,70 L 20,75 L 30,60 L 40,65 L 50,50 L 60,55 L 70,40 L 80,45 L 90,35 L 100,30 L 100,100 L 0,100 Z"
+              fill="url(#lineGradient)"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // RSU Timeline Chart Skeleton - mimics the actual timeline chart structure
 export function RSUTimelineChartSkeleton() {
   return (
@@ -216,6 +262,9 @@ export function HoldingsHeatmapSkeleton() {
 export function PortfolioMainSkeleton() {
   return (
     <div className="container mx-auto py-2 sm:py-4 px-1 sm:px-2 lg:px-4 animate-pulse">
+      {/* Portfolio Value Line Chart - First chart */}
+      <PortfolioValueLineChartSkeleton />
+      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 w-full">
         {/* Pie Charts - typically 4 charts (Asset Allocation, Account Distribution, etc.) */}
         {[...Array(2)].map((_, idx) => (

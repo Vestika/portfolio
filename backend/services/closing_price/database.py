@@ -101,6 +101,50 @@ async def setup_historical_prices_collection() -> None:
         raise
 
 
+async def ensure_benchmark_symbols() -> None:
+    """Ensure benchmark symbols like SPY are always tracked"""
+    try:
+        from datetime import datetime
+        from services.closing_price.models import TrackedSymbol
+        
+        benchmark_symbols = [
+            {"symbol": "SPY", "market": "US"}  # S&P 500 ETF
+        ]
+        
+        for benchmark in benchmark_symbols:
+            symbol = benchmark["symbol"]
+            market = benchmark["market"]
+            
+            # Check if already tracked
+            existing = await db.database.tracked_symbols.find_one({"symbol": symbol})
+            if not existing:
+                # Add to tracking
+                now = datetime.utcnow()
+                tracked_symbol = TrackedSymbol(
+                    symbol=symbol,
+                    market=market,
+                    added_at=now,
+                    last_queried_at=now
+                )
+                
+                await db.database.tracked_symbols.insert_one(tracked_symbol.dict(by_alias=True))
+                logger.info(f"[BENCHMARK] Added {symbol} to tracking as benchmark symbol")
+                
+                # Trigger immediate backfill for historical data
+                try:
+                    from services.closing_price.historical_sync import HistoricalSyncService
+                    sync = HistoricalSyncService()
+                    await sync.backfill_new_symbol(symbol, market)
+                    logger.info(f"[BENCHMARK] Backfilled historical data for {symbol}")
+                except Exception as e:
+                    logger.warning(f"[BENCHMARK] Could not backfill {symbol}: {e}")
+            else:
+                logger.debug(f"[BENCHMARK] {symbol} already tracked")
+                
+    except Exception as e:
+        logger.error(f"[BENCHMARK] Error ensuring benchmark symbols: {e}")
+
+
 async def create_database_indexes() -> None:
     """Create database indexes - should only be called once during startup"""
     if db.indexes_created or db.database is None:
@@ -155,6 +199,9 @@ async def create_database_indexes() -> None:
     
     db.indexes_created = True
     logger.info("[INDEX] Database indexes creation completed")
+    
+    # Ensure benchmark symbols are always tracked
+    await ensure_benchmark_symbols()
 
 
 async def connect_to_mongo() -> None:

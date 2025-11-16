@@ -533,6 +533,7 @@ const App: React.FC = () => {
                   mainOptionsVesting={mainOptionsVesting}
                   mainESPPPlans={mainESPPPlans}
                   globalPrices={allPortfoliosData?.global_current_prices || {}}
+                  selectedAccountNames={selectedAccountNames}
                 />
               )
             )}

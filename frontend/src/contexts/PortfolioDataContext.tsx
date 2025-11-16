@@ -322,6 +322,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         });
         // Ensure base currency included for conversion and dedupe
         currencyNeededSet.add(String(targetBaseCurrency).toUpperCase());
+        // Add SPY for S&P 500 benchmark in portfolio value chart
+        allSymbolsSet.add('SPY');
         const allSymbols = Array.from(new Set<string>([
           ...Array.from(allSymbolsSet),
           ...Array.from(currencyNeededSet),
@@ -338,9 +340,9 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
             include_historical: false,
           });
           historicalPromise = api.post(`/prices/historical`, {
-            symbols: Array.from(allSymbolsSet),
+            symbols: allSymbols,  // Include both stocks AND currencies for historical FX rates
             base_currency: targetBaseCurrency,
-            days: 7,
+            days: 30,
           });
         }
 

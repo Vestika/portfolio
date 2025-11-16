@@ -322,7 +322,39 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     current_prices_start = time.time()
     symbol_securities = {}
     
+    # Define benchmark symbols
+    benchmark_symbols_list = ['SPY']
+    
     for symbol in all_symbols:
+        # Handle benchmark symbols specially (they're not in portfolios)
+        if symbol in benchmark_symbols_list:
+            # Fetch current price for benchmark
+            try:
+                from services.closing_price.service import get_global_service
+                service = get_global_service()
+                price_response = await service.get_price(symbol)
+                if price_response:
+                    # Convert SPY from USD to base currency
+                    spy_price_usd = price_response.price
+                    usd_to_base = 1.0
+                    
+                    # Get USD exchange rate if base currency is not USD
+                    if first_calculator:
+                        try:
+                            usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
+                        except:
+                            pass
+                    
+                    global_current_prices[symbol] = {
+                        "price": spy_price_usd * usd_to_base,
+                        "original_price": spy_price_usd,
+                        "currency": "USD",
+                        "last_updated": datetime.utcnow().isoformat()
+                    }
+            except Exception as e:
+                logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
+            continue
+        
         # Find the security from any portfolio
         security = None
         for doc in portfolio_docs:
@@ -404,13 +436,22 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     
     try:
         # Get historical data from cache
+        # Always include benchmark symbols (SPY for S&P 500)
+        all_symbols_for_historical = list(symbol_securities.keys()) + benchmark_symbols_list
+        
         manager = PriceManager()
-        cached_historical = await manager.get_historical_prices(list(symbol_securities.keys()), days=7)
+        cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=30)
         
         # Use cached data for symbols that have it
         # Ensure symbol keys match exactly what was requested (defensive normalization)
         for symbol, price_list in cached_historical.items():
             if price_list and len(price_list) > 0:
+                # Check if it's a benchmark symbol
+                if symbol in benchmark_symbols_list:
+                    global_historical_prices[symbol] = price_list
+                    symbols_with_data += 1
+                    continue
+                
                 # Use the original symbol from all_symbols to ensure exact match
                 matched_symbol = None
                 for orig_symbol in symbol_securities.keys():
@@ -1117,7 +1158,7 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
         loop = asyncio.get_event_loop()
         data = await asyncio.wait_for(
             loop.run_in_executor(None, fetch_batch_sync),
-            timeout=5.0  # 5 second timeout for batch call
+            timeout=15.0  # 15 second timeout for batch call (increased for 30-day requests)
         )
         
         if not data.empty:
@@ -1656,8 +1697,13 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                                 pass  # Keep as cash if lookup fails
         
         all_portfolios_data, global_securities, all_symbols = await process_portfolio_data(portfolio_docs, user)
+        
+        # Always include benchmark symbols (SPY for S&P 500) even if not in portfolios
+        benchmark_symbols = {'SPY'}
+        all_symbols = all_symbols.union(benchmark_symbols)
+        
         step1_time = time.time() - step1_start
-        print(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols")
+        print(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols (including benchmarks)")
         
         # Step 2: Run data collection in parallel for maximum performance (includes NEW features!)
         step2_start = time.time()
@@ -2016,6 +2062,8 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
         from datetime import date, timedelta
         today = date.today()
         start = today - timedelta(days=max(1, int(req.days or 7)))
+        
+        logger.info(f"[HISTORICAL ENDPOINT] Requesting {req.days or 7} days for {len(symbols)} symbols: {start} to {today}")
 
         # Define supported ISO currency codes. Extend as needed.
         supported_currencies = {
@@ -2038,7 +2086,9 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                 yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
                 for sym, series in yf_hist.items():
                     historical[sym] = series
-            except Exception:
+                    logger.info(f"[HISTORICAL] {sym}: returned {len(series)} data points from {series[0]['date'] if series else 'N/A'} to {series[-1]['date'] if series else 'N/A'}")
+            except Exception as e:
+                logger.warning(f"[HISTORICAL] Error fetching yfinance batch: {e}")
                 pass
 
         if tase_symbols:
@@ -2058,6 +2108,7 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                     continue
 
         # FX series using yfinance pair CURBASE=X; treat base as flat 1.0
+        # Use "FX:" prefix to avoid collision with stock tickers (e.g., NYSE:USD)
         for cur in currency_symbols:
             try:
                 if cur == base_currency:
@@ -2065,7 +2116,7 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                     for i in range(int(req.days or 7), 0, -1):
                         day = today - timedelta(days=i)
                         seq.append({"date": day.strftime("%Y-%m-%d"), "price": 1.0})
-                    historical[cur] = seq
+                    historical[f"FX:{cur}"] = seq  # Prefix with FX:
                 else:
                     pair = f"{cur}{base_currency}=X"
                     def fetch_fx_sync():
@@ -2086,7 +2137,7 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                                 "price": float(price_val)
                             })
                         if seq:
-                            historical[cur] = seq
+                            historical[f"FX:{cur}"] = seq  # Prefix with FX:
             except Exception:
                 continue
 
