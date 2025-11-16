@@ -5,6 +5,7 @@ import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
 import ESPPView from './ESPPView'
+import { PortfolioValueLineChart } from './PortfolioValueLineChart'
 import { usePortfolioData } from '../contexts/PortfolioDataContext'
 import {
   PortfolioMetadata,
@@ -24,6 +25,7 @@ interface PortfolioViewProps {
   mainOptionsVesting: Record<string, any>
   mainESPPPlans: Record<string, any>
   globalPrices: Record<string, any>
+  selectedAccountNames: string[]
 }
 
 export function PortfolioView({
@@ -35,11 +37,15 @@ export function PortfolioView({
   mainRSUVesting,
   mainOptionsVesting,
   mainESPPPlans,
-  globalPrices
+  globalPrices,
+  selectedAccountNames
 }: PortfolioViewProps) {
-  // Get autocomplete data from context for symbol name resolution
-  const { getAutocompleteData } = usePortfolioData();
+  // Get autocomplete data and historical prices from context
+  const { getAutocompleteData, allPortfoliosData } = usePortfolioData();
   const autocompleteData = getAutocompleteData();
+  const historicalPrices = allPortfoliosData?.global_historical_prices || {};
+  const globalSecurities = allPortfoliosData?.global_securities || {};
+  const globalCurrentPrices = allPortfoliosData?.global_current_prices || {};
 
   // Create a name resolver function similar to HoldingsTable's getHoldingFullName
   const getSymbolName = useMemo(() => {
@@ -109,7 +115,19 @@ export function PortfolioView({
         </div>
       ) : (
         // Normal portfolio content
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
+        <>
+          {/* Portfolio Value Line Chart - First chart on the page */}
+          <PortfolioValueLineChart
+            accounts={displayMetadata.accounts}
+            selectedAccountNames={selectedAccountNames}
+            historicalPrices={historicalPrices}
+            baseCurrency={displayMetadata.base_currency}
+            isValueVisible={isValueVisible}
+            globalSecurities={globalSecurities}
+            globalCurrentPrices={globalCurrentPrices}
+          />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
           {displayData && displayData.map(chart => (
             <PieChart
               key={chart.chart_title}
@@ -281,6 +299,7 @@ export function PortfolioView({
             ));
           })()}
         </div>
+        </>
       )}
       {holdingsData && !showEmptyState && (
         <div className="mt-8">

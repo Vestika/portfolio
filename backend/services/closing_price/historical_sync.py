@@ -466,11 +466,9 @@ class HistoricalSyncService:
                     # Convert to timestamp at market close
                     timestamp = datetime.combine(trade_date, datetime.min.time()).replace(hour=20, minute=0)
                     
-                    # Price might be in agorot (1/100 shekel) or regular shekel
-                    # If > 1000, it's likely in agorot
-                    price = float(price_raw)
-                    if price > 1000:
-                        price = price / 100
+                    # TASE prices from pymaya are ALWAYS in agorot (1/100 shekel)
+                    # Always divide by 100 to convert to shekels
+                    price = float(price_raw) / 100
                     
                     historical_data.append({
                         "timestamp": timestamp,
