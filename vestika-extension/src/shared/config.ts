@@ -2,8 +2,8 @@
 import { logger } from './utils';
 
 export const config = {
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:8080',
-  vestikaAppUrl: import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173',
+  apiUrl: import.meta.env.VITE_API_URL || 'https://api.vestika.io',
+  vestikaAppUrl: import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io',
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
 

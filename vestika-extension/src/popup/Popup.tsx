@@ -382,7 +382,7 @@ function Popup() {
       chrome.runtime.sendMessage({ type: 'EXTRACTION_SUCCESS' }).catch(() => {});
 
       // Redirect to web app import page with session_id
-      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io';
       const importUrl = `${vestikaUrl}/import?session=${extractResponse.session_id}`;
 
       chrome.tabs.create({ url: importUrl });
@@ -428,7 +428,7 @@ function Popup() {
       chrome.runtime.sendMessage({ type: 'EXTRACTION_SUCCESS' }).catch(() => {});
 
       // Redirect to web app with config info
-      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+      const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io';
       const importUrl = `${vestikaUrl}/import?session=${extractResponse.session_id}&config=${config.config_id}`;
 
       chrome.tabs.create({ url: importUrl });
@@ -443,7 +443,7 @@ function Popup() {
   }
 
   function openVestika() {
-    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io';
     chrome.tabs.create({ url: vestikaUrl });
   }
 

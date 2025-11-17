@@ -109,7 +109,7 @@ function Options() {
           <h1>Vestika Extension Settings</h1>
           <p>Please log in to Vestika to manage extension settings.</p>
           <button onClick={() => {
-            const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+            const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io';
             chrome.tabs.create({ url: vestikaUrl });
           }}>
             Open Vestika
