@@ -248,8 +248,11 @@ export function PortfolioValueLineChart({
     // Calculate portfolio value over time
     if (viewMode === 'aggregated') {
       // Single series: total portfolio value
+      const lastDate = sortedDates[sortedDates.length - 1]
+      
       const portfolioValues: Array<[number, number]> = sortedDates.map(date => {
         let totalValue = 0
+        const isLastDate = date === lastDate
 
         // Sum value across all selected accounts
         selectedAccounts.forEach(account => {
@@ -268,7 +271,14 @@ export function PortfolioValueLineChart({
               return
             }
             
-            // Regular holdings from priceCache
+            // For the last date (today), use current price to match PortfolioSummary
+            if (isLastDate && globalCurrentPrices[holding.symbol]) {
+              const currentPriceData = globalCurrentPrices[holding.symbol]
+              totalValue += holding.units * currentPriceData.price
+              return
+            }
+            
+            // For historical dates, use priceCache
             const symbolPrices = priceCache.get(holding.symbol)
             if (!symbolPrices) return
 
@@ -342,9 +352,12 @@ export function PortfolioValueLineChart({
       const accountSeries: Array<{ name: string; data: Array<[number, number]> }> = []
       let allNormalizedValues: number[] = []
 
+      const lastDate = sortedDates[sortedDates.length - 1]
+      
       selectedAccounts.forEach(account => {
         const accountAbsoluteValues: number[] = sortedDates.map(date => {
           let accountValue = 0
+          const isLastDate = date === lastDate
 
           if (account.holdings) {
             account.holdings.forEach(holding => {
@@ -360,7 +373,14 @@ export function PortfolioValueLineChart({
                 return
               }
               
-              // Regular holdings from priceCache
+              // For the last date (today), use current price to match PortfolioSummary
+              if (isLastDate && globalCurrentPrices[holding.symbol]) {
+                const currentPriceData = globalCurrentPrices[holding.symbol]
+                accountValue += holding.units * currentPriceData.price
+                return
+              }
+              
+              // For historical dates, use priceCache
               const symbolPrices = priceCache.get(holding.symbol)
               if (!symbolPrices) return
 
