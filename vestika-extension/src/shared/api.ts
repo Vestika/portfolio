@@ -2,7 +2,7 @@
 import { logger } from './utils';
 import type { AutoImportOptions } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.vestika.io';
 
 export class VestikaAPI {
   private token: string | null = null;

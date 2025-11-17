@@ -381,7 +381,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     // Open welcome page on first install
     // Note: import.meta.env doesn't work in service workers, use hardcoded for now
-    chrome.tabs.create({ url: 'http://localhost:5173' });
+    chrome.tabs.create({ url: 'https://app.vestika.io' });
   }
 });
 
@@ -582,7 +582,7 @@ async function triggerAutoSync(url: string, sharedConfig: any, privateConfig: an
       : 'Data extracted, review in Vestika.';
     showAutoSyncNotification(sharedConfig.site_name, 'success', successDetails);
 
-    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'http://localhost:5173';
+    const vestikaUrl = import.meta.env.VITE_VESTIKA_APP_URL || 'https://app.vestika.io';
 
     // Notify the user in-page if they prefer non-intrusive updates
     if (privateConfig.notification_preference === 'notification_only') {
@@ -715,7 +715,7 @@ async function injectNotificationBanner(
           }
         }, 15000);
       },
-      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'http://localhost:5173', Boolean(options?.autoImportInitiated), Boolean(options?.autoSyncEnabled)],
+      args: [sessionId, sharedConfig.site_name, options?.vestikaUrl || 'https://app.vestika.io', Boolean(options?.autoImportInitiated), Boolean(options?.autoSyncEnabled)],
     });
 
     console.log('[Background] Banner injected successfully');
