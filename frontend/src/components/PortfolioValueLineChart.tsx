@@ -127,18 +127,33 @@ export function PortfolioValueLineChart({
     const priceCache = new Map<string, Map<string, number>>()
     
     Object.entries(historicalPrices).forEach(([symbol, series]) => {
-      // Skip FX rate symbols - they're not securities to value
+      // Skip FX rate symbols UNLESS they're currency holdings (we need them for cash)
+      // FX rates are already processed into fxRateCache above
       if (symbol.startsWith('FX:')) {
-        return
+        // Check if any account actually holds this currency
+        const isCurrencyHolding = selectedAccounts.some(account => 
+          account.holdings?.some(h => h.symbol === symbol)
+        )
+        
+        if (!isCurrencyHolding) {
+          return  // Skip if it's just an FX rate, not a holding
+        }
+        // Otherwise, continue to process it as a holding
       }
       
       const symbolPrices = new Map<string, number>()
       let lastKnownConvertedPrice = 0
       
       // Get the currency for this symbol
-      const symbolCurrency = globalSecurities[symbol]?.currency || 
-                            globalCurrentPrices[symbol]?.currency || 
-                            baseCurrency
+      // For FX: symbols, extract the currency code (e.g., FX:ILS -> ILS)
+      let symbolCurrency = baseCurrency
+      if (symbol.startsWith('FX:')) {
+        symbolCurrency = symbol.substring(3)  // Remove "FX:" prefix
+      } else {
+        symbolCurrency = globalSecurities[symbol]?.currency || 
+                        globalCurrentPrices[symbol]?.currency || 
+                        baseCurrency
+      }
       
       // Sort series by date to ensure proper forward-filling
       const sortedSeries = [...series].sort((a, b) => a.date.localeCompare(b.date))
