@@ -3,9 +3,9 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { RealEstateLocationAutocomplete } from './RealEstateLocationAutocomplete';
-import { X, Loader2, AlertCircle } from 'lucide-react';
-import RealEstateAPI, { RealEstateAutocompleteResponse } from '../utils/real-estate-api';
+import { RealEstateLocationAutocomplete, SelectedLocation } from './RealEstateLocationAutocomplete';
+import { X, Loader2, AlertCircle, Building2, MapPin, Home } from 'lucide-react';
+import RealEstateAPI, { LocationType } from '../utils/real-estate-api';
 
 export interface RealEstateProperty {
   symbol: string; // User-provided name
@@ -16,10 +16,15 @@ export interface RealEstateProperty {
   custom_name: string;
   property_metadata: {
     location: string;
+    location_type?: LocationType;
+    city?: string;
+    neighborhood?: string;
+    street?: string;
     rooms: number;
     sqm: number;
     pricing_method: 'estimated' | 'custom';
     estimated_price?: number;
+    avg_price_per_sqm?: number;
     estimation_params?: {
       query: string;
       type: 'sell' | 'rent';
@@ -36,20 +41,37 @@ interface RealEstatePropertyFormProps {
 interface PropertyFormState {
   property_name: string;
   location: string;
+  location_type: LocationType;
+  city: string;
+  neighborhood?: string;
+  street?: string;
   rooms: string;
   sqm: string;
   pricing_method: 'estimated' | 'custom';
   custom_price_per_sqm: string;
   custom_currency: string;
   estimated_price?: number;
+  avg_price_per_sqm?: number;
+  typical_sqm_used?: number;
   available_room_prices?: Record<string, number>;
   is_estimating: boolean;
   estimation_error?: string;
 }
 
+// Typical sqm per room count for Israeli apartments
+const TYPICAL_SQM_BY_ROOMS: Record<string, number> = {
+  '2': 60,
+  '3': 80,
+  '4': 105,
+  '5': 135,
+  '6': 160,
+};
+
 const EMPTY_PROPERTY: PropertyFormState = {
   property_name: '',
   location: '',
+  location_type: 'city',
+  city: '',
   rooms: '',
   sqm: '',
   pricing_method: 'estimated',
@@ -58,24 +80,23 @@ const EMPTY_PROPERTY: PropertyFormState = {
   is_estimating: false,
 };
 
+const LocationTypeIcon: React.FC<{ type: LocationType; className?: string }> = ({ type, className }) => {
+  switch (type) {
+    case 'city':
+      return <Building2 className={className} />;
+    case 'neighborhood':
+      return <MapPin className={className} />;
+    case 'street':
+      return <Home className={className} />;
+    default:
+      return <MapPin className={className} />;
+  }
+};
+
 const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ properties, onChange }) => {
   const [formStates, setFormStates] = useState<PropertyFormState[]>([EMPTY_PROPERTY]);
   const [editingLocationIndex, setEditingLocationIndex] = useState<number | null>(null);
-  const [autocompleteData, setAutocompleteData] = useState<RealEstateAutocompleteResponse | null>(null);
   const locationRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
-
-  // Load autocomplete data on mount
-  useEffect(() => {
-    const loadAutocomplete = async () => {
-      try {
-        const data = await RealEstateAPI.fetchRealEstateAutocomplete();
-        setAutocompleteData(data);
-      } catch (error) {
-        console.error('Failed to load location autocomplete:', error);
-      }
-    };
-    loadAutocomplete();
-  }, []);
 
   // Auto-fetch estimation when all required fields are filled (debounced)
   useEffect(() => {
@@ -85,16 +106,16 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
       if (
         state.pricing_method === 'estimated' &&
         state.location &&
+        state.city &&
         state.rooms &&
         state.sqm &&
         !state.is_estimating &&
         !state.estimated_price &&
-        !state.estimation_error // Don't retry if already failed
+        !state.estimation_error
       ) {
-        // Debounce the estimation to prevent immediate trigger while typing
         const timeoutId = setTimeout(() => {
           fetchEstimate(index);
-        }, 500); // 500ms delay
+        }, 500);
         timeoutIds.push(timeoutId);
       }
     });
@@ -109,25 +130,45 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
     const rooms = parseInt(state.rooms);
     const sqm = parseInt(state.sqm);
 
-    if (!state.location || isNaN(rooms) || isNaN(sqm)) return;
+    if (!state.city || isNaN(rooms) || isNaN(sqm)) return;
 
-    // Set estimating state
     updateFormState(index, { is_estimating: true, estimation_error: undefined });
 
     try {
-      const response = await RealEstateAPI.fetchRealEstateEstimate(
-        state.location,
-        rooms,
-        'sell', // Always use 'sell' since rental is not supported
-        sqm
+      const response = await RealEstateAPI.fetchRealEstateEstimateV2(
+        state.location_type,
+        state.city,
+        {
+          street: state.street,
+          neighborhood: state.neighborhood,
+          rooms,
+          sqm,
+        }
       );
 
-      // Get price for the selected number of rooms
-      const estimatedPrice = response.prices[rooms.toString()];
+      // Get price - prefer estimated_total (sqm-adjusted) over raw room price
+      let estimatedPrice: number | undefined;
+      let avgPricePerSqm: number | undefined;
+      let typicalSqmUsed: number | undefined;
+
+      if (response.estimated_total) {
+        // Use sqm-adjusted price (available for both streets and city/neighborhood)
+        estimatedPrice = response.estimated_total;
+        avgPricePerSqm = response.avg_price_per_sqm;
+        typicalSqmUsed = response.typical_sqm_used;
+      } else if (response.prices[rooms.toString()]) {
+        // Fallback to room-based price
+        estimatedPrice = response.prices[rooms.toString()];
+      } else if (response.median_price) {
+        // Last resort: use median price
+        estimatedPrice = response.median_price;
+      }
 
       updateFormState(index, {
         is_estimating: false,
         estimated_price: estimatedPrice,
+        avg_price_per_sqm: avgPricePerSqm,
+        typical_sqm_used: typicalSqmUsed,
         available_room_prices: response.prices,
         estimation_error: estimatedPrice ? undefined : 'No estimate available for this configuration',
       });
@@ -151,19 +192,17 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
     newStates[index] = { ...newStates[index], ...updates };
     setFormStates(newStates);
 
-    // Convert to RealEstateProperty array and notify parent
     convertToProperties(newStates);
   };
 
   const convertToProperties = (states: PropertyFormState[]) => {
     const validProperties: RealEstateProperty[] = states
       .filter(state => {
-        // Must have name, location, rooms, sqm
         if (!state.property_name || !state.location || !state.rooms || !state.sqm) return false;
 
-        // Must have price (either estimated or custom)
         if (state.pricing_method === 'estimated') {
-          return !!state.estimated_price;
+          // Valid if we have room prices (to calculate price per sqm) or estimated_price
+          return !!(state.available_room_prices && state.available_room_prices[state.rooms]) || !!state.estimated_price;
         } else {
           return !!state.custom_price_per_sqm;
         }
@@ -174,13 +213,30 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
 
         let totalPrice: number;
         let currency: string;
+        let avgPricePerSqm: number | undefined;
 
-        if (state.pricing_method === 'estimated' && state.estimated_price) {
-          totalPrice = state.estimated_price;
-          currency = 'ILS'; // API returns ILS
+        if (state.pricing_method === 'estimated') {
+          // Calculate price per sqm from room price if not provided by API
+          avgPricePerSqm = state.avg_price_per_sqm;
+          if (!avgPricePerSqm && state.available_room_prices && state.rooms) {
+            const roomPrice = state.available_room_prices[state.rooms];
+            const typicalSqm = TYPICAL_SQM_BY_ROOMS[state.rooms];
+            if (roomPrice && typicalSqm) {
+              avgPricePerSqm = Math.round(roomPrice / typicalSqm);
+            }
+          }
+
+          // Calculate total price based on actual sqm
+          if (avgPricePerSqm) {
+            totalPrice = avgPricePerSqm * sqm;
+          } else {
+            totalPrice = state.estimated_price || 0;
+          }
+          currency = 'ILS';
         } else {
           const pricePerSqm = parseFloat(state.custom_price_per_sqm);
           totalPrice = pricePerSqm * sqm;
+          avgPricePerSqm = pricePerSqm;
           currency = state.custom_currency;
         }
 
@@ -193,11 +249,16 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
           custom_name: state.property_name,
           property_metadata: {
             location: state.location,
+            location_type: state.location_type,
+            city: state.city,
+            neighborhood: state.neighborhood,
+            street: state.street,
             rooms,
             sqm,
             pricing_method: state.pricing_method,
-            ...(state.pricing_method === 'estimated' && state.estimated_price ? {
-              estimated_price: state.estimated_price,
+            ...(state.pricing_method === 'estimated' ? {
+              estimated_price: totalPrice,
+              avg_price_per_sqm: avgPricePerSqm,
               estimation_params: {
                 query: state.location,
                 type: 'sell' as const,
@@ -223,17 +284,67 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
     }
   };
 
+  const handleLocationSelect = (index: number, location: string, locationData?: SelectedLocation) => {
+    const updates: Partial<PropertyFormState> = {
+      location,
+      estimated_price: undefined,
+      estimation_error: undefined,
+      available_room_prices: undefined,
+      avg_price_per_sqm: undefined,
+    };
+
+    if (locationData) {
+      updates.location_type = locationData.type;
+      updates.city = locationData.city;
+      updates.neighborhood = locationData.neighborhood;
+      updates.street = locationData.street;
+    } else {
+      // Custom location - treat as city
+      updates.location_type = 'city';
+      updates.city = location;
+      updates.neighborhood = undefined;
+      updates.street = undefined;
+    }
+
+    updateFormState(index, updates);
+    setEditingLocationIndex(null);
+  };
+
   const renderPropertyRow = (state: PropertyFormState, index: number) => {
     const rooms = parseInt(state.rooms);
     const sqm = parseInt(state.sqm);
     const isComplete = state.property_name && state.location && !isNaN(rooms) && !isNaN(sqm);
 
+    // Calculate price per sqm - either from API or derive from room price
+    let pricePerSqm: number | undefined = state.avg_price_per_sqm;
+    let typicalSqm: number | undefined = state.typical_sqm_used;
+
+    // If no price per sqm from API but we have room prices, calculate it
+    if (!pricePerSqm && state.available_room_prices && state.rooms) {
+      const roomPrice = state.available_room_prices[state.rooms];
+      typicalSqm = TYPICAL_SQM_BY_ROOMS[state.rooms];
+      if (roomPrice && typicalSqm) {
+        pricePerSqm = Math.round(roomPrice / typicalSqm);
+      }
+    }
+
+    // Calculate estimated value based on price per sqm and actual sqm
     let calculatedValue = 0;
-    if (state.pricing_method === 'estimated' && state.estimated_price) {
-      calculatedValue = state.estimated_price;
+    if (state.pricing_method === 'estimated') {
+      if (pricePerSqm && !isNaN(sqm)) {
+        calculatedValue = pricePerSqm * sqm;
+      } else if (state.estimated_price) {
+        calculatedValue = state.estimated_price;
+      }
     } else if (state.pricing_method === 'custom' && state.custom_price_per_sqm && !isNaN(sqm)) {
       calculatedValue = parseFloat(state.custom_price_per_sqm) * sqm;
     }
+
+    const locationTypeLabel = {
+      city: 'City',
+      neighborhood: 'Neighborhood',
+      street: 'Street',
+    }[state.location_type] || 'Location';
 
     return (
       <div key={index} className="border rounded-lg p-4 bg-muted/20 space-y-4">
@@ -277,13 +388,9 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
           {editingLocationIndex === index ? (
             <RealEstateLocationAutocomplete
               value={state.location}
-              onSelect={(location) => {
-                updateFormState(index, { location, estimated_price: undefined });
-                setEditingLocationIndex(null);
-              }}
+              onSelect={(location, locationData) => handleLocationSelect(index, location, locationData)}
               onClose={() => setEditingLocationIndex(null)}
-              placeholder="Search city or neighborhood..."
-              autocompleteData={autocompleteData || undefined}
+              placeholder="Search city, neighborhood, or street..."
               ref={(el) => {
                 locationRefs.current[index] = el;
                 if (el) setTimeout(() => el.focus(), 10);
@@ -291,10 +398,18 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
             />
           ) : (
             <div
-              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm cursor-pointer hover:bg-muted/30"
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm cursor-pointer hover:bg-muted/30 items-center gap-2"
               onClick={() => setEditingLocationIndex(index)}
             >
-              {state.location || <span className="text-muted-foreground">Click to select location...</span>}
+              {state.location ? (
+                <>
+                  <LocationTypeIcon type={state.location_type} className="h-4 w-4 text-muted-foreground" />
+                  <span>{state.location}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">({locationTypeLabel})</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">Click to select location...</span>
+              )}
             </div>
           )}
         </div>
@@ -308,7 +423,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
               type="number"
               min="1"
               value={state.rooms}
-              onChange={(e) => updateFormState(index, { rooms: e.target.value, estimated_price: undefined, estimation_error: undefined })}
+              onChange={(e) => updateFormState(index, { rooms: e.target.value, estimated_price: undefined, avg_price_per_sqm: undefined, typical_sqm_used: undefined, estimation_error: undefined })}
               placeholder="e.g., 3"
             />
           </div>
@@ -319,7 +434,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
               type="number"
               min="1"
               value={state.sqm}
-              onChange={(e) => updateFormState(index, { sqm: e.target.value, estimated_price: undefined, estimation_error: undefined })}
+              onChange={(e) => updateFormState(index, { sqm: e.target.value })}
               placeholder="e.g., 95"
             />
           </div>
@@ -356,7 +471,11 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
         {state.pricing_method === 'estimated' && (
           <div className="grid gap-3 bg-blue-500/5 border border-blue-400/20 rounded-md p-3">
             <div className="text-sm text-muted-foreground mb-2">
-              Property value will be estimated using market data for sale prices.
+              {state.location_type === 'street' ? (
+                <>Property value estimated using transaction data from <strong>{state.street}</strong> street.</>
+              ) : (
+                <>Property value estimated using market data for sale prices.</>
+              )}
             </div>
 
             {state.is_estimating && (
@@ -378,7 +497,6 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Clear error and retry
                       updateFormState(index, { estimation_error: undefined, estimated_price: undefined });
                     }}
                     className="h-8 text-xs"
@@ -390,7 +508,6 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Switch to custom pricing
                       updateFormState(index, { pricing_method: 'custom', estimation_error: undefined });
                     }}
                     className="h-8 text-xs"
@@ -401,16 +518,34 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
               </div>
             )}
 
-            {state.estimated_price && (
+            {(calculatedValue > 0 || state.estimated_price) && (
               <div className="grid gap-2">
                 <Label className="text-green-400">Estimated Price</Label>
                 <div className="text-2xl font-bold text-green-300">
-                  {state.estimated_price.toLocaleString()} ILS
+                  {(calculatedValue || state.estimated_price || 0).toLocaleString()} ILS
                 </div>
+
+                {/* Show price per sqm calculation */}
+                {pricePerSqm && !isNaN(sqm) && (
+                  <div className="text-xs text-gray-400 space-y-0.5">
+                    <div>
+                      <span className="text-green-400 font-medium">{pricePerSqm.toLocaleString()} ILS/sqm</span>
+                      {' × '}{sqm} sqm = {calculatedValue.toLocaleString()} ILS
+                    </div>
+                    {typicalSqm && (
+                      <div className="text-muted-foreground">
+                        (Price/sqm derived from {state.rooms}-room avg price ÷ typical {typicalSqm} sqm)
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Show other room options if available */}
                 {state.available_room_prices && Object.keys(state.available_room_prices).length > 1 && (
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-gray-400 mt-1">
                     Other options: {Object.entries(state.available_room_prices)
                       .filter(([r]) => r !== state.rooms)
+                      .slice(0, 3)
                       .map(([r, p]) => `${r} rooms: ${p.toLocaleString()} ILS`)
                       .join(', ')}
                   </div>

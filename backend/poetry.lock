@@ -1929,14 +1929,14 @@ zstd = ["zstandard"]
 
 [[package]]
 name = "pynadlan"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Python wrapper for the israel Nadlan prices."
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "pynadlan-0.2.0-py3-none-any.whl", hash = "sha256:739b6c3d8f26534ad80674c5b070bcec302066b9e3d6a9f5440f78db3cfad4b8"},
-    {file = "pynadlan-0.2.0.tar.gz", hash = "sha256:8ba3db82e484ceee5b3598d6dc3a2bfbbee47cbcb3f8308085fe3a0d9f329120"},
+    {file = "pynadlan-0.2.1-py3-none-any.whl", hash = "sha256:dab1b8ade68a04743bc942e996149b3bb21c82ea1224854d315d6b214e367c11"},
+    {file = "pynadlan-0.2.1.tar.gz", hash = "sha256:7a6084d635786dfe11e311effa48fbf689a77bdc72bccf16c015229c45093a85"},
 ]
 
 [package.dependencies]
@@ -2465,4 +2465,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "9d187daa6e137539fcd816f00666603acd0f2d09401d168cc16e744bc66a7885"
+content-hash = "7bf959c4b8ee326a6580153b44bc9dbaa594bd525fcb0d8734cf879974060209"
