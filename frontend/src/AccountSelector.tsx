@@ -782,11 +782,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           };
           
           // Preserve custom holding fields if present (backend now includes them in holdings)
-          if ((h as any).is_custom) {
+          if (h.is_custom) {
             baseHolding.is_custom = true;
-            baseHolding.custom_price = (h as any).custom_price;
-            baseHolding.custom_currency = (h as any).custom_currency;
-            baseHolding.custom_name = (h as any).custom_name;
+            baseHolding.custom_price = h.custom_price;
+            baseHolding.custom_currency = h.custom_currency;
+            baseHolding.custom_name = h.custom_name;
           }
           
           return baseHolding;
@@ -803,6 +803,39 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         emptyRowIndex = mappedHoldings.findIndex(h => !h.symbol.trim() && !h.units.trim());
       }
       
+      // Extract real estate properties from holdings if this is a real-estate account
+      let realEstateProperties: RealEstateProperty[] = [];
+      if (account.account_type === 'real-estate' && account.holdings && Array.isArray(account.holdings)) {
+        realEstateProperties = account.holdings
+          .filter(h => h.is_custom && h.property_metadata)
+          .map(h => ({
+            symbol: h.symbol || h.custom_name || '',
+            units: h.units || 1,
+            is_custom: true,
+            custom_price: h.custom_price || 0,
+            custom_currency: h.custom_currency || 'ILS',
+            custom_name: h.custom_name || h.symbol || '',
+            property_metadata: h.property_metadata ? {
+              location: h.property_metadata.location || '',
+              location_type: h.property_metadata.location_type,
+              city: h.property_metadata.city,
+              neighborhood: h.property_metadata.neighborhood,
+              street: h.property_metadata.street,
+              rooms: h.property_metadata.rooms || 0,
+              sqm: h.property_metadata.sqm || 0,
+              pricing_method: h.property_metadata.pricing_method || 'custom' as const,
+              estimated_price: h.property_metadata.estimated_price,
+              avg_price_per_sqm: h.property_metadata.avg_price_per_sqm,
+              estimation_params: h.property_metadata.estimation_params,
+            } : {
+              location: '',
+              rooms: 0,
+              sqm: 0,
+              pricing_method: 'custom' as const,
+            },
+          }));
+      }
+
       setEditAccount({
         account_name: account.account_name,
         account_type: account.account_type || 'bank-account',
@@ -810,7 +843,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         holdings: mappedHoldings,
         rsu_plans: account.rsu_plans || [],
         espp_plans: account.espp_plans || [],
-        options_plans: account.options_plans || []
+        options_plans: account.options_plans || [],
+        real_estate_properties: realEstateProperties,
       });
       
       // Collapse all loaded plans by default
@@ -951,8 +985,21 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const handleEditAccount = async () => {
     try {
       let validHoldings;
+      // If real-estate account, use properties as holdings
+      if (editAccount.account_type === 'real-estate') {
+        // Properties from RealEstatePropertyForm are already in the correct format
+        validHoldings = (editAccount.real_estate_properties || []).map(property => ({
+          symbol: property.symbol,
+          units: property.units,
+          is_custom: property.is_custom,
+          custom_price: property.custom_price,
+          custom_currency: property.custom_currency,
+          custom_name: property.custom_name,
+          property_metadata: property.property_metadata
+        }));
+      }
       // If company-custodian-account, generate holdings from plan symbols
-      if (editAccount.account_type === 'company-custodian-account') {
+      else if (editAccount.account_type === 'company-custodian-account') {
         // Collect all unique symbols from RSU, ESPP, and Options plans
         const planSymbols = [
           ...editAccount.rsu_plans.map(plan => plan.symbol.trim()),
@@ -970,7 +1017,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               symbol: holding.symbol.trim(),
               units: parseFloat(holding.units)
             };
-            
+
             // Include custom holding fields if present
             if ((holding as any).is_custom) {
               baseHolding.is_custom = true;
@@ -978,7 +1025,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               baseHolding.custom_currency = (holding as any).custom_currency;
               baseHolding.custom_name = (holding as any).custom_name;
             }
-            
+
             return baseHolding;
           });
       }
@@ -1898,6 +1945,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                       <SelectItem value="education-fund">Education Fund</SelectItem>
                       <SelectItem value="retirement-account">Retirement Account</SelectItem>
                       <SelectItem value="company-custodian-account">Company Custodian Account</SelectItem>
+                      <SelectItem value="real-estate">Real Estate</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2063,7 +2111,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
               {/* Right Column - Holdings Table */}
               <div className="flex-1 flex flex-col">
-                {editAccount.account_type === 'company-custodian-account' ? (
+                {editAccount.account_type === 'real-estate' ? (
+                  <RealEstatePropertyForm
+                    properties={editAccount.real_estate_properties || []}
+                    onChange={(properties) => setEditAccount({ ...editAccount, real_estate_properties: properties })}
+                  />
+                ) : editAccount.account_type === 'company-custodian-account' ? (
                   <div className="space-y-4">
                     <Label className="mb-3">Company Plans</Label>
 

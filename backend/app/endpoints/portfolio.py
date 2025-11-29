@@ -21,6 +21,7 @@ from services.closing_price.currency_service import currency_service
 from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
 from services.closing_price.price_manager import PriceManager
+from services.real_estate.pricing import get_real_estate_service
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +285,109 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
     return all_portfolios_data, global_securities, all_symbols
 
 
+# Typical sqm per room count for Israeli apartments (used for price per sqm calculation)
+TYPICAL_SQM_BY_ROOMS = {
+    2: 60,
+    3: 80,
+    4: 105,
+    5: 135,
+    6: 160,
+}
+
+
+async def update_real_estate_prices(portfolio_docs: list, global_current_prices: dict) -> None:
+    """
+    Update prices for real estate holdings based on their property_metadata.
+    Fetches fresh estimates from the real estate pricing service based on location.
+    """
+    real_estate_service = get_real_estate_service()
+
+    # Collect all real estate holdings with property_metadata
+    real_estate_holdings = []
+    for doc in portfolio_docs:
+        for account in doc.get('accounts', []):
+            for holding in account.get('holdings', []):
+                property_metadata = holding.get('property_metadata')
+                if property_metadata and holding.get('is_custom'):
+                    symbol = holding.get('symbol')
+                    if symbol:
+                        real_estate_holdings.append({
+                            'symbol': symbol,
+                            'metadata': property_metadata,
+                            'current_custom_price': holding.get('custom_price'),
+                            'currency': holding.get('custom_currency', 'ILS'),
+                        })
+
+    if not real_estate_holdings:
+        return
+
+    print(f"🏠 [REAL ESTATE] Updating prices for {len(real_estate_holdings)} real estate holdings")
+
+    for holding in real_estate_holdings:
+        symbol = holding['symbol']
+        metadata = holding['metadata']
+
+        # Skip if pricing_method is 'custom' (user wants to use their own price)
+        if metadata.get('pricing_method') == 'custom':
+            continue
+
+        try:
+            location_type = metadata.get('location_type', 'city')
+            city = metadata.get('city', metadata.get('location', ''))
+            street = metadata.get('street')
+            neighborhood = metadata.get('neighborhood')
+            rooms = metadata.get('rooms')
+            sqm = metadata.get('sqm')
+
+            if not city:
+                continue
+
+            # Fetch fresh price estimate
+            result = await real_estate_service.fetch_prices_for_location(
+                location_type=location_type,
+                city=city,
+                street=street,
+                neighborhood=neighborhood,
+                rooms=rooms,
+                sqm=sqm,
+            )
+
+            # Calculate updated price
+            updated_price = None
+            avg_price_per_sqm = result.get('avg_price_per_sqm')
+
+            if result.get('estimated_total'):
+                updated_price = result['estimated_total']
+            elif avg_price_per_sqm and sqm:
+                updated_price = int(avg_price_per_sqm * sqm)
+            elif rooms and result.get('prices', {}).get(str(rooms)):
+                # Fall back to room-based price and calculate per sqm
+                room_price = result['prices'][str(rooms)]
+                typical_sqm = TYPICAL_SQM_BY_ROOMS.get(rooms, 80)
+                avg_price_per_sqm = room_price / typical_sqm
+                if sqm:
+                    updated_price = int(avg_price_per_sqm * sqm)
+                else:
+                    updated_price = room_price
+
+            if updated_price and symbol in global_current_prices:
+                old_price = global_current_prices[symbol].get('original_price', 0)
+                global_current_prices[symbol]['price'] = updated_price
+                global_current_prices[symbol]['original_price'] = updated_price
+                global_current_prices[symbol]['last_updated'] = datetime.utcnow().isoformat()
+                if avg_price_per_sqm:
+                    global_current_prices[symbol]['avg_price_per_sqm'] = int(avg_price_per_sqm)
+
+                if old_price != updated_price:
+                    print(f"  📍 {symbol}: {old_price:,.0f} → {updated_price:,.0f} ILS (location: {city})")
+
+        except Exception as e:
+            logger.warning(f"[REAL ESTATE] Failed to update price for {symbol}: {e}")
+            continue
+
+    print(f"✅ [REAL ESTATE] Price update complete")
+
+
 async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -> tuple:
     """
     Collect global current and historical prices using CACHED data with smart fallback.
@@ -386,7 +490,13 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     
     current_prices_time = time.time() - current_prices_start
     print(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s")
-    
+
+    # Step 1b: Update real estate prices based on location (fetch fresh estimates)
+    try:
+        await update_real_estate_prices(portfolio_docs, global_current_prices)
+    except Exception as e:
+        logger.warning(f"[COLLECT PRICES CACHED] Failed to update real estate prices: {e}")
+
     # Step 2: Ensure all symbols are tracked (add to tracked_symbols if missing)
     try:
         from services.closing_price.database import db, ensure_connections

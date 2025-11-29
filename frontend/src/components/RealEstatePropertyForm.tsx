@@ -96,13 +96,52 @@ const LocationTypeIcon: React.FC<{ type: LocationType; className?: string }> = (
 const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ properties, onChange }) => {
   const [formStates, setFormStates] = useState<PropertyFormState[]>([EMPTY_PROPERTY]);
   const [editingLocationIndex, setEditingLocationIndex] = useState<number | null>(null);
+  const [initialized, setInitialized] = useState(false);
   const locationRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
-  // Auto-fetch estimation when all required fields are filled (debounced)
+  // Initialize form states from properties prop (for editing existing properties)
   useEffect(() => {
+    if (initialized) return;
+
+    if (properties && properties.length > 0) {
+      const initialStates: PropertyFormState[] = properties.map(property => {
+        const metadata = property.property_metadata;
+        return {
+          property_name: property.custom_name || property.symbol || '',
+          location: metadata?.location || '',
+          location_type: (metadata?.location_type as LocationType) || 'city',
+          city: metadata?.city || metadata?.location || '',
+          neighborhood: metadata?.neighborhood,
+          street: metadata?.street,
+          rooms: metadata?.rooms?.toString() || '',
+          sqm: metadata?.sqm?.toString() || '',
+          pricing_method: metadata?.pricing_method || 'estimated',
+          custom_price_per_sqm: metadata?.pricing_method === 'custom' && metadata?.sqm
+            ? (property.custom_price / metadata.sqm).toString()
+            : '',
+          custom_currency: property.custom_currency || 'ILS',
+          estimated_price: metadata?.pricing_method === 'estimated' ? property.custom_price : undefined,
+          avg_price_per_sqm: metadata?.avg_price_per_sqm,
+          is_estimating: false,
+        };
+      });
+      setFormStates(initialStates);
+      setInitialized(true);
+    } else {
+      setInitialized(true);
+    }
+  }, [properties, initialized]);
+
+  // Auto-fetch estimation when all required fields are filled (debounced)
+  // Skip if we already have room prices or estimated price (from initial load)
+  useEffect(() => {
+    if (!initialized) return;
+
     const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     formStates.forEach((state, index) => {
+      const hasExistingPrice = state.estimated_price || (state.available_room_prices && Object.keys(state.available_room_prices).length > 0);
+
       if (
         state.pricing_method === 'estimated' &&
         state.location &&
@@ -110,7 +149,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
         state.rooms &&
         state.sqm &&
         !state.is_estimating &&
-        !state.estimated_price &&
+        !hasExistingPrice &&
         !state.estimation_error
       ) {
         const timeoutId = setTimeout(() => {
@@ -123,7 +162,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
     return () => {
       timeoutIds.forEach(id => clearTimeout(id));
     };
-  }, [formStates]);
+  }, [formStates, initialized]);
 
   const fetchEstimate = async (index: number) => {
     const state = formStates[index];
