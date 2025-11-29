@@ -50,17 +50,42 @@ export interface OptionsPlan {
   company_valuation_date?: string;
 }
 
+export interface AccountHolding {
+  symbol: string;
+  units: number;
+  original_currency: string;
+  security_type: string;
+  security_name: string;
+  // Custom holding fields
+  is_custom?: boolean;
+  custom_price?: number;
+  custom_currency?: string;
+  custom_name?: string;
+  // Real estate specific fields
+  property_metadata?: {
+    location: string;
+    location_type?: 'city' | 'neighborhood' | 'street';
+    city?: string;
+    neighborhood?: string;
+    street?: string;
+    rooms: number;
+    sqm: number;
+    pricing_method: 'estimated' | 'custom';
+    estimated_price?: number;
+    avg_price_per_sqm?: number;
+    estimation_params?: {
+      query: string;
+      type: 'sell' | 'rent';
+      rooms: number;
+    };
+  };
+}
+
 export interface AccountInfo {
   account_name: string;
   account_type: string;
   owners: string[];
-  holdings: {
-    symbol: string;
-    units: number;
-    original_currency: string;
-    security_type: string;
-    security_name: string;
-  }[];
+  holdings: AccountHolding[];
   rsu_plans?: RSUPlan[];
   espp_plans?: ESPPPlan[];
   options_plans?: OptionsPlan[];
