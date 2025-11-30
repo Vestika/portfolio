@@ -9,7 +9,6 @@ try:
 		get_neighborhoods_summary,
 		get_city_timeseries,
 		get_locations_search,
-		get_avg_prices,
 		get_street_deals,
 	)
 except Exception:  # pragma: no cover - allow code to import even if not installed yet
@@ -17,7 +16,6 @@ except Exception:  # pragma: no cover - allow code to import even if not install
 	get_neighborhoods_summary = None
 	get_city_timeseries = None
 	get_locations_search = None
-	get_avg_prices = None
 	get_street_deals = None
 
 
@@ -293,9 +291,8 @@ class RealEstatePricingService:
 			}
 
 		else:
-			# City or neighborhood - use get_avg_prices
-			if get_avg_prices is None:
-				raise RuntimeError("pynadlan not installed")
+			# City or neighborhood - use fetch_sell_prices which uses pynadlan's
+			# get_city_timeseries and get_neighborhoods_summary
 
 			# Build query string
 			if neighborhood:
@@ -303,19 +300,14 @@ class RealEstatePricingService:
 			else:
 				query = city
 
-			cache_key = f"avg_prices:{query}:{rooms}"
-			cached = await self._get_cached(cache_key)
+			# Use the fetch_sell_prices method which handles city/neighborhood pricing
+			prices_raw = await self.fetch_sell_prices(query=query, rooms=rooms)
 
-			if cached is None:
-				cached = await get_avg_prices(query=query, rooms=rooms)
-				await self._set_cached(cache_key, cached)
-
-			# Convert response format: sell_3_price -> "3": price
+			# Convert to int prices
 			prices: Dict[str, int] = {}
-			for key, value in cached.items():
-				if key.startswith("sell_") and key.endswith("_price") and value is not None:
-					room_num = key.replace("sell_", "").replace("_price", "")
-					prices[room_num] = int(value)
+			for room_key, price in prices_raw.items():
+				if price is not None:
+					prices[room_key] = int(price)
 
 			# Typical sqm per room count for Israeli apartments
 			TYPICAL_SQM_BY_ROOMS = {
@@ -329,14 +321,29 @@ class RealEstatePricingService:
 			# Calculate price per sqm and estimated total based on actual sqm
 			estimated_total = None
 			avg_price_per_sqm = None
+			typical_sqm_used = None
 
-			if rooms and str(rooms) in prices:
-				room_key = str(rooms)
+			# Try to find a price to calculate from
+			room_key = str(rooms) if rooms else None
+			room_price = None
+
+			if room_key and room_key in prices:
+				# Exact match for requested room count
 				room_price = prices[room_key]
-				typical_sqm = TYPICAL_SQM_BY_ROOMS.get(room_key, 80)  # Default to 80 if unknown
+				typical_sqm_used = TYPICAL_SQM_BY_ROOMS.get(room_key, 80)
+			elif prices:
+				# No exact match - fallback to 4 rooms if available, then any available room
+				fallback_order = ["4", "3", "5", "2", "6"]
+				for fallback_room in fallback_order:
+					if fallback_room in prices:
+						room_key = fallback_room
+						room_price = prices[fallback_room]
+						typical_sqm_used = TYPICAL_SQM_BY_ROOMS.get(fallback_room, 105)
+						break
 
+			if room_price and typical_sqm_used:
 				# Calculate price per sqm based on typical size for this room count
-				avg_price_per_sqm = int(room_price / typical_sqm)
+				avg_price_per_sqm = int(room_price / typical_sqm_used)
 
 				# If user provided actual sqm, calculate estimated total
 				if sqm:
@@ -349,7 +356,7 @@ class RealEstatePricingService:
 				"prices": prices,
 				"avg_price_per_sqm": avg_price_per_sqm,
 				"estimated_total": estimated_total,
-				"typical_sqm_used": TYPICAL_SQM_BY_ROOMS.get(str(rooms)) if rooms else None,
+				"typical_sqm_used": typical_sqm_used,
 			}
 
 

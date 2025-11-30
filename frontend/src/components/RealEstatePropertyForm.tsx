@@ -196,8 +196,28 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
         avgPricePerSqm = response.avg_price_per_sqm;
         typicalSqmUsed = response.typical_sqm_used;
       } else if (response.prices[rooms.toString()]) {
-        // Fallback to room-based price
+        // Exact room match - use it
         estimatedPrice = response.prices[rooms.toString()];
+      } else if (Object.keys(response.prices).length > 0) {
+        // No exact room match but we have other room prices - fallback to 4 rooms or first available
+        const fallbackOrder = ['4', '3', '5', '2', '6'];
+        let fallbackRoom: string | undefined;
+        for (const room of fallbackOrder) {
+          if (response.prices[room]) {
+            fallbackRoom = room;
+            break;
+          }
+        }
+        if (!fallbackRoom) {
+          fallbackRoom = Object.keys(response.prices)[0];
+        }
+        if (fallbackRoom) {
+          const fallbackPrice = response.prices[fallbackRoom];
+          const fallbackTypicalSqm = TYPICAL_SQM_BY_ROOMS[fallbackRoom] || 105;
+          avgPricePerSqm = Math.round(fallbackPrice / fallbackTypicalSqm);
+          estimatedPrice = avgPricePerSqm * sqm;
+          typicalSqmUsed = fallbackTypicalSqm;
+        }
       } else if (response.median_price) {
         // Last resort: use median price
         estimatedPrice = response.median_price;
@@ -427,7 +447,7 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
           {editingLocationIndex === index ? (
             <RealEstateLocationAutocomplete
               value={state.location}
-              onSelect={(location, locationData) => handleLocationSelect(index, location, locationData)}
+              onSelect={(location: string, locationData?: SelectedLocation) => handleLocationSelect(index, location, locationData)}
               onClose={() => setEditingLocationIndex(null)}
               placeholder="Search city, neighborhood, or street..."
               ref={(el) => {
