@@ -1,13 +1,14 @@
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
-import os
 import asyncio
 from typing import AsyncGenerator, Optional
+
+from config import settings
 
 
 class DatabaseManager:
     def __init__(self, connection_string: str = None):
-        self.connection_string = connection_string or os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        self.connection_string = connection_string or settings.mongodb_url
         self._client: Optional[AsyncMongoClient] = None
         self._database: Optional[AsyncDatabase] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
