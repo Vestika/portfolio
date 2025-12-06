@@ -30,6 +30,10 @@ export interface RealEstateProperty {
       type: 'sell' | 'rent';
       rooms: number;
     };
+    // Purchase information for tracking appreciation
+    purchase_price?: number;
+    purchase_date?: string;
+    purchase_currency?: string;
   };
 }
 
@@ -56,6 +60,10 @@ interface PropertyFormState {
   available_room_prices?: Record<string, number>;
   is_estimating: boolean;
   estimation_error?: string;
+  // Purchase information
+  purchase_price: string;
+  purchase_date: string;
+  purchase_currency: string;
 }
 
 // Typical sqm per room count for Israeli apartments
@@ -78,6 +86,9 @@ const EMPTY_PROPERTY: PropertyFormState = {
   custom_price_per_sqm: '',
   custom_currency: 'ILS',
   is_estimating: false,
+  purchase_price: '',
+  purchase_date: '',
+  purchase_currency: 'ILS',
 };
 
 const LocationTypeIcon: React.FC<{ type: LocationType; className?: string }> = ({ type, className }) => {
@@ -123,6 +134,10 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
           estimated_price: metadata?.pricing_method === 'estimated' ? property.custom_price : undefined,
           avg_price_per_sqm: metadata?.avg_price_per_sqm,
           is_estimating: false,
+          // Load purchase information
+          purchase_price: metadata?.purchase_price?.toString() || '',
+          purchase_date: metadata?.purchase_date || '',
+          purchase_currency: metadata?.purchase_currency || property.custom_currency || 'ILS',
         };
       });
       setFormStates(initialStates);
@@ -323,6 +338,12 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
                 type: 'sell' as const,
                 rooms,
               },
+            } : {}),
+            // Include purchase information if provided
+            ...(state.purchase_price ? {
+              purchase_price: parseFloat(state.purchase_price),
+              purchase_date: state.purchase_date || undefined,
+              purchase_currency: state.purchase_currency,
             } : {}),
           },
         };
@@ -662,6 +683,65 @@ const RealEstatePropertyForm: React.FC<RealEstatePropertyFormProps> = ({ propert
             )}
           </div>
         )}
+
+        {/* Purchase Information (Optional) */}
+        <div className="grid gap-3 border-t pt-4">
+          <Label className="text-sm font-medium text-muted-foreground">Purchase Information (Optional)</Label>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-2 col-span-2">
+              <Label htmlFor={`purchase-price-${index}`}>Purchase Price</Label>
+              <Input
+                id={`purchase-price-${index}`}
+                type="number"
+                min="0"
+                value={state.purchase_price}
+                onChange={(e) => updateFormState(index, { purchase_price: e.target.value })}
+                placeholder="e.g., 2500000"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`purchase-currency-${index}`}>Currency</Label>
+              <Select
+                value={state.purchase_currency}
+                onValueChange={(value) => updateFormState(index, { purchase_currency: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ILS">ILS</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`purchase-date-${index}`}>Purchase Date</Label>
+            <Input
+              id={`purchase-date-${index}`}
+              type="date"
+              value={state.purchase_date}
+              onChange={(e) => updateFormState(index, { purchase_date: e.target.value })}
+            />
+          </div>
+          {state.purchase_price && calculatedValue > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {(() => {
+                const purchasePrice = parseFloat(state.purchase_price);
+                const appreciation = calculatedValue - purchasePrice;
+                const appreciationPercent = ((appreciation / purchasePrice) * 100).toFixed(1);
+                const isPositive = appreciation >= 0;
+                return (
+                  <span className={isPositive ? 'text-green-400' : 'text-red-400'}>
+                    {isPositive ? '↑' : '↓'} {isPositive ? '+' : ''}{appreciation.toLocaleString()} {state.purchase_currency} ({isPositive ? '+' : ''}{appreciationPercent}%)
+                  </span>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       </div>
     );
   };

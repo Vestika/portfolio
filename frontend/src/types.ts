@@ -78,6 +78,10 @@ export interface AccountHolding {
       type: 'sell' | 'rent';
       rooms: number;
     };
+    // Purchase information for tracking appreciation
+    purchase_price?: number;
+    purchase_date?: string;
+    purchase_currency?: string;
   };
 }
 
@@ -186,6 +190,10 @@ export interface SecurityHolding {
       type: 'sell' | 'rent';
       rooms: number;
     };
+    // Purchase information for tracking appreciation
+    purchase_price?: number;
+    purchase_date?: string;
+    purchase_currency?: string;
   };
 }
 
