@@ -127,6 +127,7 @@ class CreateAccountRequest(BaseModel):
     rsu_plans: list[Any] = []
     espp_plans: list[Any] = []
     options_plans: list[Any] = []
+    recurring_investments: list[Any] = []
     # Optional IBKR Flex credentials (saved only if provided)
     ibkr_flex: Optional[dict[str, str]] = None
 
@@ -2471,7 +2472,8 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
             "espp_plans": request.espp_plans,
-            "options_plans": request.options_plans
+            "options_plans": request.options_plans,
+            "recurring_investments": request.recurring_investments
         }
         # Save IBKR Flex credentials if provided
         if request.ibkr_flex:
@@ -2656,7 +2658,8 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
             "holdings": request.holdings,
             "rsu_plans": request.rsu_plans,
             "espp_plans": request.espp_plans,
-            "options_plans": request.options_plans
+            "options_plans": request.options_plans,
+            "recurring_investments": request.recurring_investments
         }
         # Save or update IBKR Flex credentials if provided
         if request.ibkr_flex is not None:

@@ -12,6 +12,7 @@ class Account:
     rsu_plans: list[Any] = None
     espp_plans: list[Any] = None
     options_plans: list[Any] = None
+    recurring_investments: list[Any] = None  # Recurring investment/deposit configurations
     url: str | None = None  # URL associated with this account (for browser extension matching)
 
     @classmethod
@@ -23,5 +24,6 @@ class Account:
             rsu_plans=data.get("rsu_plans", []),
             espp_plans=data.get("espp_plans", []),
             options_plans=data.get("options_plans", []),
+            recurring_investments=data.get("recurring_investments", []),
             url=data.get("url"),
         )

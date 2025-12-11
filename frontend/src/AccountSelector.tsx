@@ -5,7 +5,8 @@ import {
   AccountInfo,
   RSUPlan,
   ESPPPlan,
-  OptionsPlan
+  OptionsPlan,
+  RecurringInvestment
 } from './types';
 import {
   Eye,
@@ -58,6 +59,7 @@ import { useNavigate } from 'react-router-dom';
 import RSUPlanConfig from './components/RSUPlanConfig';
 import ESPPPlanConfig from './components/ESPPPlanConfig';
 import OptionsPlanConfig from './components/OptionsPlanConfig';
+import RecurringInvestmentConfig from './components/RecurringInvestmentConfig';
 import api from './utils/api';
 import { CustomHoldingDialog, CustomHoldingData } from './components/CustomHoldingDialog';
 import RealEstatePropertyForm, { RealEstateProperty } from './components/RealEstatePropertyForm';
@@ -335,6 +337,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
     options_plans: OptionsPlan[];
+    recurring_investments: RecurringInvestment[];
     real_estate_properties?: RealEstateProperty[];
   }>({
     account_name: '',
@@ -344,6 +347,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: [],
     espp_plans: [],
     options_plans: [],
+    recurring_investments: [],
     real_estate_properties: []
   });
   const [editAccount, setEditAccount] = useState<{
@@ -354,6 +358,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: RSUPlan[];
     espp_plans: ESPPPlan[];
     options_plans: OptionsPlan[];
+    recurring_investments: RecurringInvestment[];
     real_estate_properties?: RealEstateProperty[];
   }>({
     account_name: '',
@@ -363,13 +368,16 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
     rsu_plans: [],
     espp_plans: [],
     options_plans: [],
+    recurring_investments: [],
     real_estate_properties: []
   });
   const [collapsedRSUPlans, setCollapsedRSUPlans] = useState<Set<string>>(new Set());
   const [collapsedESPPPlans, setCollapsedESPPPlans] = useState<Set<string>>(new Set());
   const [collapsedOptionsPlans, setCollapsedOptionsPlans] = useState<Set<string>>(new Set());
+  const [collapsedRecurringInvestments, setCollapsedRecurringInvestments] = useState<Set<string>>(new Set());
   const [editCollapsedRSUPlans, setEditCollapsedRSUPlans] = useState<Set<string>>(new Set());
   const [editCollapsedESPPPlans, setEditCollapsedESPPPlans] = useState<Set<string>>(new Set());
+  const [editCollapsedRecurringInvestments, setEditCollapsedRecurringInvestments] = useState<Set<string>>(new Set());
   const holdingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const editHoldingRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [autoSyncStatuses, setAutoSyncStatuses] = useState<Record<string, AutoSyncStatus>>({});
@@ -719,19 +727,24 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       const validOptionsPlans = newAccount.options_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
+      // Filter out empty recurring investments
+      const validRecurringInvestments = newAccount.recurring_investments
+        .filter(inv => inv.amount > 0);
+
       const accountData = {
         ...newAccount,
         holdings: validHoldings,
         rsu_plans: validRSUPlans,
         espp_plans: validESPPPlans,
-        options_plans: validOptionsPlans
+        options_plans: validOptionsPlans,
+        recurring_investments: validRecurringInvestments
       };
 
       await api.post(`/portfolio/${selectedFile}/accounts`, accountData);
 
       setShowAddAccountModal(false);
       setEditingSymbolIndex(null); // Reset symbol editing state
-      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [], real_estate_properties: [] } );
+      setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [], recurring_investments: [], real_estate_properties: [] } );
       holdingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with new account
@@ -844,12 +857,14 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         rsu_plans: account.rsu_plans || [],
         espp_plans: account.espp_plans || [],
         options_plans: account.options_plans || [],
+        recurring_investments: account.recurring_investments || [],
         real_estate_properties: realEstateProperties,
       });
-      
+
       // Collapse all loaded plans by default
       setEditCollapsedRSUPlans(new Set((account.rsu_plans || []).map(plan => plan.id)));
       setEditCollapsedESPPPlans(new Set((account.espp_plans || []).map(plan => plan.id)));
+      setEditCollapsedRecurringInvestments(new Set((account.recurring_investments || []).map(inv => inv.id)));
       
       // Set empty row to edit mode
       if (emptyRowIndex >= 0) {
@@ -1040,12 +1055,17 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       const validOptionsPlans = editAccount.options_plans
         .filter(plan => plan.symbol.trim() && plan.units > 0);
 
+      // Filter out empty recurring investments
+      const validRecurringInvestments = editAccount.recurring_investments
+        .filter(inv => inv.amount > 0);
+
       const accountData = {
         ...editAccount,
         holdings: validHoldings,
         rsu_plans: validRSUPlans,
         espp_plans: validESPPPlans,
-        options_plans: validOptionsPlans
+        options_plans: validOptionsPlans,
+        recurring_investments: validRecurringInvestments
       };
 
       await api.put(`/portfolio/${selectedFile}/accounts/${encodeURIComponent(accountToEdit)}`, accountData);
@@ -1053,7 +1073,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       setShowEditAccountModal(false);
       setEditEditingSymbolIndex(null); // Reset symbol editing state
       setAccountToEdit('');
-      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] });
+      setEditAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [], recurring_investments: [] });
       editHoldingRefs.current = {}; // Clear refs
       
       // Trigger refresh to reload the portfolio with updated account
@@ -1120,6 +1140,30 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         newSet.delete(planId);
       } else {
         newSet.add(planId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleRecurringInvestmentCollapse = (id: string) => {
+    setCollapsedRecurringInvestments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleEditRecurringInvestmentCollapse = (id: string) => {
+    setEditCollapsedRecurringInvestments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
       }
       return newSet;
     });
@@ -1315,6 +1359,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             rsu_plans: [],
             espp_plans: [],
             options_plans: [],
+            recurring_investments: [],
             real_estate_properties: []
           });
           setEditingSymbolIndex(null);
@@ -1838,6 +1883,75 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </div>
                   </>
                 )}
+
+                {/* Recurring Investments - Show for bank, investment, education, retirement accounts */}
+                {['bank-account', 'investment-account', 'education-fund', 'retirement-account'].includes(newAccount.account_type) && (
+                  <div className="space-y-3 mt-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Recurring Investments</Label>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const newInvestment: RecurringInvestment = {
+                            id: Date.now().toString(),
+                            target_type: 'cash',
+                            amount: 0,
+                            currency: 'USD',
+                            frequency: 'monthly',
+                            start_date: new Date().toISOString().split('T')[0],
+                            day_of_month: 1,
+                            is_active: true
+                          };
+                          setNewAccount({
+                            ...newAccount,
+                            recurring_investments: [...newAccount.recurring_investments, newInvestment]
+                          });
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add Recurring
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {newAccount.recurring_investments.map((investment, index) => (
+                        <div key={investment.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div className="flex items-center justify-between mb-3">
+                            <Label className="text-sm font-medium">
+                              {investment.target_type === 'cash' ? 'Cash Deposit' : investment.symbol || 'New Investment'}
+                            </Label>
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                const updated = newAccount.recurring_investments.filter((_, i) => i !== index);
+                                setNewAccount({ ...newAccount, recurring_investments: updated });
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <RecurringInvestmentConfig
+                            investment={investment}
+                            onChange={(updated) => {
+                              const updatedInvestments = newAccount.recurring_investments.map((inv, i) =>
+                                i === index ? updated : inv
+                              );
+                              setNewAccount({ ...newAccount, recurring_investments: updatedInvestments });
+                            }}
+                            isCollapsed={collapsedRecurringInvestments.has(investment.id)}
+                            onToggleCollapse={() => toggleRecurringInvestmentCollapse(investment.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1849,7 +1963,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             }}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={async () => {
                 // If user opted to save credentials, include them in the account payload
                 if (newAccount.account_type === 'investment-account' && saveIbkrCredentials && ibkrAccessToken && ibkrQueryId) {
@@ -1869,7 +1983,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   try {
                     await api.post(`/portfolio/${selectedFile}/accounts`, payload);
                     setShowAddAccountModal(false);
-                    setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [] } );
+                    setNewAccount({ account_name: '', account_type: 'bank-account', owners: ['me'], holdings: [{ symbol: '', units: '' }], rsu_plans: [], espp_plans: [], options_plans: [], recurring_investments: [], real_estate_properties: [] });
                     setIbkrAccessToken('');
                     setIbkrQueryId('');
                     await onAccountAdded();
@@ -1902,7 +2016,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             holdings: [{ symbol: '', units: '' }],
             rsu_plans: [],
             espp_plans: [],
-            options_plans: []
+            options_plans: [],
+            recurring_investments: []
           });
           setEditingSymbolIndex(null);
           setAccountToEdit('');
@@ -2424,6 +2539,75 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                     </div>
                   </>
                 )}
+
+                {/* Recurring Investments - Show for bank, investment, education, retirement accounts */}
+                {['bank-account', 'investment-account', 'education-fund', 'retirement-account'].includes(editAccount.account_type) && (
+                  <div className="space-y-3 mt-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Recurring Investments</Label>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const newInvestment: RecurringInvestment = {
+                            id: Date.now().toString(),
+                            target_type: 'cash',
+                            amount: 0,
+                            currency: 'USD',
+                            frequency: 'monthly',
+                            start_date: new Date().toISOString().split('T')[0],
+                            day_of_month: 1,
+                            is_active: true
+                          };
+                          setEditAccount({
+                            ...editAccount,
+                            recurring_investments: [...editAccount.recurring_investments, newInvestment]
+                          });
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add Recurring
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {editAccount.recurring_investments.map((investment, index) => (
+                        <div key={investment.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div className="flex items-center justify-between mb-3">
+                            <Label className="text-sm font-medium">
+                              {investment.target_type === 'cash' ? 'Cash Deposit' : investment.symbol || 'New Investment'}
+                            </Label>
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                const updated = editAccount.recurring_investments.filter((_, i) => i !== index);
+                                setEditAccount({ ...editAccount, recurring_investments: updated });
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-red-500/20 hover:text-red-400"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <RecurringInvestmentConfig
+                            investment={investment}
+                            onChange={(updated) => {
+                              const updatedInvestments = editAccount.recurring_investments.map((inv, i) =>
+                                i === index ? updated : inv
+                              );
+                              setEditAccount({ ...editAccount, recurring_investments: updatedInvestments });
+                            }}
+                            isCollapsed={editCollapsedRecurringInvestments.has(investment.id)}
+                            onToggleCollapse={() => toggleEditRecurringInvestmentCollapse(investment.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2435,7 +2619,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             }}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleEditAccount}
               disabled={!editAccount.account_name || editAccount.owners.length === 0}
             >
@@ -2444,7 +2628,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
+
       {/* Delete Account Confirmation Modal */}
       <Dialog open={showDeleteAccountModal} onOpenChange={setShowDeleteAccountModal}>
         <DialogContent className="sm:max-w-[425px]">

@@ -50,6 +50,24 @@ export interface OptionsPlan {
   company_valuation_date?: string;
 }
 
+export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+export type RecurringTargetType = 'holding' | 'cash';
+
+export interface RecurringInvestment {
+  id: string;
+  target_type: RecurringTargetType;
+  symbol?: string;                    // Required if target_type is "holding"
+  amount: number;
+  currency: string;                   // USD, ILS, EUR, GBP, etc.
+  frequency: RecurringFrequency;
+  start_date: string;                 // ISO date (YYYY-MM-DD)
+  end_date?: string | null;
+  day_of_week?: number | null;        // 0-6 for weekly/biweekly (0=Monday)
+  day_of_month?: number | null;       // 1-31 for monthly/quarterly/yearly
+  is_active: boolean;
+  description?: string;
+}
+
 export interface AccountHolding {
   symbol: string;
   units: number;
@@ -93,6 +111,7 @@ export interface AccountInfo {
   rsu_plans?: RSUPlan[];
   espp_plans?: ESPPPlan[];
   options_plans?: OptionsPlan[];
+  recurring_investments?: RecurringInvestment[];
   rsu_vesting_data?: any[];
   account_properties?: {
     [currency: string]: number;
