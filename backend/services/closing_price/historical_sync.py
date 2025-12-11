@@ -1,12 +1,10 @@
 """
 Historical Price Synchronization Service
 
-This module handles the periodic synchronization of stock prices from the in-memory
-live cache to MongoDB's historical_prices time-series collection.
+This module handles the periodic synchronization of historical stock prices
+from external data sources (yfinance, pymaya) to MongoDB's historical_prices collection.
 
-Runs every 3 hours with two stages:
-- Stage 1: Fast cache transfer (in-memory -> MongoDB)
-- Stage 2: Self-healing backfill for lagging/failed symbols
+Runs every 3 hours to backfill/update historical data for tracked symbols.
 """
 import asyncio
 import yfinance as yf
@@ -15,23 +13,18 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 
 from .database import db, ensure_connections
-from .live_price_cache import get_live_price_cache
-from .models import HistoricalPrice
-from .stock_fetcher import FinnhubFetcher
-from config import settings
 
 
 class HistoricalSyncService:
-    """Service for syncing live prices to historical data"""
+    """Service for syncing historical prices from external data sources (yfinance, pymaya)"""
     
     def __init__(self):
-        self.live_cache = get_live_price_cache()
-        self.finnhub_fetcher = FinnhubFetcher(settings.finnhub_api_key) if settings.finnhub_api_key else None
+        pass
     
     async def run_daily_sync(self) -> Dict[str, Any]:
         """
         Main entry point for the cron job.
-        Runs both Stage 1 (fast transfer) and Stage 2 (self-healing).
+        Fetches historical data from external sources (yfinance/pymaya) for tracked symbols.
         
         Returns:
             Dictionary with sync statistics
@@ -41,20 +34,14 @@ class HistoricalSyncService:
         try:
             await ensure_connections()
             
-            # Stage 1: DISABLED - Historical prices now only come from historical data sources
-            # Live prices are kept separate in the live cache (no mixing)
-            stage1_result = {"success_count": 0, "error_count": 0, "message": "Stage 1 disabled - using historical sources only"}
+            # Fetch historical data from external sources (yfinance/pymaya)
+            sync_result = await self._sync_historical_data()
             
-            # Stage 2: Self-healing backfill (fetches real historical data from yfinance/pymaya)
-            stage2_result = await self._stage2_self_healing()
-            
-            # Combined results
             result = {
                 "sync_timestamp": datetime.utcnow().isoformat(),
-                "stage1": stage1_result,
-                "stage2": stage2_result,
-                "total_symbols_updated": stage1_result["success_count"] + stage2_result["success_count"],
-                "total_errors": stage1_result["error_count"] + stage2_result["error_count"]
+                "total_symbols_updated": sync_result["success_count"],
+                "total_errors": sync_result["error_count"],
+                "details": sync_result
             }
             
             logger.info(f"[HISTORICAL SYNC] Completed - Updated {result['total_symbols_updated']} symbols, {result['total_errors']} errors")
@@ -66,126 +53,21 @@ class HistoricalSyncService:
             return {
                 "sync_timestamp": datetime.utcnow().isoformat(),
                 "error": str(e),
-                "stage1": {"success_count": 0, "error_count": 0},
-                "stage2": {"success_count": 0, "error_count": 0}
+                "total_symbols_updated": 0,
+                "total_errors": 1
             }
     
-    async def _stage1_fast_transfer(self) -> Dict[str, Any]:
+    async def _sync_historical_data(self) -> Dict[str, Any]:
         """
-        Stage 1: Fast Cache Transfer
+        Sync historical data from external sources (yfinance/pymaya).
         
-        Transfer prices from in-memory cache to MongoDB for symbols that were
-        successfully updated recently (within last 3 hours).
+        Backfills historical data for symbols that haven't been updated recently
+        or are missing data.
         
         Returns:
-            Dictionary with stage statistics
+            Dictionary with sync statistics
         """
-        logger.info("[STAGE 1] Starting fast cache transfer")
-        
-        try:
-            # Define date ranges
-            now = datetime.utcnow()
-            three_hours_ago = now - timedelta(hours=3)
-            
-            # Use a consistent closing timestamp (4:00 PM ET = 20:00 UTC)
-            closing_timestamp = now.replace(hour=20, minute=0, second=0, microsecond=0)
-            
-            # If current time is before 20:00 UTC, use yesterday's closing time
-            if now.hour < 20:
-                closing_timestamp = closing_timestamp - timedelta(days=1)
-            
-            # Get symbols that were updated recently (in last 3 hours)
-            up_to_date_symbols = await db.database.tracked_symbols.find({
-                "last_update": {"$gte": three_hours_ago}
-            }).to_list(length=None)
-            
-            logger.info(f"[STAGE 1] Found {len(up_to_date_symbols)} up-to-date symbols")
-            
-            if not up_to_date_symbols:
-                return {"success_count": 0, "error_count": 0, "message": "No up-to-date symbols"}
-            
-            # Get prices from in-memory cache
-            documents_to_insert = []
-            symbols_to_update = []
-            
-            for symbol_doc in up_to_date_symbols:
-                symbol = symbol_doc["symbol"]
-                live_data = self.live_cache.get(symbol)
-                
-                if live_data and live_data.get("price"):
-                    # Check if this timestamp already exists (avoid duplicates)
-                    existing = await db.database.historical_prices.find_one({
-                        "symbol": symbol,
-                        "timestamp": closing_timestamp
-                    })
-                    
-                    if not existing:
-                        # DEBUG: Log what we're about to insert
-                        logger.debug(f"[STAGE 1] {symbol}: price from cache = {live_data['price']}")
-                        
-                        # Prepare document for insertion
-                        documents_to_insert.append({
-                            "symbol": symbol,
-                            "timestamp": closing_timestamp,
-                            "close": live_data["price"]
-                        })
-                        symbols_to_update.append(symbol)
-            
-            # Execute insert_many if we have documents
-            if documents_to_insert:
-                try:
-                    result = await db.database.historical_prices.insert_many(
-                        documents_to_insert,
-                        ordered=False  # Continue even if some inserts fail
-                    )
-                    inserted_count = len(result.inserted_ids)
-                    logger.info(f"[STAGE 1] Inserted {inserted_count} historical records")
-                    
-                    # Update last_update for successful symbols
-                    await db.database.tracked_symbols.update_many(
-                        {"symbol": {"$in": symbols_to_update}},
-                        {"$set": {"last_update": now}}
-                    )
-                    
-                    return {
-                        "success_count": len(symbols_to_update),
-                        "error_count": 0,
-                        "inserted": inserted_count
-                    }
-                except Exception as e:
-                    # Some duplicates might exist, but that's okay
-                    logger.warning(f"[STAGE 1] Partial insert completed with duplicates: {e}")
-                    
-                    # Still update last_update for symbols we attempted
-                    await db.database.tracked_symbols.update_many(
-                        {"symbol": {"$in": symbols_to_update}},
-                        {"$set": {"last_update": now}}
-                    )
-                    
-                    return {
-                        "success_count": len(symbols_to_update),
-                        "error_count": 0,
-                        "inserted": len(documents_to_insert),
-                        "note": "Some documents may have been duplicates"
-                    }
-            else:
-                return {"success_count": 0, "error_count": 0, "message": "No new prices to insert"}
-            
-        except Exception as e:
-            logger.error(f"[STAGE 1] Error during fast transfer: {e}")
-            return {"success_count": 0, "error_count": 1, "error": str(e)}
-    
-    async def _stage2_self_healing(self) -> Dict[str, Any]:
-        """
-        Stage 2: Self-Healing Backfill
-        
-        Backfill historical data for symbols that haven't been updated in a while
-        (missing updates due to downtime, failures, etc.).
-        
-        Returns:
-            Dictionary with stage statistics
-        """
-        logger.info("[STAGE 2] Starting self-healing backfill")
+        logger.info("[HISTORICAL SYNC] Starting historical data sync")
         
         try:
             now = datetime.utcnow()
@@ -219,9 +101,9 @@ class HistoricalSyncService:
                 if not has_data:
                     # No historical data despite being recently tracked - needs initial backfill
                     lagging_symbols.append(symbol_doc)
-                    logger.info(f"[STAGE 2] {symbol} recently tracked but no historical data - will backfill")
+                    logger.info(f"[HISTORICAL SYNC] {symbol} recently tracked but no historical data - will backfill")
             
-            logger.info(f"[STAGE 2] Found {len(lagging_symbols)} symbols needing backfill")
+            logger.info(f"[HISTORICAL SYNC] Found {len(lagging_symbols)} symbols needing backfill")
             
             if not lagging_symbols:
                 return {"success_count": 0, "error_count": 0, "message": "No lagging symbols"}
@@ -244,15 +126,15 @@ class HistoricalSyncService:
                     # If symbol has < 50 records, fetch full year (it's incomplete!)
                     if record_count < 50:
                         start_date = (now - timedelta(days=365)).date()
-                        logger.info(f"[STAGE 2] {symbol} has only {record_count} records, fetching full year")
+                        logger.info(f"[HISTORICAL SYNC] {symbol} has only {record_count} records, fetching full year")
                     elif not last_update:
                         # No previous update - get full year for initial population
                         start_date = (now - timedelta(days=365)).date()
-                        logger.info(f"[STAGE 2] {symbol} never updated, fetching full year")
+                        logger.info(f"[HISTORICAL SYNC] {symbol} never updated, fetching full year")
                     else:
                         # Has enough records, just fill the gap since last update
                         start_date = (last_update + timedelta(days=1)).date()
-                        logger.info(f"[STAGE 2] {symbol} gap-filling from {start_date}")
+                        logger.info(f"[HISTORICAL SYNC] {symbol} gap-filling from {start_date}")
                     
                     end_date = now.date()
                     
@@ -260,7 +142,7 @@ class HistoricalSyncService:
                     if start_date > end_date:
                         continue
                     
-                    logger.info(f"[STAGE 2] Backfilling {symbol} from {start_date} to {end_date}")
+                    logger.info(f"[HISTORICAL SYNC] Backfilling {symbol} from {start_date} to {end_date}")
                     
                     # Fetch historical data based on market type
                     historical_data = await self._fetch_historical_data(symbol, market, start_date, end_date)
@@ -277,13 +159,13 @@ class HistoricalSyncService:
                         )
                         
                         success_count += 1
-                        logger.info(f"[STAGE 2] Successfully backfilled {symbol}: {len(historical_data)} records")
+                        logger.info(f"[HISTORICAL SYNC] Successfully backfilled {symbol}: {len(historical_data)} records")
                     else:
-                        logger.warning(f"[STAGE 2] No historical data available for {symbol}")
+                        logger.warning(f"[HISTORICAL SYNC] No historical data available for {symbol}")
                         error_count += 1
                         
                 except Exception as e:
-                    logger.error(f"[STAGE 2] Error backfilling {symbol}: {e}")
+                    logger.error(f"[HISTORICAL SYNC] Error backfilling {symbol}: {e}")
                     error_count += 1
             
             return {
@@ -293,7 +175,7 @@ class HistoricalSyncService:
             }
             
         except Exception as e:
-            logger.error(f"[STAGE 2] Error during self-healing: {e}")
+            logger.error(f"[HISTORICAL SYNC] Error during self-healing: {e}")
             return {"success_count": 0, "error_count": 1, "error": str(e)}
     
     async def _fetch_historical_data(
