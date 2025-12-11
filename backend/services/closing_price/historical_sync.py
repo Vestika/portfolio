@@ -41,10 +41,11 @@ class HistoricalSyncService:
         try:
             await ensure_connections()
             
-            # Stage 1: Fast cache transfer
-            stage1_result = await self._stage1_fast_transfer()
+            # Stage 1: DISABLED - Historical prices now only come from historical data sources
+            # Live prices are kept separate in the live cache (no mixing)
+            stage1_result = {"success_count": 0, "error_count": 0, "message": "Stage 1 disabled - using historical sources only"}
             
-            # Stage 2: Self-healing backfill
+            # Stage 2: Self-healing backfill (fetches real historical data from yfinance/pymaya)
             stage2_result = await self._stage2_self_healing()
             
             # Combined results
