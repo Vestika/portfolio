@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
 import LoadingScreen from './LoadingScreen';
@@ -39,13 +39,44 @@ import {
 
 const HEADER_HEIGHT = 128; // px, adjust if needed
 
+// Helper to map pathname to NavigationView
+const pathnameToView = (pathname: string): NavigationView | null => {
+  const viewMap: Record<string, NavigationView> = {
+    '/portfolio': 'portfolios',
+    '/portfolios': 'portfolios',
+    '/news': 'news',
+    '/analyst': 'analyst',
+    '/tags': 'tags',
+    '/tools': 'tools',
+    '/config-gallery': 'config-gallery',
+  };
+  return viewMap[pathname] || null;
+};
+
+// Helper to map NavigationView to pathname
+const viewToPathname = (view: NavigationView): string => {
+  const pathMap: Record<NavigationView, string> = {
+    'portfolios': '/portfolio',
+    'news': '/news',
+    'analyst': '/analyst',
+    'tags': '/tags',
+    'tools': '/tools',
+    'config-gallery': '/config-gallery',
+  };
+  return pathMap[view];
+};
+
 const App: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Check if we're on the import or upload page
   const isImportPage = location.pathname === '/import';
   const isUploadPage = location.pathname === '/import/upload';
+
+  // Derive activeView from URL pathname
+  const activeView: NavigationView = pathnameToView(location.pathname) || 'portfolios';
   
   // Use the new ALL portfolios data context
   const { 
@@ -64,15 +95,13 @@ const App: React.FC = () => {
     allPortfoliosData
   } = usePortfolioData();
 
-  // Local state for UI and navigation
+  // Local state for UI
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasCheckedPortfolios, setHasCheckedPortfolios] = useState(false);
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
-  const [activeView, setActiveView] = useState<NavigationView>('portfolios');
-  const [subView, setSubView] = useState<'profile' | 'settings' | null>(null);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();
@@ -315,16 +344,19 @@ const App: React.FC = () => {
   };
 
   const handleProfileClick = () => {
-    setSubView('profile');
+    navigate('/profile');
   };
 
   const handleSettingsClick = () => {
-    setSubView('settings');
+    navigate('/settings');
   };
 
   const handleViewChange = (view: NavigationView) => {
-    setActiveView(view);
-    setSubView(null); // Clear subView when switching to main views
+    navigate(viewToPathname(view));
+  };
+
+  const handleBackToPortfolio = () => {
+    navigate('/portfolio');
   };
 
   const handleSignOutClick = async () => {
@@ -451,7 +483,7 @@ const App: React.FC = () => {
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
-      {activeView === 'portfolios' && (
+      {location.pathname === '/portfolio' && (
         <div
           className="sticky z-30 bg-gray-900"
           style={{ top: '37px', height: HEADER_HEIGHT, minHeight: HEADER_HEIGHT }}
@@ -491,71 +523,99 @@ const App: React.FC = () => {
         {/* Main View Content */}
         <div
           className="flex-1 transition-all duration-300 w-full"
-
         >
           <main className="flex-1">
-            {/* Profile and Settings take precedence over main views */}
-            {subView === 'profile' && (
-              <ProfileView onBackToPortfolio={() => setSubView(null)} />
-            )}
-            {subView === 'settings' && (
-              <SettingsView 
-                onToggleVisibility={handleToggleVisibility}
-                isValueVisible={isValueVisible}
-                onBackToPortfolio={() => setSubView(null)}
+            <Routes>
+              {/* Profile and Settings routes */}
+              <Route
+                path="/profile"
+                element={<ProfileView onBackToPortfolio={handleBackToPortfolio} />}
               />
-            )}
-            
-            {/* Main views only show when no subView is active */}
-            {!subView && activeView === 'portfolios' && (
-              (() => {
-                // Show skeleton if we have portfolios but data is still loading
-                const shouldShowSkeleton = !portfolioMetadata || !portfolioData || (isLoading && hasCheckedPortfolios);
-                console.log('🎯 [APP] Main content loading decision:', {
-                  isLoading,
-                  hasCheckedPortfolios,
-                  hasPortfolioMetadata: !!portfolioMetadata,
-                  hasPortfolioData: !!portfolioData,
-                  shouldShowSkeleton,
-                  willShowPortfolioView: !shouldShowSkeleton
-                });
-                return shouldShowSkeleton;
-              })() ? (
-                <PortfolioMainSkeleton />
-              ) : (
-                <PortfolioView
-                  portfolioMetadata={portfolioMetadata}
-                  portfolioData={portfolioData}
-                  holdingsData={holdingsData}
-                  availablePortfolios={availablePortfolios}
-                  isValueVisible={isValueVisible}
-                  mainRSUVesting={mainRSUVesting}
-                  mainOptionsVesting={mainOptionsVesting}
-                  mainESPPPlans={mainESPPPlans}
-                  globalPrices={allPortfoliosData?.global_current_prices || {}}
-                  selectedAccountNames={selectedAccountNames}
-                />
-              )
-            )}
-            {!subView && activeView === 'news' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <NewsViewSkeleton /> : <NewsView />
-            )}
-            {!subView && activeView === 'analyst' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <AIChatViewSkeleton /> : <AIChatView />
-            )}
-            {!subView && activeView === 'tags' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ManageTagsViewSkeleton /> : <ManageTagsView />
-            )}
-            {!subView && activeView === 'tools' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ToolsView />
-            )}
-            {!subView && activeView === 'config-gallery' && (
-              (!portfolioMetadata || (isLoading && hasCheckedPortfolios)) ? <ViewTransitionSkeleton /> : <ConfigGalleryView />
-            )}
+              <Route
+                path="/settings"
+                element={
+                  <SettingsView
+                    onToggleVisibility={handleToggleVisibility}
+                    isValueVisible={isValueVisible}
+                    onBackToPortfolio={handleBackToPortfolio}
+                  />
+                }
+              />
+
+              {/* Main views */}
+              <Route
+                path="/portfolio"
+                element={
+                  (() => {
+                    const shouldShowSkeleton = !portfolioMetadata || !portfolioData || (isLoading && hasCheckedPortfolios);
+                    return shouldShowSkeleton ? (
+                      <PortfolioMainSkeleton />
+                    ) : (
+                      <PortfolioView
+                        portfolioMetadata={portfolioMetadata}
+                        portfolioData={portfolioData}
+                        holdingsData={holdingsData}
+                        availablePortfolios={availablePortfolios}
+                        isValueVisible={isValueVisible}
+                        mainRSUVesting={mainRSUVesting}
+                        mainOptionsVesting={mainOptionsVesting}
+                        mainESPPPlans={mainESPPPlans}
+                        globalPrices={allPortfoliosData?.global_current_prices || {}}
+                        selectedAccountNames={selectedAccountNames}
+                      />
+                    );
+                  })()
+                }
+              />
+              <Route
+                path="/news"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <NewsViewSkeleton />
+                    : <NewsView />
+                }
+              />
+              <Route
+                path="/analyst"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <AIChatViewSkeleton />
+                    : <AIChatView />
+                }
+              />
+              <Route
+                path="/tags"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ManageTagsViewSkeleton />
+                    : <ManageTagsView />
+                }
+              />
+              <Route
+                path="/tools"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/config-gallery"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ConfigGalleryView />
+                }
+              />
+
+              {/* Default redirect to portfolio */}
+              <Route path="/" element={<Navigate to="/portfolio" replace />} />
+
+              {/* Catch-all redirect to portfolio for any unknown routes */}
+              <Route path="*" element={<Navigate to="/portfolio" replace />} />
+            </Routes>
           </main>
         </div>
-
-
       </div>
       </div>
       </UserProfileProvider>

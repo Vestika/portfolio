@@ -12,6 +12,7 @@ import {
   Library
 } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { AboutModal } from './AboutModal'
 import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
@@ -27,20 +28,46 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 
 export type NavigationView = 'portfolios' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
+// Map view IDs to URL paths
+const viewToPath: Record<NavigationView, string> = {
+  'portfolios': '/portfolio',
+  'news': '/news',
+  'analyst': '/analyst',
+  'tags': '/tags',
+  'tools': '/tools',
+  'config-gallery': '/config-gallery',
+}
+
+// Map URL paths to view IDs
+const pathToView: Record<string, NavigationView> = {
+  '/portfolio': 'portfolios',
+  '/portfolios': 'portfolios',
+  '/news': 'news',
+  '/analyst': 'analyst',
+  '/tags': 'tags',
+  '/tools': 'tools',
+  '/config-gallery': 'config-gallery',
+}
+
 interface TopBarProps {
-  activeView: NavigationView
-  onViewChange: (view: NavigationView) => void
+  activeView?: NavigationView // Now optional, derived from URL
+  onViewChange?: (view: NavigationView) => void // Now optional
   onProfileClick?: () => void
   onSettingsClick?: () => void
   onSignOutClick?: () => void
   onFeedbackClick?: () => void
 }
 
-export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick, onFeedbackClick }: TopBarProps) {
+export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick, onFeedbackClick }: TopBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const { googleProfileData } = useUserProfile()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Derive active view from URL, fallback to prop
+  const activeView: NavigationView = pathToView[location.pathname] || propActiveView || 'portfolios'
   
   const navigationItems = [
     {
@@ -76,7 +103,8 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
   ]
 
   const handleNavClick = (view: NavigationView) => {
-    onViewChange(view)
+    navigate(viewToPath[view])
+    onViewChange?.(view) // Call callback if provided (for backwards compatibility)
     setIsMobileMenuOpen(false)
   }
 
@@ -99,7 +127,7 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
           {navigationItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onViewChange(item.id)}
+              onClick={() => handleNavClick(item.id)}
               className={`flex items-center gap-2 text-sm font-medium transition-all duration-200 border-none bg-transparent p-0 focus:outline-none focus:ring-0 active:outline-none ${
                 activeView === item.id 
                   ? 'text-white border-b-2 border-white' 
@@ -149,22 +177,22 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
               className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
               sideOffset={8}
             >
-              <DropdownMenuItem 
-                onClick={onProfileClick}
+              <DropdownMenuItem
+                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
                 className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
                 <User size={16} className="mr-3 text-gray-400" />
                 <span className="font-medium">Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={onSettingsClick}
+              <DropdownMenuItem
+                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
                 className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
                 <Settings size={16} className="mr-3 text-gray-400" />
                 <span className="font-medium">Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={onSignOutClick}
                 className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
               >
@@ -189,7 +217,7 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
           </button>
           {/* Notification Bell for mobile */}
           <NotificationBell />
-          
+
           {/* Profile Icon for mobile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -202,27 +230,27 @@ export function TopBar({ activeView, onViewChange, onProfileClick, onSettingsCli
                 />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
+            <DropdownMenuContent
+              align="end"
               className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
               sideOffset={8}
             >
-              <DropdownMenuItem 
-                onClick={onProfileClick}
+              <DropdownMenuItem
+                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
                 className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
                 <User size={16} className="mr-3 text-gray-400" />
                 <span className="font-medium">Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={onSettingsClick}
+              <DropdownMenuItem
+                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
                 className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
               >
                 <Settings size={16} className="mr-3 text-gray-400" />
                 <span className="font-medium">Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={onSignOutClick}
                 className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
               >
