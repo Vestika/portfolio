@@ -21,6 +21,7 @@ logger = logging.Logger(__name__)
 class BackfillSymbolRequest(BaseModel):
     symbol: str
     market: str = "US"
+    force: bool = False  # Force re-fetch even if data exists
 
 @router.get("/market-status")
 async def get_market_status(user=Depends(get_current_user)):
@@ -213,10 +214,11 @@ async def backfill_symbol(request: BackfillSymbolRequest, user=Depends(get_curre
     Backfill historical data for a specific symbol.
     
     This is useful when adding a new symbol or re-fetching data for a symbol.
+    Set force=true to re-fetch even if data already exists.
     """
     try:
         sync_service = get_sync_service()
-        result = await sync_service.backfill_new_symbol(request.symbol, request.market)
+        result = await sync_service.backfill_new_symbol(request.symbol, request.market, force=request.force)
         
         if result["status"] == "success":
             return {

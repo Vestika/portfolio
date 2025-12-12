@@ -218,7 +218,15 @@ class HistoricalSyncService:
         try:
             # Handle currency symbols (FX:XXX format)
             yf_symbol = symbol
-            if symbol.startswith('FX:'):
+            
+            # Strip exchange prefixes for yfinance (NYSE:BTC -> BTC, NASDAQ:AAPL -> AAPL)
+            if symbol.startswith('NYSE:'):
+                yf_symbol = symbol[5:]
+                logger.info(f"[FETCH HISTORICAL] Stripped NYSE prefix: {symbol} -> {yf_symbol}")
+            elif symbol.startswith('NASDAQ:'):
+                yf_symbol = symbol[7:]
+                logger.info(f"[FETCH HISTORICAL] Stripped NASDAQ prefix: {symbol} -> {yf_symbol}")
+            elif symbol.startswith('FX:'):
                 # Convert FX:USD to USDILS=X, FX:EUR to EURILS=X, etc.
                 currency_code = symbol[3:]  # Remove "FX:" prefix
                 
@@ -241,6 +249,8 @@ class HistoricalSyncService:
                     yf_symbol = f"{currency_code}ILS=X"
                     logger.info(f"[FETCH HISTORICAL] Converting {symbol} to yfinance format: {yf_symbol}")
             
+            logger.info(f"[FETCH HISTORICAL] Fetching {yf_symbol} from {start_date} to {end_date} (requesting ~{(end_date - start_date).days} days)")
+            
             # Run yfinance in executor to avoid blocking
             def _fetch_sync():
                 # Add 1 day to end_date because yfinance end is exclusive
@@ -248,14 +258,14 @@ class HistoricalSyncService:
                 data = yf.download(yf_symbol, start=start_date, end=end_inclusive, progress=False, auto_adjust=True)
                 return data
             
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             data = await asyncio.wait_for(
                 loop.run_in_executor(None, _fetch_sync),
-                timeout=10.0  # 10 second timeout
+                timeout=30.0  # 30 second timeout for large date ranges
             )
             
             if data.empty:
-                logger.warning(f"[FETCH HISTORICAL] No data from yfinance for {symbol}")
+                logger.warning(f"[FETCH HISTORICAL] No data from yfinance for {yf_symbol} (original: {symbol})")
                 return None
             
             # Parse the data into our format
@@ -263,6 +273,7 @@ class HistoricalSyncService:
             
             if "Close" in data.columns:
                 prices = data["Close"].dropna()
+                logger.info(f"[FETCH HISTORICAL] yfinance returned {len(prices)} raw data points for {yf_symbol}")
                 
                 for dt in prices.index:
                     # Convert to datetime at market close time (20:00 UTC = 4:00 PM ET)
@@ -285,13 +296,21 @@ class HistoricalSyncService:
                     })
             
             logger.info(f"[FETCH HISTORICAL] Retrieved {len(historical_data)} data points for {symbol} from yfinance")
+            
+            # Warn if we got very few records for a full year request
+            expected_trading_days = (end_date - start_date).days * 5 / 7  # Rough estimate
+            if len(historical_data) < 50 and expected_trading_days > 100:
+                logger.warning(f"[FETCH HISTORICAL] Only got {len(historical_data)} records for {symbol}, expected ~{int(expected_trading_days)}. The security may be new or have limited trading history.")
+            
             return historical_data if historical_data else None
             
         except asyncio.TimeoutError:
-            logger.warning(f"[FETCH HISTORICAL] Timeout fetching data for {symbol}")
+            logger.warning(f"[FETCH HISTORICAL] Timeout fetching data for {symbol} (30s)")
             return None
         except Exception as e:
             logger.error(f"[FETCH HISTORICAL] Error fetching yfinance data for {symbol}: {e}")
+            import traceback
+            logger.error(f"[FETCH HISTORICAL] Traceback: {traceback.format_exc()}")
             return None
     
     async def _fetch_tase_historical(
@@ -313,7 +332,7 @@ class HistoricalSyncService:
                 price_history = list(maya.get_price_history(security_id=str(symbol), from_date=start_date))
                 return price_history
             
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             price_history = await asyncio.wait_for(
                 loop.run_in_executor(None, _fetch_sync),
                 timeout=10.0
@@ -416,7 +435,7 @@ class HistoricalSyncService:
             logger.error(f"[INSERT HISTORICAL] Error inserting data for {symbol}: {e}")
             raise
     
-    async def backfill_new_symbol(self, symbol: str, market: str = "US") -> Dict[str, Any]:
+    async def backfill_new_symbol(self, symbol: str, market: str = "US", force: bool = False) -> Dict[str, Any]:
         """
         Backfill historical data for a newly added symbol (Logic 2).
         
@@ -425,11 +444,12 @@ class HistoricalSyncService:
         Args:
             symbol: Stock symbol to backfill
             market: Market type (US, TASE, CURRENCY, CRYPTO)
+            force: If True, re-fetch data even if sufficient records exist
         
         Returns:
             Dictionary with backfill results
         """
-        logger.info(f"[BACKFILL NEW] Starting backfill for new symbol: {symbol}")
+        logger.info(f"[BACKFILL NEW] Starting backfill for symbol: {symbol} (market={market}, force={force})")
         
         try:
             await ensure_connections()
@@ -438,7 +458,7 @@ class HistoricalSyncService:
             existing = await db.database.tracked_symbols.find_one({"symbol": symbol})
             
             # Check if symbol has sufficient historical data (not just tracked)
-            if existing:
+            if existing and not force:
                 # Count how many historical records exist
                 record_count = await db.database.historical_prices.count_documents({"symbol": symbol})
                 
@@ -452,6 +472,9 @@ class HistoricalSyncService:
                     }
                 else:
                     logger.info(f"[BACKFILL NEW] Symbol {symbol} only has {record_count} records, backfilling full year")
+            elif force:
+                record_count = await db.database.historical_prices.count_documents({"symbol": symbol})
+                logger.info(f"[BACKFILL NEW] Force mode: Symbol {symbol} has {record_count} records, re-fetching full year")
             else:
                 logger.info(f"[BACKFILL NEW] Symbol {symbol} not yet tracked, backfilling")
             

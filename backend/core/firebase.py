@@ -1,8 +1,9 @@
 import firebase_admin
 import json
 from firebase_admin import credentials, auth
-from fastapi import HTTPException, Request
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from config import settings
 
@@ -57,7 +58,10 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid authentication scheme"}
+            )
         
         token = auth_header.split(" ")[1]
         
@@ -66,6 +70,9 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
             decoded_token = auth.verify_id_token(token)
             request.state.user = decoded_token
         except Exception as e:
-            raise HTTPException(status_code=401, detail="Invalid token or expired token")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid token or expired token"}
+            )
         
         return await call_next(request) 

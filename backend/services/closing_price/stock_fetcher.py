@@ -226,7 +226,7 @@ class TaseFetcher(StockFetcher):
                     return None
             
             # Run in thread pool
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, _fetch_sync)
             return result
             
@@ -263,7 +263,7 @@ class TaseFetcher(StockFetcher):
                     return "closed"
             
             # Run in thread pool
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             status = await loop.run_in_executor(None, _get_tase_status)
             return {"tase_market_status": status}
             

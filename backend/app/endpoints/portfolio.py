@@ -1265,7 +1265,7 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
         def fetch_batch_sync():
             return yf.download(symbols, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
         
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         data = await asyncio.wait_for(
             loop.run_in_executor(None, fetch_batch_sync),
             timeout=15.0  # 15 second timeout for batch call (increased for 30-day requests)
@@ -1363,7 +1363,7 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                 return yf.download("ILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
             
             # Run the blocking yfinance call in a separate thread with timeout
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 data = await asyncio.wait_for(
                     loop.run_in_executor(None, fetch_usd_ils_sync),
@@ -1436,7 +1436,7 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         """Synchronous FX fetching for new FX: symbols"""
                         return yf.download(yfinance_symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                     
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     try:
                         data = await asyncio.wait_for(
                             loop.run_in_executor(None, fetch_fx_sync),
@@ -1524,7 +1524,7 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                     return yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
                 
                 # Run the blocking yfinance call in a separate thread with timeout
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 try:
                     data = await asyncio.wait_for(
                         loop.run_in_executor(None, fetch_fx_sync),
@@ -1653,7 +1653,7 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
         def fetch_prices_sync():
             return yf.download(request.symbol, start=min_day, end=end_inclusive_plus_one, progress=False, auto_adjust=True)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             data = await asyncio.wait_for(
                 loop.run_in_executor(None, fetch_prices_sync),
@@ -2110,7 +2110,7 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                             def fetch_fx_sync():
                                 import yfinance as _yf
                                 return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                            loop = asyncio.get_event_loop()
+                            loop = asyncio.get_running_loop()
                             try:
                                 data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
                             except asyncio.TimeoutError:
@@ -2232,7 +2232,7 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                     def fetch_fx_sync():
                         import yfinance as _yf
                         return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     try:
                         data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
                     except asyncio.TimeoutError:
