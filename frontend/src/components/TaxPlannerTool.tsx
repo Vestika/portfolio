@@ -375,6 +375,10 @@ export function TaxPlannerTool() {
 
   // Delete a saved scenario from backend
   const deleteSavedScenario = async (scenarioId: string) => {
+    const scenario = savedScenarios.find(s => s.scenarioId === scenarioId)
+    const confirmed = window.confirm(`Are you sure you want to delete "${scenario?.name || 'this scenario'}"? This cannot be undone.`)
+    if (!confirmed) return
+
     try {
       await taxApi.deleteScenario(scenarioId)
       setSavedScenarios(prev => prev.filter(s => s.scenarioId !== scenarioId))
