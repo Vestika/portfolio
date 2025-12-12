@@ -13,6 +13,7 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 
 from .database import db, ensure_connections
+from .yfinance_lock import yfinance_lock as _yfinance_lock
 
 
 class HistoricalSyncService:
@@ -251,18 +252,24 @@ class HistoricalSyncService:
             
             logger.info(f"[FETCH HISTORICAL] Fetching {yf_symbol} from {start_date} to {end_date} (requesting ~{(end_date - start_date).days} days)")
             
-            # Run yfinance in executor to avoid blocking
-            def _fetch_sync():
-                # Add 1 day to end_date because yfinance end is exclusive
-                end_inclusive = end_date + timedelta(days=1)
-                data = yf.download(yf_symbol, start=start_date, end=end_inclusive, progress=False, auto_adjust=True)
-                return data
-            
-            loop = asyncio.get_running_loop()
-            data = await asyncio.wait_for(
-                loop.run_in_executor(None, _fetch_sync),
-                timeout=30.0  # 30 second timeout for large date ranges
-            )
+            # Use global lock to serialize yfinance calls - prevents data mixing between symbols
+            async with _yfinance_lock:
+                logger.debug(f"[FETCH HISTORICAL] Acquired yfinance lock for {yf_symbol}")
+                
+                # Run yfinance in executor to avoid blocking
+                def _fetch_sync():
+                    # Add 1 day to end_date because yfinance end is exclusive
+                    end_inclusive = end_date + timedelta(days=1)
+                    data = yf.download(yf_symbol, start=start_date, end=end_inclusive, progress=False, auto_adjust=True)
+                    return data
+                
+                loop = asyncio.get_running_loop()
+                data = await asyncio.wait_for(
+                    loop.run_in_executor(None, _fetch_sync),
+                    timeout=30.0  # 30 second timeout for large date ranges
+                )
+                
+                logger.debug(f"[FETCH HISTORICAL] Released yfinance lock for {yf_symbol}")
             
             if data.empty:
                 logger.warning(f"[FETCH HISTORICAL] No data from yfinance for {yf_symbol} (original: {symbol})")
