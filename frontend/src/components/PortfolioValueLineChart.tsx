@@ -3,6 +3,16 @@ import Highcharts from 'highcharts'
 import { AccountInfo } from '../types'
 import { Layers, User } from 'lucide-react'
 
+// Chart marker interface for reusable event markers
+export interface ChartMarker {
+  id: string
+  date: string  // ISO date string
+  label: string
+  description?: string
+  color?: string
+  icon?: string  // Emoji or icon identifier
+}
+
 interface PortfolioValueLineChartProps {
   accounts: AccountInfo[]
   selectedAccountNames: string[]
@@ -11,6 +21,7 @@ interface PortfolioValueLineChartProps {
   isValueVisible: boolean
   globalSecurities: Record<string, { symbol: string; name: string; security_type: string; currency: string }>
   globalCurrentPrices: Record<string, { price: number; original_price?: number; currency: string }>
+  markers?: ChartMarker[]  // Optional markers for events like user join date
 }
 
 export function PortfolioValueLineChart({
@@ -20,7 +31,8 @@ export function PortfolioValueLineChart({
   baseCurrency,
   isValueVisible,
   globalSecurities,
-  globalCurrentPrices
+  globalCurrentPrices,
+  markers = []
 }: PortfolioValueLineChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstanceRef = useRef<Highcharts.Chart | null>(null)
@@ -498,13 +510,51 @@ export function PortfolioValueLineChart({
 
     chartInstanceRef.current = Highcharts.chart(chartRef.current, {
       chart: {
-        type: 'spline',  // Spline for smooth curves
         backgroundColor: 'transparent',
         height: 400,
         style: {
           fontFamily: 'inherit'
-        }
-        // Use default margins to prevent Y-axis label trimming
+        },
+        // Enable zooming on the x-axis (time axis)
+        zooming: {
+          type: 'x',
+          resetButton: {
+            theme: {
+              fill: '#1f2937',  // Dark background
+              stroke: '#60a5fa',  // Blue border
+              'stroke-width': 1,
+              r: 4,  // Border radius
+              padding: 8,  // Internal padding for text
+              width: 85,  // Explicit width to contain text
+              height: 24,  // Explicit height
+              style: {
+                color: '#e5e7eb',  // Light gray text
+                fontSize: '11px',
+                fontWeight: '500',
+                textAlign: 'center'
+              },
+              states: {
+                hover: {
+                  fill: '#374151',  // Lighter on hover
+                  style: {
+                    color: '#fff'
+                  }
+                }
+              }
+            },
+            position: {
+              align: 'right',
+              verticalAlign: 'top',
+              x: -10,
+              y: 10
+            }
+          }
+        },
+        panning: {
+          enabled: true,
+          type: 'x'
+        },
+        panKey: 'shift'  // Hold shift to pan instead of zoom
       },
       title: {
         text: undefined  // Title now in React header
@@ -519,7 +569,31 @@ export function PortfolioValueLineChart({
         },
         gridLineColor: '#374151',
         lineColor: '#374151',
-        tickLength: 0
+        tickLength: 0,
+        // Add vertical plotLines for markers (e.g., user join date)
+        plotLines: markers.map(marker => {
+          const markerTimestamp = new Date(marker.date).getTime()
+          return {
+            value: markerTimestamp,
+            color: '#6b7280',  // Light gray color
+            width: 1,  // Very thin line
+            zIndex: 3,
+            dashStyle: 'Solid' as const,  // Solid line (not dashed)
+            label: {
+              text: `${marker.icon || '📍'} ${marker.label}`,
+              rotation: 0,
+              y: 20,  // Position below the top to avoid header overlap
+              verticalAlign: 'top',
+              align: 'left',
+              x: 5,  // Small offset from the line
+              style: {
+                color: '#9ca3af',  // Light gray text
+                fontSize: '10px',
+                fontWeight: 'normal'
+              }
+            }
+          }
+        })
       },
       yAxis: {
         title: {
@@ -593,16 +667,17 @@ export function PortfolioValueLineChart({
         }
       },
       plotOptions: {
-        spline: {
+        series: {
           marker: {
-            enabled: false,
+            enabled: false,  // Disable markers globally for all series types
             states: {
               hover: {
-                enabled: true,
-                radius: 5
+                enabled: false  // No markers on hover either
               }
             }
-          },
+          }
+        },
+        spline: {
           lineWidth: 3,  // Thicker line
           states: {
             hover: {
@@ -638,7 +713,10 @@ export function PortfolioValueLineChart({
           color: isBenchmark ? '#f59e0b' : colors[index % colors.length], // Gold for S&P 500
           dashStyle: isBenchmark ? 'Dash' : 'Solid', // Dashed line for benchmark
           lineWidth: isBenchmark ? 2 : 3, // Thinner line for benchmark
-          zIndex: isBenchmark ? 1 : 2 // Portfolio lines on top
+          zIndex: isBenchmark ? 1 : 2, // Portfolio lines on top
+          marker: {
+            enabled: false  // Explicitly disable markers for each series
+          }
         } as Highcharts.SeriesSplineOptions
       })
     })
@@ -649,14 +727,14 @@ export function PortfolioValueLineChart({
         chartInstanceRef.current = null
       }
     }
-  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode])
+  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode, markers])
 
   // Show empty state if no data
   if (seriesData.length === 0 || seriesData[0].data.length === 0) {
     return (
       <div className="w-full rounded-lg mb-6">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-white">Portfolio Value - Last 30 Days</h3>
+          <h3 className="text-sm font-bold text-white">Portfolio Value - Last Year</h3>
         </div>
         <div className="flex items-center justify-center h-96 text-muted-foreground">
           <p className="text-sm">No historical data available</p>
@@ -671,8 +749,8 @@ export function PortfolioValueLineChart({
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-bold text-white">
           {viewMode === 'separate' 
-            ? 'Portfolio Performance - Last 30 Days (Normalized)' 
-            : 'Portfolio Value - Last 30 Days'}
+            ? 'Estimated Portfolio Performance (Normalized)' 
+            : 'Estimated Portfolio Value'}
         </h3>
         
         {/* View Mode Toggle */}

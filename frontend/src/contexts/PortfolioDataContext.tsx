@@ -342,7 +342,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           historicalPromise = api.post(`/prices/historical`, {
             symbols: allSymbols,  // Include both stocks AND currencies for historical FX rates
             base_currency: targetBaseCurrency,
-            days: 30,
+            days: 365,  // 1 year of data for portfolio value chart
           });
         }
 
