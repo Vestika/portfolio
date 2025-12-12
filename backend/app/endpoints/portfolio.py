@@ -610,7 +610,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
             print(f"📊 [COLLECT PRICES CACHED] Added {len(fx_symbols_needed)} FX symbols for currency conversion: {fx_symbols_needed}")
         
         manager = PriceManager()
-        cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=30)
+        cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=365)  # 1 year of data
         
         # Use cached data for symbols that have it
         # Ensure symbol keys match exactly what was requested (defensive normalization)
@@ -1327,25 +1327,34 @@ async def collect_options_vesting(all_portfolios_data: dict) -> dict:
     return all_options_vesting
 
 
-async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date, current_prices: dict = None) -> dict:
+async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, current_prices: dict = None) -> dict:
     """
     Fetch historical prices for multiple yfinance symbols in a single API call.
     Returns: dict of {symbol: historical_prices_list}
+    
+    Args:
+        symbols: List of stock symbols to fetch
+        start_date: Start date for historical data
+        end_date: End date for historical data (typically today)
+        current_prices: Optional dict of current prices for fallback data
     """
     historical_data = {}
     
     if not symbols:
         return historical_data
     
+    # Calculate number of days for the requested range (for fallback data)
+    days_requested = (end_date - start_date).days
+    
     try:
-        print(f"📈 [YFINANCE BATCH] Fetching 7d trend for {len(symbols)} symbols in SINGLE batch call")
+        print(f"📈 [YFINANCE BATCH] Fetching {days_requested} days of history for {len(symbols)} symbols in SINGLE batch call")
         
         # Use thread-safe yfinance wrapper
         data = await _safe_yfinance_download(
             symbols, 
-            start=seven_days_ago, 
-            end=today + timedelta(days=1),
-            timeout=15.0
+            start=start_date, 
+            end=end_date + timedelta(days=1),
+            timeout=30.0  # Increased timeout for larger date ranges
         )
         
         if not data.empty:
@@ -1377,11 +1386,11 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
                                 })
                     else:
                         print(f"⚠️ [YFINANCE BATCH] No data for symbol: {symbol}")
-                        # Create fallback data using current price
+                        # Create fallback data using current price for the requested date range
                         fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
                         historical_data[symbol] = []
-                        for i in range(7, 0, -1):
-                            day = today - timedelta(days=i)
+                        for i in range(days_requested, 0, -1):
+                            day = end_date - timedelta(days=i)
                             historical_data[symbol].append({
                                 "date": day.strftime("%Y-%m-%d"),
                                 "price": fallback_price
@@ -1390,13 +1399,13 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
         print(f"✅ [YFINANCE BATCH] Completed batch fetch for {len(symbols)} symbols")
         
     except asyncio.TimeoutError:
-        print(f"⏰ [YFINANCE BATCH] Timeout after 5s - using fallback data for all {len(symbols)} symbols")
+        print(f"⏰ [YFINANCE BATCH] Timeout - using fallback data for all {len(symbols)} symbols")
         # Create fallback data for all symbols using current prices
         for symbol in symbols:
             fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
             historical_data[symbol] = []
-            for i in range(7, 0, -1):
-                day = today - timedelta(days=i)
+            for i in range(days_requested, 0, -1):
+                day = end_date - timedelta(days=i)
                 historical_data[symbol].append({
                     "date": day.strftime("%Y-%m-%d"),
                     "price": fallback_price
@@ -1407,8 +1416,8 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
         for symbol in symbols:
             fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
             historical_data[symbol] = []
-            for i in range(7, 0, -1):
-                day = today - timedelta(days=i)
+            for i in range(days_requested, 0, -1):
+                day = end_date - timedelta(days=i)
                 historical_data[symbol].append({
                     "date": day.strftime("%Y-%m-%d"),
                     "price": fallback_price

@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import { SecurityHolding, HoldingsTableData, TagDefinition, TagLibrary, TagType, TagValue } from './types';
+import { SecurityHolding, HoldingsTableData, TagDefinition, TagLibrary, TagType, TagValue, HistoricalPrice } from './types';
 import HoldingsHeatmap from './HoldingsHeatmap';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import TagDisplay from './components/TagDisplay';
 import TagEditor from './components/TagEditor';
 import EarningsCalendar from './components/EarningsCalendar';
-import { Select, SelectContent, SelectItem, SelectTrigger } from './components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
 import { Card, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { Switch } from './components/ui/switch';
 import { Separator } from './components/ui/separator';
 import TagAPI from './utils/tag-api';
-import PortfolioAPI from './utils/portfolio-api';
+import PortfolioAPI, { MiniChartTimeframe } from './utils/portfolio-api';
 import { HoldingsTableSkeleton, HoldingsHeatmapSkeleton } from './components/PortfolioSkeleton';
 
 import {
@@ -757,6 +757,56 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   const [viewMode, setViewMode] = useState<'table' | 'heatmap'>('table');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [isGroupedByTag, setIsGroupedByTag] = useState(false);
+  
+  // Mini-chart timeframe preference (7d, 30d, 1y)
+  const [miniChartTimeframe, setMiniChartTimeframe] = useState<MiniChartTimeframe>('7d');
+  
+  // Load mini-chart timeframe preference from backend
+  useEffect(() => {
+    const loadTimeframePreference = async () => {
+      try {
+        const timeframe = await PortfolioAPI.getMiniChartTimeframe();
+        setMiniChartTimeframe(timeframe);
+      } catch (error) {
+        console.error('Failed to load mini-chart timeframe preference:', error);
+      }
+    };
+    loadTimeframePreference();
+  }, []);
+  
+  // Handle timeframe change - persist to backend
+  const handleTimeframeChange = useCallback(async (newTimeframe: MiniChartTimeframe) => {
+    setMiniChartTimeframe(newTimeframe);
+    try {
+      await PortfolioAPI.setMiniChartTimeframe(newTimeframe);
+    } catch (error) {
+      console.error('Failed to save mini-chart timeframe preference:', error);
+    }
+  }, []);
+  
+  // Helper function to filter historical prices based on timeframe
+  const filterHistoricalPrices = useCallback((prices: HistoricalPrice[]): HistoricalPrice[] => {
+    if (!prices || prices.length === 0) return prices;
+    
+    const now = new Date();
+    let cutoffDate: Date;
+    
+    switch (miniChartTimeframe) {
+      case '7d':
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '1y':
+        cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+    
+    return prices.filter(p => new Date(p.date) >= cutoffDate);
+  }, [miniChartTimeframe]);
 
   // Tag management state
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
@@ -1319,7 +1369,30 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                   </>
                 )}
                 <th className="px-4 text-center text-sm font-medium text-gray-200 hidden md:table-cell">Earnings</th>
-                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">7d Trend</th>
+                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">
+                  <div className="flex items-center justify-center gap-1">
+                    <Select 
+                      value={miniChartTimeframe} 
+                      onValueChange={(value) => handleTimeframeChange(value as MiniChartTimeframe)}
+                    >
+                      <SelectTrigger className="w-16 h-6 text-xs border-gray-600/50 bg-gray-700/30 hover:bg-gray-700/50 focus:ring-1 focus:ring-blue-500/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-800 border-gray-600/30 backdrop-blur-sm shadow-lg min-w-[80px]">
+                        <SelectItem value="7d" className="text-gray-200 hover:bg-gray-700/50 focus:bg-gray-700/50 cursor-pointer text-xs">
+                          7d
+                        </SelectItem>
+                        <SelectItem value="30d" className="text-gray-200 hover:bg-gray-700/50 focus:bg-gray-700/50 cursor-pointer text-xs">
+                          1m
+                        </SelectItem>
+                        <SelectItem value="1y" className="text-gray-200 hover:bg-gray-700/50 focus:bg-gray-700/50 cursor-pointer text-xs">
+                          1y
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span>Trend</span>
+                  </div>
+                </th>
 
               </tr>
             </thead>
@@ -1541,7 +1614,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               
                               return shouldShowChart ? (
                                 <MiniChart 
-                                  data={holding.historical_prices} 
+                                  data={filterHistoricalPrices(holding.historical_prices)} 
                                   symbol={holding.symbol} 
                                   currency={holding.original_currency} 
                                   baseCurrency={dataWithRealEarnings.base_currency}
@@ -1911,7 +1984,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         
                         return shouldShowChart ? (
                           <MiniChart 
-                            data={holding.historical_prices} 
+                            data={filterHistoricalPrices(holding.historical_prices)} 
                             symbol={holding.symbol} 
                             currency={holding.original_currency} 
                             baseCurrency={dataWithRealEarnings.base_currency}

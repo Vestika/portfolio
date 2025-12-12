@@ -1,12 +1,13 @@
 // React is not needed for JSX in modern React
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import PieChart from '../PieChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
 import ESPPView from './ESPPView'
-import { PortfolioValueLineChart } from './PortfolioValueLineChart'
+import { PortfolioValueLineChart, ChartMarker } from './PortfolioValueLineChart'
 import { usePortfolioData } from '../contexts/PortfolioDataContext'
+import PortfolioAPI from '../utils/portfolio-api'
 import {
   PortfolioMetadata,
   PortfolioFile,
@@ -46,6 +47,22 @@ export function PortfolioView({
   const historicalPrices = allPortfoliosData?.global_historical_prices || {};
   const globalSecurities = allPortfoliosData?.global_securities || {};
   const globalCurrentPrices = allPortfoliosData?.global_current_prices || {};
+  
+  // Chart markers state (user join date, milestones, etc.)
+  const [chartMarkers, setChartMarkers] = useState<ChartMarker[]>([]);
+  
+  // Fetch chart markers on mount
+  useEffect(() => {
+    const fetchMarkers = async () => {
+      try {
+        const markers = await PortfolioAPI.getChartMarkers();
+        setChartMarkers(markers);
+      } catch (error) {
+        console.error('Failed to fetch chart markers:', error);
+      }
+    };
+    fetchMarkers();
+  }, []);
 
   // Create a name resolver function similar to HoldingsTable's getHoldingFullName
   const getSymbolName = useMemo(() => {
@@ -125,6 +142,7 @@ export function PortfolioView({
             isValueVisible={isValueVisible}
             globalSecurities={globalSecurities}
             globalCurrentPrices={globalCurrentPrices}
+            markers={chartMarkers}
           />
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
