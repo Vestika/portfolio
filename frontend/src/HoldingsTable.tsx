@@ -645,9 +645,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 if (sUpper === `FX:${symbolUpper}`) return true;
             }
             
-            // Handle other stock types, but exclude TASE which is now handled above.
-            if ((holding.security_type === 'stock' || holding.security_type === 'etf') && s.symbol_type !== 'tase') {
-                // This handles NYSE and NASDAQ
+            // Handle other stock types, but exclude TASE and currencies
+            if ((holding.security_type === 'stock' || holding.security_type === 'etf') && 
+                s.symbol_type !== 'tase' && s.symbol_type !== 'currency') {
+                // This handles NYSE and NASDAQ stocks only
                 const parts = sUpper.split(':');
                 if (parts.length === 2 && parts[1] === symbolUpper) {
                     return true;
@@ -1528,10 +1529,13 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           </td>
                           <td className="px-2 md:px-4 hidden md:table-cell">
                             {(() => {
-                              const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                              // Only treat cash holdings as base currency (not stocks with same symbol)
+                              const isBaseCurrency = holding.security_type === 'cash' && 
+                                (holding.symbol === dataWithRealEarnings.base_currency || 
+                                 holding.symbol === `FX:${dataWithRealEarnings.base_currency}`);
                               const isCurrency = holding.symbol.startsWith('FX:');
                               const isCrypto = holding.symbol.endsWith('-USD');
-                              const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                              const isLegacyUsd = holding.symbol === 'USD' && holding.security_type === 'cash' && dataWithRealEarnings.base_currency === 'ILS';
                               
                               const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;
                               
@@ -1894,10 +1898,13 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     <td className="px-2 md:px-4 hidden md:table-cell">
                       {/* Show 7-day trend for currencies, crypto, and non-base currency holdings */}
                       {(() => {
-                        const isBaseCurrency = holding.symbol === dataWithRealEarnings.base_currency;
+                        // Only treat cash holdings as base currency (not stocks with same symbol)
+                        const isBaseCurrency = holding.security_type === 'cash' && 
+                          (holding.symbol === dataWithRealEarnings.base_currency || 
+                           holding.symbol === `FX:${dataWithRealEarnings.base_currency}`);
                         const isCurrency = holding.symbol.startsWith('FX:');
                         const isCrypto = holding.symbol.endsWith('-USD');
-                        const isLegacyUsd = holding.symbol === 'USD' && dataWithRealEarnings.base_currency === 'ILS';
+                        const isLegacyUsd = holding.symbol === 'USD' && holding.security_type === 'cash' && dataWithRealEarnings.base_currency === 'ILS';
                         
                         // Show chart for: currencies, crypto, non-base currencies, or legacy USD
                         const shouldShowChart = isCurrency || isCrypto || isLegacyUsd || !isBaseCurrency;

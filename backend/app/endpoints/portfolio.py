@@ -35,6 +35,49 @@ closing_price_service = get_global_service()
 calculator_cache = {}
 maya = Maya()
 
+# Import shared yfinance lock - yfinance is NOT thread-safe
+# and concurrent calls can cause data to get mixed between symbols
+from services.closing_price.yfinance_lock import yfinance_lock as _yfinance_lock
+
+
+async def _safe_yfinance_download(symbols, start, end, progress=False, auto_adjust=True, timeout=15.0):
+    """
+    Thread-safe wrapper for yfinance.download().
+    
+    Uses a global lock to prevent concurrent yfinance calls which can cause
+    data to get mixed between different symbols (a known yfinance issue).
+    
+    Args:
+        symbols: Single symbol string or list of symbols
+        start: Start date
+        end: End date  
+        progress: Show progress bar (default False)
+        auto_adjust: Auto-adjust prices (default True)
+        timeout: Timeout in seconds (default 15.0)
+    
+    Returns:
+        DataFrame with downloaded data, or empty DataFrame on error/timeout
+    """
+    import pandas as pd
+    
+    async with _yfinance_lock:
+        def _download_sync():
+            return yf.download(symbols, start=start, end=end, progress=progress, auto_adjust=auto_adjust)
+        
+        try:
+            loop = asyncio.get_running_loop()
+            data = await asyncio.wait_for(
+                loop.run_in_executor(None, _download_sync),
+                timeout=timeout
+            )
+            return data
+        except asyncio.TimeoutError:
+            logger.warning(f"[YFINANCE] Timeout after {timeout}s for {symbols}")
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"[YFINANCE] Error downloading {symbols}: {e}")
+            return pd.DataFrame()
+
 
 def create_calculator(portfolio: Portfolio) -> PortfolioCalculator:
     """Create a PortfolioCalculator with the global closing price service"""
@@ -1261,14 +1304,12 @@ async def fetch_yfinance_batch(symbols: list, seven_days_ago: date, today: date,
     try:
         print(f"📈 [YFINANCE BATCH] Fetching 7d trend for {len(symbols)} symbols in SINGLE batch call")
         
-        # Single yfinance call for all symbols with timeout!
-        def fetch_batch_sync():
-            return yf.download(symbols, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-        
-        loop = asyncio.get_event_loop()
-        data = await asyncio.wait_for(
-            loop.run_in_executor(None, fetch_batch_sync),
-            timeout=15.0  # 15 second timeout for batch call (increased for 30-day requests)
+        # Use thread-safe yfinance wrapper
+        data = await _safe_yfinance_download(
+            symbols, 
+            start=seven_days_ago, 
+            end=today + timedelta(days=1),
+            timeout=15.0
         )
         
         if not data.empty:
@@ -1358,20 +1399,13 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             # This shows how USD strength changes relative to ILS over time
             logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d USD/ILS exchange rate trend for {symbol}")
             
-            def fetch_usd_ils_sync():
-                """Synchronous USD/ILS FX fetching to run in thread pool for true parallelism"""
-                return yf.download("ILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-            
-            # Run the blocking yfinance call in a separate thread with timeout
-            loop = asyncio.get_event_loop()
-            try:
-                data = await asyncio.wait_for(
-                    loop.run_in_executor(None, fetch_usd_ils_sync),
-                    timeout=5.0  # 5 second timeout for FX calls
-                )
-            except asyncio.TimeoutError:
-                logger.warning(f"⏰ [FETCH HISTORICAL] USD/ILS FX timeout after 5s - using fallback")
-                data = None
+            # Use thread-safe yfinance wrapper
+            data = await _safe_yfinance_download(
+                "ILS=X", 
+                start=seven_days_ago, 
+                end=today + timedelta(days=1),
+                timeout=5.0
+            )
             
             if not data.empty:
                 prices = data["Close"].dropna().round(4)  # More precision for exchange rates
@@ -1432,21 +1466,15 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         yfinance_symbol = f"{currency_code}{base_currency}=X"
                         logger.info(f"📊 [FETCH HISTORICAL] {base_currency}-based portfolio: using {yfinance_symbol}")
                     
-                    def fetch_fx_sync():
-                        """Synchronous FX fetching for new FX: symbols"""
-                        return yf.download(yfinance_symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                    
-                    loop = asyncio.get_event_loop()
-                    try:
-                        data = await asyncio.wait_for(
-                            loop.run_in_executor(None, fetch_fx_sync),
-                            timeout=5.0  # 5 second timeout for FX calls
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {yfinance_symbol} - using fallback")
-                        data = None
+                    # Use thread-safe yfinance wrapper
+                    data = await _safe_yfinance_download(
+                        yfinance_symbol, 
+                        start=seven_days_ago, 
+                        end=today + timedelta(days=1),
+                        timeout=5.0
+                    )
                         
-                    if data is not None and not data.empty:
+                    if not data.empty:
                         prices = data["Close"].dropna().round(6)  # High precision for exchange rates
                         logger.info(f"📈 [FETCH HISTORICAL] Raw yfinance data shape: {data.shape}, Close prices: {len(prices)}")
                         
@@ -1454,16 +1482,16 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         if base_currency == 'ILS' and currency_code != 'USD':
                             logger.info(f"🔄 [FETCH HISTORICAL] Fetching ILS=X to convert {currency_code}USD to {currency_code}ILS")
                             
-                            def fetch_usdils_sync():
-                                return yf.download("ILS=X", start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                            
                             try:
-                                usdils_data = await asyncio.wait_for(
-                                    loop.run_in_executor(None, fetch_usdils_sync),
+                                # Use thread-safe yfinance wrapper
+                                usdils_data = await _safe_yfinance_download(
+                                    "ILS=X", 
+                                    start=seven_days_ago, 
+                                    end=today + timedelta(days=1),
                                     timeout=5.0
                                 )
                                 
-                                if usdils_data is not None and not usdils_data.empty:
+                                if not usdils_data.empty:
                                     usdils_prices = usdils_data["Close"].dropna().round(6)
                                     logger.info(f"✅ [FETCH HISTORICAL] Got USDILS rates: {len(usdils_prices)} points")
                                     
@@ -1515,24 +1543,17 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
                         "price": 1.0
                     })
             else:
-                # Fetch FX data using yfinance - RUN IN THREAD for true parallelism
+                # Fetch FX data using yfinance - thread-safe wrapper
                 ticker = f"{from_currency}{to_currency}=X"
                 logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
                 
-                def fetch_fx_sync():
-                    """Synchronous FX fetching to run in thread pool for true parallelism"""
-                    return yf.download(ticker, start=seven_days_ago, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                
-                # Run the blocking yfinance call in a separate thread with timeout
-                loop = asyncio.get_event_loop()
-                try:
-                    data = await asyncio.wait_for(
-                        loop.run_in_executor(None, fetch_fx_sync),
-                        timeout=5.0  # 5 second timeout for FX calls
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(f"⏰ [FETCH HISTORICAL] FX timeout after 5s for {ticker} - using fallback")
-                    data = None
+                # Use thread-safe yfinance wrapper
+                data = await _safe_yfinance_download(
+                    ticker, 
+                    start=seven_days_ago, 
+                    end=today + timedelta(days=1),
+                    timeout=5.0
+                )
                 
                 if not data.empty:
                     prices = data["Close"].dropna().round(6)
@@ -1573,7 +1594,13 @@ async def fetch_historical_prices(symbol: str, security, original_price: float, 
             # Handle regular stock symbols using yfinance
             logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for stock symbol: {symbol} using yfinance")
             try:
-                data = yf.download(symbol, start=seven_days_ago, end=today + timedelta(days=1), progress=False)
+                # Use thread-safe yfinance wrapper
+                data = await _safe_yfinance_download(
+                    symbol, 
+                    start=seven_days_ago, 
+                    end=today + timedelta(days=1),
+                    timeout=10.0
+                )
                 
                 if not data.empty:
                     prices = data["Close"].dropna().round(2)
@@ -1649,18 +1676,13 @@ async def get_prices_by_dates(request: PricesByDatesRequest, user=Depends(get_cu
         # Add 1 day to end as yfinance end is exclusive
         end_inclusive_plus_one = max_day + timedelta(days=1)
 
-        # Fetch price series once for the whole range
-        def fetch_prices_sync():
-            return yf.download(request.symbol, start=min_day, end=end_inclusive_plus_one, progress=False, auto_adjust=True)
-
-        loop = asyncio.get_event_loop()
-        try:
-            data = await asyncio.wait_for(
-                loop.run_in_executor(None, fetch_prices_sync),
-                timeout=6.0,
-            )
-        except asyncio.TimeoutError:
-            data = None
+        # Use thread-safe yfinance wrapper
+        data = await _safe_yfinance_download(
+            request.symbol, 
+            start=min_day, 
+            end=end_inclusive_plus_one,
+            timeout=6.0
+        )
 
         # Build a map of available dates -> price
         available: dict[date, float] = {}
@@ -2107,15 +2129,14 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                             historical[cur] = series
                         else:
                             pair = f"{cur}{base_currency}=X"
-                            def fetch_fx_sync():
-                                import yfinance as _yf
-                                return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                            loop = asyncio.get_event_loop()
-                            try:
-                                data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
-                            except asyncio.TimeoutError:
-                                data = None
-                            if data is not None and not data.empty and 'Close' in data.columns:
+                            # Use thread-safe yfinance wrapper
+                            data = await _safe_yfinance_download(
+                                pair, 
+                                start=start, 
+                                end=today + timedelta(days=1),
+                                timeout=5.0
+                            )
+                            if not data.empty and 'Close' in data.columns:
                                 prices_series = data['Close'].dropna()
                                 series: list[dict[str, Any]] = []
                                 for dt in prices_series.index:
@@ -2229,15 +2250,14 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                     historical[f"FX:{cur}"] = seq  # Prefix with FX:
                 else:
                     pair = f"{cur}{base_currency}=X"
-                    def fetch_fx_sync():
-                        import yfinance as _yf
-                        return _yf.download(pair, start=start, end=today + timedelta(days=1), progress=False, auto_adjust=True)
-                    loop = asyncio.get_event_loop()
-                    try:
-                        data = await asyncio.wait_for(loop.run_in_executor(None, fetch_fx_sync), timeout=5.0)
-                    except asyncio.TimeoutError:
-                        data = None
-                    if data is not None and not data.empty and 'Close' in data.columns:
+                    # Use thread-safe yfinance wrapper
+                    data = await _safe_yfinance_download(
+                        pair, 
+                        start=start, 
+                        end=today + timedelta(days=1),
+                        timeout=5.0
+                    )
+                    if not data.empty and 'Close' in data.columns:
                         prices_series = data['Close'].dropna()
                         seq: list[dict[str, Any]] = []
                         for dt in prices_series.index:

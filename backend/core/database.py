@@ -15,7 +15,7 @@ class DatabaseManager:
 
     async def get_client(self) -> AsyncMongoClient:
         """Get or create AsyncMongoClient for the current event loop"""
-        current_loop = asyncio.get_event_loop()
+        current_loop = asyncio.get_running_loop()
         
         # Check if we need to create a new client for this event loop
         if self._client is None or self._loop != current_loop:
