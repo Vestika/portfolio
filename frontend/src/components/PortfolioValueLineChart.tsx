@@ -603,13 +603,11 @@ export function PortfolioValueLineChart({
           }
         },
         labels: {
+          enabled: isValueVisible,  // Hide labels when values are hidden
           style: {
             color: '#9ca3af'
           },
           formatter: function() {
-            if (!isValueVisible) {
-              return '•••'
-            }
             const val = this.value as number
             const sign = viewMode === 'separate' && val > 0 ? '+' : ''
             return sign + new Intl.NumberFormat('en-US', {
@@ -618,8 +616,8 @@ export function PortfolioValueLineChart({
           }
         },
         gridLineColor: '#374151',
-        min: isValueVisible ? (viewMode === 'separate' ? minValue - padding : Math.max(0, minValue - padding)) : undefined,
-        max: isValueVisible ? maxValue + padding : undefined,
+        min: viewMode === 'separate' ? minValue - padding : Math.max(0, minValue - padding),
+        max: maxValue + padding,
         plotLines: viewMode === 'separate' ? [{
           value: 0,
           color: '#6b7280',
@@ -629,7 +627,7 @@ export function PortfolioValueLineChart({
         }] : []
       },
       tooltip: {
-        enabled: isValueVisible,
+        enabled: true,  // Always show tooltip
         backgroundColor: '#1f2937',
         borderColor: '#374151',
         style: {
@@ -637,11 +635,17 @@ export function PortfolioValueLineChart({
         },
         formatter: function() {
           const date = Highcharts.dateFormat('%b %d, %Y', this.x as number)
+          const seriesName = (this as any).series?.name || 'Portfolio'
+          
+          if (!isValueVisible) {
+            // When values are hidden, show only date and series name
+            return `<b>${date}</b><br/>${seriesName}`
+          }
+          
           const yValue = this.y as number
           const value = new Intl.NumberFormat('en-US', {
             maximumFractionDigits: 0
           }).format(Math.abs(yValue))
-          const seriesName = (this as any).series?.name || 'Portfolio'
           
           if (viewMode === 'separate') {
             // Show change from start
@@ -649,7 +653,7 @@ export function PortfolioValueLineChart({
             return `<b>${date}</b><br/>${seriesName}<br/>Change: ${sign}${value} ${baseCurrency}`
           } else {
             // Show absolute value
-            return `<b>${date}</b><br/>Total Portfolio: ${value} ${baseCurrency}`
+            return `<b>${date}</b><br/>${seriesName}<br/>Value: ${value} ${baseCurrency}`
           }
         }
       },
@@ -709,7 +713,7 @@ export function PortfolioValueLineChart({
         return {
           name: series.name,
           type: 'spline',
-          data: isValueVisible ? series.data : series.data.map(p => [p[0], 0]),
+          data: series.data,  // Always show actual data, even when values are "hidden"
           color: isBenchmark ? '#f59e0b' : colors[index % colors.length], // Gold for S&P 500
           dashStyle: isBenchmark ? 'Dash' : 'Solid', // Dashed line for benchmark
           lineWidth: isBenchmark ? 2 : 3, // Thinner line for benchmark
