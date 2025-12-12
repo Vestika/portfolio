@@ -41,13 +41,16 @@ const HEADER_HEIGHT = 128; // px, adjust if needed
 
 // Helper to map pathname to NavigationView
 const pathnameToView = (pathname: string): NavigationView | null => {
+  // Handle /tools/* paths
+  if (pathname.startsWith('/tools')) {
+    return 'tools';
+  }
   const viewMap: Record<string, NavigationView> = {
     '/portfolio': 'portfolios',
     '/portfolios': 'portfolios',
     '/news': 'news',
     '/analyst': 'analyst',
     '/tags': 'tags',
-    '/tools': 'tools',
     '/config-gallery': 'config-gallery',
   };
   return viewMap[pathname] || null;
@@ -60,7 +63,7 @@ const viewToPathname = (view: NavigationView): string => {
     'news': '/news',
     'analyst': '/analyst',
     'tags': '/tags',
-    'tools': '/tools',
+    'tools': '/tools/tax-planner',
     'config-gallery': '/config-gallery',
   };
   return pathMap[view];
@@ -593,6 +596,26 @@ const App: React.FC = () => {
               />
               <Route
                 path="/tools"
+                element={<Navigate to="/tools/tax-planner" replace />}
+              />
+              <Route
+                path="/tools/tax-planner"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/tools/compound"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/tools/scenario"
                 element={
                   (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
                     ? <ViewTransitionSkeleton />
