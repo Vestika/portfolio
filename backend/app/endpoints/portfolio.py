@@ -592,6 +592,23 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         # Always include benchmark symbols (SPY for S&P 500)
         all_symbols_for_historical = list(symbol_securities.keys()) + benchmark_symbols_list
         
+        # IMPORTANT: Also fetch FX rates needed for currency conversion
+        # This is critical for the frontend line chart to properly convert historical prices to base currency
+        base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
+        fx_symbols_needed = set()
+        
+        for symbol, security in symbol_securities.items():
+            security_currency = security.currency.value if hasattr(security.currency, 'value') else str(security.currency)
+            # If the security's currency is different from base currency, we need the FX rate
+            if security_currency != base_currency:
+                fx_symbol = f"FX:{security_currency}"
+                fx_symbols_needed.add(fx_symbol)
+        
+        # Add FX symbols to the list
+        if fx_symbols_needed:
+            all_symbols_for_historical.extend(list(fx_symbols_needed))
+            print(f"📊 [COLLECT PRICES CACHED] Added {len(fx_symbols_needed)} FX symbols for currency conversion: {fx_symbols_needed}")
+        
         manager = PriceManager()
         cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=30)
         
@@ -623,6 +640,8 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         # For symbols without cached data, use simple fallback (flat line at current price)
         # This is MUCH faster than calling yfinance on every request!
         missing_symbols = []
+        
+        # Check regular securities
         for symbol in symbol_securities.keys():
             if symbol not in global_historical_prices or not global_historical_prices[symbol]:
                 # Simple fallback: flat line at current price
@@ -637,6 +656,23 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                     })
                 global_historical_prices[symbol] = fallback_data
                 missing_symbols.append(symbol)
+        
+        # Also check FX symbols needed for currency conversion
+        for fx_symbol in fx_symbols_needed:
+            if fx_symbol not in global_historical_prices or not global_historical_prices[fx_symbol]:
+                # For FX symbols, we need to add them to missing symbols for backfill
+                # Use fallback rate of 1.0 for now (will be corrected on backfill)
+                fallback_data = []
+                today = date.today()
+                for i in range(7, 0, -1):
+                    day = today - timedelta(days=i)
+                    fallback_data.append({
+                        "date": day.strftime("%Y-%m-%d"),
+                        "price": 1.0  # Fallback rate
+                    })
+                global_historical_prices[fx_symbol] = fallback_data
+                missing_symbols.append(fx_symbol)
+                print(f"⚠️ [COLLECT PRICES CACHED] FX symbol {fx_symbol} missing from cache - using fallback")
         
         cache_coverage = (symbols_with_data / len(symbol_securities)) * 100 if symbol_securities else 0
         print(f"📊 [COLLECT PRICES CACHED] Cache coverage: {cache_coverage:.1f}% ({symbols_with_data}/{len(symbol_securities)} symbols)")
@@ -653,15 +689,15 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                     sync_service = get_sync_service()
                     for symbol in missing_symbols[:10]:  # Limit to 10 per request
                         try:
-                            market = "US"  # Default
-                            if symbol in symbol_securities:
-                                sec = symbol_securities[symbol]
-                                if symbol.startswith("FX:"):
-                                    market = "CURRENCY"
-                                elif symbol.endswith("-USD"):
-                                    market = "CRYPTO"
-                                elif symbol.isdigit():
-                                    market = "TASE"
+                            # Determine market type from symbol
+                            if symbol.startswith("FX:"):
+                                market = "CURRENCY"
+                            elif symbol.endswith("-USD") and not symbol.isdigit():
+                                market = "CRYPTO"
+                            elif symbol.isdigit():
+                                market = "TASE"
+                            else:
+                                market = "US"
                             
                             await sync_service.backfill_new_symbol(symbol, market)
                         except Exception as e:
