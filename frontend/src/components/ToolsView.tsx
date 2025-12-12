@@ -1,18 +1,43 @@
 // React is not needed for JSX in modern React
 import { useState } from 'react'
-import { Wrench, Calculator, BarChart3, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Wrench, Calculator, BarChart3, Receipt, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
 import CompoundInterestTool from './CompoundInterestTool'
 import ScenarioComparisonTool from './ScenarioComparisonTool'
+import TaxPlannerTool from './TaxPlannerTool'
 
-export function ToolsView() {
-  type ToolKey = 'compound' | 'scenario'
-  const [activeTool, setActiveTool] = useState<ToolKey>('compound')
+export type ToolKey = 'tax-planner' | 'compound' | 'scenario'
+
+interface ToolsViewProps {
+  activeTool?: ToolKey
+}
+
+const tools: Array<{ key: ToolKey; name: string; description: string; icon: LucideIcon; path: string }> = [
+  { key: 'tax-planner', name: 'Tax Planner', description: 'Plan sells and estimate gains/losses', icon: Receipt, path: '/tools/tax-planner' },
+  { key: 'compound', name: 'Compound Interest', description: 'Project growth with deposits and rate', icon: Calculator, path: '/tools/compound' },
+  { key: 'scenario', name: 'Scenario Comparison', description: 'Compare mortgage vs investing cases', icon: BarChart3, path: '/tools/scenario' }
+]
+
+export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState<boolean>(true)
 
-  const tools: Array<{ key: ToolKey; name: string; description: string; icon: LucideIcon }> = [
-    { key: 'compound', name: 'Compound Interest', description: 'Project growth with deposits and rate', icon: Calculator },
-    { key: 'scenario', name: 'Scenario Comparison', description: 'Compare mortgage vs investing cases', icon: BarChart3 }
-  ]
+  // Derive active tool from URL or prop
+  const getActiveToolFromPath = (): ToolKey => {
+    const pathMap: Record<string, ToolKey> = {
+      '/tools/tax-planner': 'tax-planner',
+      '/tools/compound': 'compound',
+      '/tools/scenario': 'scenario',
+    }
+    return pathMap[location.pathname] || propActiveTool || 'tax-planner'
+  }
+
+  const activeTool = getActiveToolFromPath()
+
+  const handleToolClick = (tool: typeof tools[0]) => {
+    navigate(tool.path)
+  }
 
   return (
     <div className="min-h-[60vh] px-2 max-w-6xl mx-auto">
@@ -50,7 +75,7 @@ export function ToolsView() {
                         ? 'bg-blue-600/20 border-blue-500 text-white'
                         : 'bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-800'
                     }`}
-                    onClick={() => setActiveTool(t.key)}
+                    onClick={() => handleToolClick(t)}
                     title={t.name}
                     aria-label={t.name}
                   >
@@ -69,6 +94,7 @@ export function ToolsView() {
         </aside>
 
         <main className="flex-1 space-y-6">
+          {activeTool === 'tax-planner' && <TaxPlannerTool />}
           {activeTool === 'compound' && <CompoundInterestTool />}
           {activeTool === 'scenario' && <ScenarioComparisonTool />}
         </main>
