@@ -48,7 +48,7 @@ export function TaxPlannerTool() {
 
   // View state
   const [groupBy, setGroupBy] = useState<TaxGroupBy>('none')
-  const [showAddDropdown, setShowAddDropdown] = useState(false)
+  const [activeDropdownGroup, setActiveDropdownGroup] = useState<string | null>(null) // Track which group's dropdown is open
   const [addSearchTerm, setAddSearchTerm] = useState('')
   const addDropdownRef = useRef<HTMLDivElement>(null)
   const addInputRef = useRef<HTMLInputElement>(null)
@@ -60,16 +60,16 @@ export function TaxPlannerTool() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (addDropdownRef.current && !addDropdownRef.current.contains(event.target as Node)) {
-        setShowAddDropdown(false)
+        setActiveDropdownGroup(null)
         setAddSearchTerm('')
         clearSuggestions()
       }
     }
-    if (showAddDropdown) {
+    if (activeDropdownGroup) {
       document.addEventListener('mousedown', handleClickOutside)
     }
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showAddDropdown, clearSuggestions])
+  }, [activeDropdownGroup, clearSuggestions])
 
   // Fetch suggestions when search term changes
   useEffect(() => {
@@ -85,10 +85,10 @@ export function TaxPlannerTool() {
 
   // Focus input when dropdown opens
   useEffect(() => {
-    if (showAddDropdown && addInputRef.current) {
+    if (activeDropdownGroup && addInputRef.current) {
       addInputRef.current.focus()
     }
-  }, [showAddDropdown])
+  }, [activeDropdownGroup])
 
   // Focus tab name input when editing
   useEffect(() => {
@@ -251,7 +251,7 @@ export function TaxPlannerTool() {
     updateCurrentScenario({
       entries: [...currentScenario.entries, newEntry]
     })
-    setShowAddDropdown(false)
+    setActiveDropdownGroup(null)
     setAddSearchTerm('')
     clearSuggestions()
   }, [currentScenario, updateCurrentScenario, clearSuggestions])
@@ -259,6 +259,8 @@ export function TaxPlannerTool() {
   // Add entry from searched symbol
   const addFromSearch = useCallback((suggestion: SymbolSuggestion) => {
     if (!currentScenario) return
+    // Use the currency from the suggestion (based on the stock's exchange)
+    // e.g., NYSE/NASDAQ stocks use USD, TASE stocks use ILS
     const newEntry: TaxEntry = {
       id: crypto.randomUUID(),
       symbol: suggestion.symbol.replace(/^(NYSE:|NASDAQ:|TASE:)/, ''),
@@ -266,12 +268,12 @@ export function TaxPlannerTool() {
       units: 0,
       costBasisPerUnit: 0,
       sellPricePerUnit: 0,
-      currency: currentScenario.baseCurrency
+      currency: suggestion.currency || 'USD'
     }
     updateCurrentScenario({
       entries: [...currentScenario.entries, newEntry]
     })
-    setShowAddDropdown(false)
+    setActiveDropdownGroup(null)
     setAddSearchTerm('')
     clearSuggestions()
   }, [currentScenario, updateCurrentScenario, clearSuggestions])
@@ -293,7 +295,7 @@ export function TaxPlannerTool() {
     updateCurrentScenario({
       entries: [...currentScenario.entries, newEntry]
     })
-    setShowAddDropdown(false)
+    setActiveDropdownGroup(null)
     setAddSearchTerm('')
     clearSuggestions()
   }, [currentScenario, updateCurrentScenario, clearSuggestions])
@@ -446,13 +448,16 @@ export function TaxPlannerTool() {
 
       // Convert to target currency
       const rate = getExchangeRate(e.currency, targetCurrency)
+      const convertedPL = profitLoss * rate
 
       return {
         totalCostBasis: acc.totalCostBasis + (costBasis * rate),
         totalSellValue: acc.totalSellValue + (sellValue * rate),
-        totalProfitLoss: acc.totalProfitLoss + (profitLoss * rate)
+        totalProfitLoss: acc.totalProfitLoss + convertedPL,
+        totalGain: acc.totalGain + (convertedPL > 0 ? convertedPL : 0),
+        totalLoss: acc.totalLoss + (convertedPL < 0 ? Math.abs(convertedPL) : 0)
       }
-    }, { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0 })
+    }, { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, totalGain: 0, totalLoss: 0 })
 
     return {
       ...result,
@@ -464,7 +469,7 @@ export function TaxPlannerTool() {
 
   // Overall totals (converted to base currency)
   const totals = useMemo(() => {
-    if (!currentScenario) return { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, profitLossPercent: 0 }
+    if (!currentScenario) return { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, totalGain: 0, totalLoss: 0, profitLossPercent: 0 }
     return calculateTotals(currentScenario.entries, currentScenario.baseCurrency)
   }, [currentScenario, calculateTotals])
 
@@ -813,11 +818,11 @@ export function TaxPlannerTool() {
             </div>
 
             {/* Add entry row - outside table to avoid overflow clipping */}
-            <div ref={addDropdownRef} className="relative px-3 py-2 border-t border-gray-800">
-              {!showAddDropdown ? (
+            <div ref={activeDropdownGroup === group.groupName ? addDropdownRef : undefined} className="relative px-3 py-2 border-t border-gray-800">
+              {activeDropdownGroup !== group.groupName ? (
                 <div
                   className="flex items-center gap-2 text-gray-500 hover:text-gray-300 cursor-pointer py-1"
-                  onClick={() => setShowAddDropdown(true)}
+                  onClick={() => setActiveDropdownGroup(group.groupName)}
                 >
                   <Plus className="h-4 w-4" />
                   <span className="text-sm">Click to add entry...</span>
@@ -836,7 +841,7 @@ export function TaxPlannerTool() {
                       onChange={(e) => setAddSearchTerm(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
-                          setShowAddDropdown(false)
+                          setActiveDropdownGroup(null)
                           setAddSearchTerm('')
                           clearSuggestions()
                         }
@@ -951,24 +956,36 @@ export function TaxPlannerTool() {
 
       {/* Summary cards */}
       {currentScenario && currentScenario.entries.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-6">
           <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
             <div className="text-gray-400 text-sm">Total Cost Basis</div>
-            <div className="text-2xl font-semibold text-white">{numberFmtInt(totals.totalCostBasis)} {currentScenario.baseCurrency}</div>
+            <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalCostBasis)} {currentScenario.baseCurrency}</div>
           </div>
           <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
             <div className="text-gray-400 text-sm">Total Sell Value</div>
-            <div className="text-2xl font-semibold text-white">{numberFmtInt(totals.totalSellValue)} {currentScenario.baseCurrency}</div>
+            <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalSellValue)} {currentScenario.baseCurrency}</div>
           </div>
           <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Total Profit/Loss</div>
-            <div className={`text-2xl font-semibold ${totals.totalProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <div className="text-gray-400 text-sm">Net Profit/Loss</div>
+            <div className={`text-xl font-semibold ${totals.totalProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {totals.totalProfitLoss >= 0 ? '+' : ''}{numberFmtInt(totals.totalProfitLoss)} {currentScenario.baseCurrency}
+            </div>
+          </div>
+          <div className="bg-gray-900 border border-green-800/50 rounded-md p-4">
+            <div className="text-gray-400 text-sm">Total Gains</div>
+            <div className="text-xl font-semibold text-green-400">
+              +{numberFmtInt(totals.totalGain)} {currentScenario.baseCurrency}
+            </div>
+          </div>
+          <div className="bg-gray-900 border border-red-800/50 rounded-md p-4">
+            <div className="text-gray-400 text-sm">Total Losses</div>
+            <div className="text-xl font-semibold text-red-400">
+              -{numberFmtInt(totals.totalLoss)} {currentScenario.baseCurrency}
             </div>
           </div>
           <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
             <div className="text-gray-400 text-sm">Return %</div>
-            <div className={`text-2xl font-semibold ${totals.profitLossPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <div className={`text-xl font-semibold ${totals.profitLossPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {totals.profitLossPercent >= 0 ? '+' : ''}{numberFmt(totals.profitLossPercent)}%
             </div>
           </div>
