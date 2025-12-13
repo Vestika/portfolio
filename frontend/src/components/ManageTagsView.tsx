@@ -176,20 +176,6 @@ export function ManageTagsView() {
         <Card className="bg-gray-800/50 border-gray-600/30">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <Tags size={24} className="text-blue-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">{userDefinedTags.length}</p>
-                <p className="text-sm text-gray-400">Custom Tags</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800/50 border-gray-600/30">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
               <div className="p-2 bg-green-500/20 rounded-lg">
                 <Users size={24} className="text-green-400" />
               </div>
@@ -216,19 +202,19 @@ export function ManageTagsView() {
         </Card>
       </div>
 
-      {/* Custom Tags Section */}
+      {/* Tags Section */}
       <div className="mb-8">
         <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <span className="text-2xl">🏷️</span>
-          Your Custom Tags
+          Your Tags
         </h2>
         
         {userDefinedTags.length === 0 ? (
           <Card className="bg-gray-800/30 border-gray-600/30 border-dashed">
             <CardContent className="p-8 text-center">
               <Tags size={48} className="mx-auto mb-4 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-300 mb-2">No Custom Tags Yet</h3>
-              <p className="text-gray-400 mb-4">Create your first custom tag to start organizing your investments.</p>
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No Tags Yet</h3>
+              <p className="text-gray-400 mb-4">Create your first tag to start organizing your investments.</p>
                              <Button
                  onClick={() => setDefinitionManager({ isOpen: true })}
                  variant="default"
@@ -281,9 +267,6 @@ export function ManageTagsView() {
                         <Badge variant="outline" className={`text-xs ${typeInfo.color}`}>
                           {typeInfo.name}
                         </Badge>
-                        <Badge variant="outline" className="text-xs bg-blue-600/20 text-blue-300 border-blue-400/30">
-                          Custom
-                        </Badge>
                       </div>
 
                       <div className="text-sm text-gray-300">
@@ -303,60 +286,6 @@ export function ManageTagsView() {
             })}
           </div>
         )}
-      </div>
-
-      {/* Built-in Tags Section */}
-      <div>
-        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="text-2xl">✨</span>
-          Built-in Template Tags
-        </h2>
-        <p className="text-gray-400 mb-4">
-          These are pre-defined tags that you can use in your holdings. They appear in dropdowns when adding tags.
-        </p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {builtInTags.map((template) => {
-            const usage = usageStats[template.name] || { count: 0, symbols: [] };
-            const typeInfo = TAG_TYPE_INFO[template.tag_type];
-
-            return (
-              <Card key={template.name} className="bg-gray-700/30 border-gray-600/20">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-2 mb-3">
-                    <span className="text-xl">{typeInfo.icon}</span>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-200 truncate">{template.display_name}</h3>
-                      <p className="text-xs text-gray-400 truncate">{template.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="outline" className={`text-xs ${typeInfo.color}`}>
-                        {typeInfo.name}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs bg-yellow-600/20 text-yellow-300 border-yellow-400/30">
-                        Built-in
-                      </Badge>
-                    </div>
-
-                    <div className="text-sm text-gray-300">
-                      <span className="font-medium">{usage.count}</span>{' '}
-                      {usage.count === 1 ? 'holding' : 'holdings'}
-                      {usage.count > 0 && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          {usage.symbols.slice(0, 3).join(', ')}
-                          {usage.symbols.length > 3 && ` +${usage.symbols.length - 3} more`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
       </div>
 
       {/* Tag Definition Manager Dialog */}
