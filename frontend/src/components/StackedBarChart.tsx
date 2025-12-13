@@ -129,8 +129,8 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
       style: {
         color: '#e5e7eb'
       },
-      formatter: function() {
-        const pointIndex = (this.point as any).index;
+      formatter: function(this: any) {
+        const pointIndex = this.point?.index ?? this.x;
         const holding = data[pointIndex];
         
         let tooltipHtml = `<div style="padding: 8px;"><b>${getSymbolName ? getSymbolName(holding.symbol) : holding.name}</b><br/>`;
