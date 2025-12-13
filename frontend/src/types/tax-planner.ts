@@ -35,6 +35,8 @@ export interface TaxTotals {
   totalCostBasis: number
   totalSellValue: number
   totalProfitLoss: number
+  totalGain: number      // Sum of all positive P/L entries
+  totalLoss: number      // Sum of all negative P/L entries (as positive number)
   profitLossPercent: number
 }
 
