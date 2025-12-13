@@ -51,6 +51,7 @@ export interface AllPortfoliosData {
     chart_id: string;
     chart_title: string;
     tag_name: string;
+    chart_type?: string;
     portfolio_id?: string;
   }>;
   user_preferences: {
@@ -134,6 +135,7 @@ export interface QuoteData {
 
 export interface AggregationData {
   chart_title: string;
+  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
   chart_total: number;
   chart_data: Array<{
     label: string;
@@ -141,6 +143,20 @@ export interface AggregationData {
     percentage: number;
     units?: number;
     accounts?: Array<{ name: string; type: string }>;
+  }>;
+  // For stacked-bar charts (MAP tags)
+  map_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    weights: Record<string, number>;
+  }>;
+  // For sunburst charts (HIERARCHICAL tags)
+  hierarchical_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    path: string[];
   }>;
 }
 
@@ -693,14 +709,23 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       };
     }).sort((a, b) => b.value - a.value);
 
-    const filteredAggregations = [
+    const filteredAggregations: Array<{
+      chart_title: string;
+      chart_type?: string;
+      chart_total: number;
+      chart_data: Array<{ label: string; value: number; percentage: number }>;
+      map_data?: Array<{ symbol: string; name: string; value: number; weights: Record<string, number> }>;
+      hierarchical_data?: Array<{ symbol: string; name: string; value: number; path: string[] }>;
+    }> = [
       {
         chart_title: "Account Size Overview",
+        chart_type: 'pie',
         chart_total: Math.round(totalValue * 100) / 100,
         chart_data: accountData
       },
       {
         chart_title: "Holdings Aggregation By Symbol",
+        chart_type: 'pie',
         chart_total: Math.round(totalValue * 100) / 100,
         chart_data: symbolData.slice(0, 20) // Top 20
       }
@@ -783,7 +808,69 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         return;
       }
 
-      // Group holdings by tag value
+      const chartType = customChart.chart_type || 'pie';
+
+      // Handle MAP tags (stacked-bar charts)
+      if (chartType === 'stacked-bar' || tagDefinition.tag_type === 'map') {
+        const mapData: Array<{ symbol: string; name: string; value: number; weights: Record<string, number> }> = [];
+        let chartTotal = 0;
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          if (tagValue?.map_value && typeof tagValue.map_value === 'object') {
+            mapData.push({
+              symbol: holding.symbol,
+              name: holding.name || holding.symbol,
+              value: holding.total_value,
+              weights: tagValue.map_value
+            });
+            chartTotal += holding.total_value;
+          }
+        });
+        
+        if (mapData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: 'stacked-bar',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for stacked-bar, use map_data instead
+            map_data: mapData
+          });
+        }
+        return;
+      }
+
+      // Handle HIERARCHICAL tags (sunburst charts)
+      if (chartType === 'sunburst' || tagDefinition.tag_type === 'hierarchical') {
+        const hierarchicalData: Array<{ symbol: string; name: string; value: number; path: string[] }> = [];
+        let chartTotal = 0;
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          if (tagValue?.hierarchical_value && Array.isArray(tagValue.hierarchical_value)) {
+            hierarchicalData.push({
+              symbol: holding.symbol,
+              name: holding.name || holding.symbol,
+              value: holding.total_value,
+              path: tagValue.hierarchical_value
+            });
+            chartTotal += holding.total_value;
+          }
+        });
+        
+        if (hierarchicalData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: 'sunburst',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for sunburst, use hierarchical_data instead
+            hierarchical_data: hierarchicalData
+          });
+        }
+        return;
+      }
+
+      // Handle ENUM and BOOLEAN tags (pie/bar charts)
       const groups: Record<string, typeof allHoldings[0][]> = {};
       
       allHoldings.forEach(holding => {
@@ -825,6 +912,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
       filteredAggregations.push({
         chart_title: customChart.chart_title,
+        chart_type: chartType,
         chart_total: Math.round(chartTotal * 100) / 100,
         chart_data: chartData
       });

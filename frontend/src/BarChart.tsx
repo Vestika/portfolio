@@ -1,12 +1,8 @@
 import React from 'react';
-import Highcharts from 'highcharts/highstock';
+import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { ChartDataItem } from './types';
 import { useMediaQuery } from './hooks/useMediaQuery';
-
-// Import and initialize required modules for all chart types
-import 'highcharts/highcharts-more';
-import 'highcharts/modules/solid-gauge';
 
 interface BarChartProps {
   title: string;

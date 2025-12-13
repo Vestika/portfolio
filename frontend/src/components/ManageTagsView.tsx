@@ -2,13 +2,25 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
-import { Tags, Plus, Edit, Trash2, HelpCircle, X } from 'lucide-react';
-import { TagDefinition, TagLibrary, HoldingTags, TagType, TagValue } from '../types';
+import { Tags, Plus, Edit, Trash2, HelpCircle, X, PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+import { TagDefinition, TagLibrary, HoldingTags, TagType, TagValue, ChartDataItem } from '../types';
 import TagDefinitionManager from './TagDefinitionManager';
 import TagEditor from './TagEditor';
 import TagAPI from '../utils/tag-api';
+import PortfolioAPI from '../utils/portfolio-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
 import PortfolioSelector from '../PortfolioSelector';
+import PieChart from '../PieChart';
+import BarChart from '../BarChart';
+import StackedBarChart from './StackedBarChart';
+import SunburstChart from './SunburstChart';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: {
@@ -65,6 +77,35 @@ export function ManageTagsView() {
   
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [allHoldingTags, setAllHoldingTags] = useState<HoldingTags[]>([]);
+  
+  // Helper to find a holding's tag for the CURRENT portfolio
+  // IMPORTANT: A symbol can have MULTIPLE tag records with different portfolio_ids
+  // Priority: 1) Exact portfolio_id match, 2) Global tags (portfolio_id=null)
+  // We also need to MERGE tags from both if they exist
+  const getHoldingTagForCurrentPortfolio = (symbol: string): HoldingTags | undefined => {
+    // Get ALL tag records for this symbol
+    const allMatchesForSymbol = allHoldingTags.filter(ht => ht.symbol === symbol);
+    
+    if (allMatchesForSymbol.length === 0) {
+      return undefined;
+    }
+    
+    // Find exact portfolio match and global (null) match
+    const exactMatch = allMatchesForSymbol.find(ht => ht.portfolio_id === selectedPortfolioId);
+    const globalMatch = allMatchesForSymbol.find(ht => !ht.portfolio_id);
+    
+    // If we have both, MERGE their tags (portfolio-specific tags take precedence)
+    if (exactMatch && globalMatch) {
+      return {
+        ...globalMatch,
+        tags: { ...globalMatch.tags, ...exactMatch.tags },
+        portfolio_id: selectedPortfolioId || undefined // Mark as portfolio-specific
+      };
+    }
+    
+    // Return whichever one exists
+    return exactMatch || globalMatch;
+  };
   const [loading, setLoading] = useState(true);
   const [definitionManager, setDefinitionManager] = useState<{ 
     isOpen: boolean; 
@@ -77,9 +118,24 @@ export function ManageTagsView() {
   }>({ isOpen: false });
   const [expandedTagged, setExpandedTagged] = useState<Record<string, boolean>>({});
   const [expandedUntagged, setExpandedUntagged] = useState<Record<string, boolean>>({});
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
+  const [chartTypePreference, setChartTypePreference] = useState<Record<string, 'pie' | 'bar'>>({});
 
   const availablePortfolios = getAvailablePortfolios();
   const portfolioMetadata = currentPortfolioData?.portfolio_metadata;
+
+  // Initialize chart type preferences from existing charts
+  useEffect(() => {
+    if (allPortfoliosData?.custom_charts) {
+      const preferences: Record<string, 'pie' | 'bar'> = {};
+      allPortfoliosData.custom_charts.forEach(chart => {
+        if (chart.chart_type === 'pie' || chart.chart_type === 'bar') {
+          preferences[chart.tag_name] = chart.chart_type;
+        }
+      });
+      setChartTypePreference(preferences);
+    }
+  }, [allPortfoliosData?.custom_charts]);
 
   useEffect(() => {
     if (selectedPortfolioId) {
@@ -102,6 +158,7 @@ export function ManageTagsView() {
         TagAPI.getUserTagLibrary(),
         TagAPI.getAllHoldingTags() // Don't pass portfolio_id - get all tags
       ]);
+      
       setTagLibrary(library);
       setAllHoldingTags(allTags);
     } catch (error) {
@@ -185,6 +242,267 @@ export function ManageTagsView() {
     }
   };
 
+  const generateChartData = (tagName: string, tagDefinition: TagDefinition): ChartDataItem[] | null => {
+    // Only ENUM and BOOLEAN tags support this simple chart data format
+    if (tagDefinition.tag_type !== TagType.ENUM && tagDefinition.tag_type !== TagType.BOOLEAN) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; security_type: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, security_type: holding.security_type };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with tags
+    const allHoldings: any[] = [];
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      if (holdingTag && tagName in holdingTag.tags) {
+        allHoldings.push({
+          symbol: symbol,
+          units: holdingData.units,
+          security_type: holdingData.security_type,
+          tags: holdingTag.tags
+        });
+      }
+    }
+
+    // Group holdings by tag value
+    const groups: Record<string, any[]> = {};
+    
+    allHoldings.forEach(holding => {
+      const tagValue = holding.tags?.[tagName] as any;
+      let groupKey = 'Uncategorized';
+      
+      if (tagValue && typeof tagValue === 'object') {
+        if ('enum_value' in tagValue && tagValue.enum_value) {
+          groupKey = tagValue.enum_value as string;
+        } else if ('boolean_value' in tagValue) {
+          groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+        }
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(holding);
+    });
+
+    // Calculate values using global prices
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    const chartTotal = Object.values(groups).reduce((sum, holdings) => {
+      return sum + holdings.reduce((groupSum, h) => {
+        const priceData = globalPrices[h.symbol];
+        const value = priceData ? h.units * priceData.price : 0;
+        return groupSum + value;
+      }, 0);
+    }, 0);
+    
+    const chartData = Object.entries(groups).map(([groupName, holdings]) => {
+      const groupValue = holdings.reduce((sum, h) => {
+        const priceData = globalPrices[h.symbol];
+        const value = priceData ? h.units * priceData.price : 0;
+        return sum + value;
+      }, 0);
+      const percentage = chartTotal > 0 ? (groupValue / chartTotal) * 100 : 0;
+      
+      return {
+        label: groupName,
+        value: Math.round(groupValue * 100) / 100,
+        percentage: Math.round(percentage * 100) / 100
+      };
+    }).sort((a, b) => b.value - a.value);
+
+    return chartData.length > 0 ? chartData : null;
+  };
+
+  const generateMapChartData = (tagName: string): any[] | null => {
+    if (!currentPortfolioData?.accounts) return null;
+
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    const holdings: any[] = [];
+    
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+    
+    // Now process unique symbols
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        if (tagValue?.map_value && typeof tagValue.map_value === 'object') {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          holdings.push({
+            symbol: symbol,
+            name: holdingData.name,
+            value,
+            weights: tagValue.map_value
+          });
+        }
+      }
+    }
+
+    return holdings.length > 0 ? holdings : null;
+  };
+
+  const generateHierarchicalChartData = (tagName: string): any[] | null => {
+    if (!currentPortfolioData?.accounts) return null;
+
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    const holdings: any[] = [];
+    
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+    
+    // Now process unique symbols
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        if (tagValue?.hierarchical_value && Array.isArray(tagValue.hierarchical_value)) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          holdings.push({
+            symbol: symbol,
+            name: holdingData.name,
+            value,
+            path: tagValue.hierarchical_value
+          });
+        }
+      }
+    }
+
+    return holdings.length > 0 ? holdings : null;
+  };
+
+  const getExistingChart = (tagName: string) => {
+    if (!allPortfoliosData?.custom_charts) return null;
+    return allPortfoliosData.custom_charts.find(chart => 
+      chart.tag_name === tagName &&
+      (!chart.portfolio_id || chart.portfolio_id === selectedPortfolioId)
+    );
+  };
+
+  const getChartType = (tagDefinition: TagDefinition): string => {
+    switch (tagDefinition.tag_type) {
+      case TagType.ENUM:
+      case TagType.BOOLEAN:
+        // Use user preference, default to pie
+        return chartTypePreference[tagDefinition.name] || 'pie';
+      case TagType.MAP:
+        return 'stacked-bar';
+      case TagType.HIERARCHICAL:
+        return 'sunburst';
+      default:
+        return 'pie';
+    }
+  };
+
+  const handleAddChart = async (tagName: string, tagDefinition: TagDefinition) => {
+    try {
+      const chartTitle = `${tagDefinition.display_name} Distribution`;
+      const chartType = getChartType(tagDefinition);
+      
+      const requestData = {
+        chart_title: chartTitle,
+        tag_name: tagName,
+        chart_type: chartType,
+        portfolio_id: selectedPortfolioId || undefined
+      };
+      
+      const response = await PortfolioAPI.createCustomChart(requestData);
+      
+      // Update context immediately
+      const newChart = {
+        chart_id: response.chart_id,
+        chart_title: response.chart_title,
+        tag_name: response.tag_name,
+        chart_type: response.chart_type,
+        portfolio_id: response.portfolio_id
+      };
+      const updatedCharts = [
+        ...(allPortfoliosData?.custom_charts || []),
+        newChart
+      ];
+      updateCustomCharts(updatedCharts);
+    } catch (error) {
+      console.error('Error creating chart:', error);
+    }
+  };
+
+  const handleRemoveChart = async (chartId: string) => {
+    try {
+      await PortfolioAPI.deleteCustomChart(chartId);
+      
+      const updatedCharts = (allPortfoliosData?.custom_charts || []).filter(
+        chart => chart.chart_id !== chartId
+      );
+      updateCustomCharts(updatedCharts);
+    } catch (error) {
+      console.error('Error removing chart:', error);
+    }
+  };
+
+  const handleChartTypeToggle = async (tagName: string, chartType: 'pie' | 'bar') => {
+    // Update local state immediately for responsive UI
+    setChartTypePreference(prev => ({ ...prev, [tagName]: chartType }));
+    
+    // Find existing chart for this tag
+    const existingChart = getExistingChart(tagName);
+    if (existingChart) {
+      try {
+        // Update the chart type in the backend
+        const response = await PortfolioAPI.updateChartType(existingChart.chart_id, chartType);
+        
+        // Update context to reflect the change immediately
+        const updatedCharts = (allPortfoliosData?.custom_charts || []).map(chart =>
+          chart.chart_id === existingChart.chart_id
+            ? { ...chart, chart_type: response.chart_type }
+            : chart
+        );
+        updateCustomCharts(updatedCharts);
+      } catch (error) {
+        console.error('Error updating chart type:', error);
+        // Revert on error
+        const originalType = existingChart.chart_type as 'pie' | 'bar' | undefined;
+        setChartTypePreference(prev => ({ ...prev, [tagName]: originalType || 'pie' }));
+      }
+    }
+    // If no chart exists yet, just update the preview preference
+  };
+
   const getUserDefinedTags = (): TagDefinition[] => {
     if (!tagLibrary) return [];
     return Object.values(tagLibrary.tag_definitions);
@@ -203,10 +521,17 @@ export function ManageTagsView() {
 
   const getTaggedHoldings = (tagName: string): string[] => {
     const allHoldings = getAllHoldings();
-    // Tags are stored globally, but we filter to only show tags for holdings in current portfolio
-    const tagged = allHoldingTags
-      .filter(ht => tagName in ht.tags && allHoldings.includes(ht.symbol))
-      .map(ht => ht.symbol);
+    
+    // Use the portfolio-aware lookup to properly check each holding
+    // This handles the case where tags are split across multiple records
+    const tagged: string[] = [];
+    
+    for (const symbol of allHoldings) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      if (holdingTag && tagName in holdingTag.tags) {
+        tagged.push(symbol);
+      }
+    }
     
     return tagged;
   };
@@ -284,10 +609,12 @@ export function ManageTagsView() {
   const userDefinedTags = getUserDefinedTags();
   const allHoldings = getAllHoldings();
   
-  // Tags are stored globally (user-level), but we filter to only include holdings from current portfolio
-  // This allows the same symbol (e.g., AAPL) to have different tags in different portfolios
+  // Tags are portfolio-scoped - filter to include only tags that:
+  // 1. Belong to holdings in the current portfolio
+  // 2. Match the current portfolio's ID (or are global tags with no portfolio_id)
   const currentPortfolioHoldingTags = allHoldingTags.filter(ht => 
-    allHoldings.includes(ht.symbol)
+    allHoldings.includes(ht.symbol) &&
+    (ht.portfolio_id === selectedPortfolioId || !ht.portfolio_id)
   );
   
   const allTaggedSymbols = new Set(currentPortfolioHoldingTags.map(ht => ht.symbol));
@@ -296,7 +623,7 @@ export function ManageTagsView() {
   return (
     <>
       {/* Header Section */}
-      <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
+      <div className="sticky z-30 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700" style={{ top: '37px' }}>
         <div className="container mx-auto flex justify-between items-start">
           <div className="flex-1">
             <PortfolioSelector
@@ -325,6 +652,7 @@ export function ManageTagsView() {
             <button 
               className="p-2 rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-colors"
               title="Help"
+              onClick={() => setShowHelpDialog(true)}
             >
               <HelpCircle size={20} />
             </button>
@@ -333,7 +661,7 @@ export function ManageTagsView() {
       </div>
 
       {/* Metrics Bar */}
-      <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
+      <div className="sticky z-20 bg-gray-800 border-t border-b border-gray-700" style={{ top: '114px' }}>
         <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
           <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
             <Tags size={14} className="text-blue-400 mr-1.5" />
@@ -381,6 +709,8 @@ export function ManageTagsView() {
             const typeInfo = TAG_TYPE_INFO[definition.tag_type];
             const showAllTagged = expandedTagged[definition.name] || false;
             const showAllUntagged = expandedUntagged[definition.name] || false;
+            const existingChart = getExistingChart(definition.name);
+            const currentChartType = existingChart?.chart_type || chartTypePreference[definition.name] || 'pie';
 
             const displayedTaggedHoldings = showAllTagged ? taggedHoldings : taggedHoldings.slice(0, 10);
             const displayedUntaggedHoldings = showAllUntagged ? untaggedHoldings : untaggedHoldings.slice(0, 10);
@@ -498,6 +828,165 @@ export function ManageTagsView() {
                       </>
                     )}
                   </div>
+
+                  {/* Chart Preview Section */}
+                  <div className="mt-6 pt-4 border-t border-gray-600/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-300">Chart Preview</h4>
+                      <div className="flex items-center gap-2">
+                        {/* Chart Type Toggle for ENUM/BOOLEAN tags */}
+                        {(definition.tag_type === TagType.ENUM || definition.tag_type === TagType.BOOLEAN) && (
+                          <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'pie')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'pie'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <PieChartIcon size={12} />
+                              Pie
+                            </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'bar')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'bar'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <BarChart3 size={12} />
+                              Bar
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Add/Remove Chart Button */}
+                        {(() => {
+                          const existingChart = getExistingChart(definition.name);
+                          const isChartable = [TagType.ENUM, TagType.BOOLEAN, TagType.MAP, TagType.HIERARCHICAL].includes(definition.tag_type);
+                          
+                          if (!isChartable) {
+                            return null;
+                          }
+                          
+                          return existingChart ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRemoveChart(existingChart.chart_id)}
+                              className="text-red-400 hover:text-red-300 border-red-400/30 hover:border-red-400/50 h-7 text-xs"
+                            >
+                              <X size={12} className="mr-1" />
+                              Remove from Portfolio
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAddChart(definition.name, definition)}
+                              className="text-green-400 hover:text-green-300 border-green-400/30 hover:border-green-400/50 h-7 text-xs"
+                              disabled={taggedHoldings.length === 0}
+                            >
+                              <Plus size={12} className="mr-1" />
+                              Add to Portfolio
+                            </Button>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {(() => {
+                      // Use the currentChartType calculated above
+                      // Handle different tag types
+                      if (definition.tag_type === TagType.MAP) {
+                        const mapData = generateMapChartData(definition.name);
+                        if (!mapData) {
+                          return (
+                            <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                              <BarChart3 size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No weighted exposure data</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                            <StackedBarChart
+                              title=""
+                              data={mapData}
+                              baseCurrency={portfolioMetadata.base_currency}
+                              hideValues={false}
+                              getSymbolName={getHoldingName}
+                            />
+                          </div>
+                        );
+                      }
+                      
+                      if (definition.tag_type === TagType.HIERARCHICAL) {
+                        const hierarchicalData = generateHierarchicalChartData(definition.name);
+                        if (!hierarchicalData) {
+                          return (
+                            <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                              <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No hierarchical data</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                            <SunburstChart
+                              title=""
+                              data={hierarchicalData}
+                              baseCurrency={portfolioMetadata.base_currency}
+                              hideValues={false}
+                              getSymbolName={getHoldingName}
+                            />
+                          </div>
+                        );
+                      }
+                      
+                      // Handle ENUM and BOOLEAN tags
+                      const chartData = generateChartData(definition.name, definition);
+                      if (!chartData) {
+                        return (
+                          <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                            <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                            <p className="text-sm text-gray-400">
+                              {(definition.tag_type === TagType.ENUM || definition.tag_type === TagType.BOOLEAN)
+                                ? 'No tagged holdings to display'
+                                : 'Chart type not supported for this tag'}
+                            </p>
+                          </div>
+                        );
+                      }
+                      
+                      const chartTotal = chartData.reduce((sum, item) => sum + item.value, 0);
+                      
+                      return (
+                        <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                          {currentChartType === 'pie' ? (
+                            <PieChart
+                              title=""
+                              data={chartData}
+                              total={chartTotal}
+                              baseCurrency={portfolioMetadata.base_currency}
+                              hideValues={false}
+                              getSymbolName={getHoldingName}
+                            />
+                          ) : (
+                            <BarChart
+                              title=""
+                              data={chartData}
+                              total={chartTotal}
+                              baseCurrency={portfolioMetadata.base_currency}
+                              hideValues={false}
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -523,6 +1012,81 @@ export function ManageTagsView() {
             onSave={handleTagSaved}
           />
         )}
+
+        {/* Help Dialog */}
+        <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Tags className="h-6 w-6 text-blue-400" />
+                About Tags
+              </DialogTitle>
+              <DialogDescription className="text-base leading-relaxed">
+                Organize and categorize your investments with custom tags
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 text-gray-300">
+              <div>
+                <h4 className="font-semibold text-white mb-2">What are Tags?</h4>
+                <p className="text-sm leading-relaxed">
+                  Tags allow you to create custom categories and classifications for your holdings. 
+                  Use them to organize investments by sector, strategy, risk level, or any custom criteria that matters to you.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-white mb-2">Key Features</h4>
+                <ul className="text-sm space-y-2 list-disc list-inside">
+                  <li>Create and manage custom tags for your holdings</li>
+                  <li>Generate customized infographics and pie charts from tagged holdings</li>
+                  <li>Filter and group holdings by tag values in the Portfolio page</li>
+                  <li>Multiple tag types supported (Categorical, Boolean, Weighted Exposure, and more)</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-white mb-2">Managing Tags</h4>
+                <p className="text-sm leading-relaxed mb-2">
+                  You can manage tags in two ways:
+                </p>
+                <ul className="text-sm space-y-2 list-disc list-inside">
+                  <li><strong>This page:</strong> Create tag definitions and manage tags across all holdings</li>
+                  <li><strong>Portfolio page:</strong> Add or edit tags for individual holdings in the Holdings table</li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-200 mb-2 flex items-center gap-2">
+                  <PieChartIcon size={16} />
+                  Chart Generation
+                </h4>
+                <p className="text-sm leading-relaxed">
+                  For <strong>Categorical</strong> and <strong>Boolean</strong> tags, you can create pie charts 
+                  that show the distribution of your portfolio across different tag values. 
+                  Charts appear on your Portfolio page and update automatically as you modify tags.
+                </p>
+              </div>
+
+              <div className="bg-emerald-500/10 border border-emerald-400/30 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-200 mb-2 flex items-center gap-2">
+                  <Plus size={16} />
+                  Get Started
+                </h4>
+                <p className="text-sm leading-relaxed">
+                  Click the <strong>"Create Tag"</strong> button to create your first tag and explore 
+                  the different tag types available. Each type offers unique ways to organize your investments.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-4">
+              <Button onClick={() => setShowHelpDialog(false)}>
+                Got it
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

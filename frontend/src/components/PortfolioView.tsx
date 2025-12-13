@@ -1,6 +1,9 @@
 // React is not needed for JSX in modern React
 import { useMemo, useState, useEffect } from 'react'
 import PieChart from '../PieChart'
+import BarChart from '../BarChart'
+import StackedBarChart from './StackedBarChart'
+import SunburstChart from './SunburstChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
@@ -146,26 +149,74 @@ export function PortfolioView({
           />
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
-          {displayData && displayData.map(chart => (
-            <PieChart
-              key={chart.chart_title}
-              title={`<b>${chart.chart_title}</b>${
-                isValueVisible
-                  ? ` <span class="text-xs text-gray-400 ml-1">
-                      ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
-                        chart.chart_total
-                      )}
-                      (${displayMetadata.base_currency})
-                      </span>`
-                  : ''
-              }`}
-              data={chart.chart_data}
-              total={chart.chart_total}
-              baseCurrency={displayMetadata.base_currency}
-              hideValues={!isValueVisible}
-              getSymbolName={getSymbolName}
-            />
-          ))}
+          {displayData && displayData.map(chart => {
+            const chartType = chart.chart_type || 'pie';
+            const chartTitle = `<b>${chart.chart_title}</b>${
+              isValueVisible
+                ? ` <span class="text-xs text-gray-400 ml-1">
+                    ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+                      chart.chart_total
+                    )}
+                    (${displayMetadata.base_currency})
+                    </span>`
+                : ''
+            }`;
+            
+            // Render appropriate chart type
+            if (chartType === 'bar') {
+              return (
+                <BarChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.chart_data}
+                  total={chart.chart_total}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                />
+              );
+            }
+            
+            // Render stacked bar chart for MAP tags
+            if (chartType === 'stacked-bar' && chart.map_data) {
+              return (
+                <StackedBarChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.map_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render sunburst chart for HIERARCHICAL tags
+            if (chartType === 'sunburst' && chart.hierarchical_data) {
+              return (
+                <SunburstChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.hierarchical_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Default to pie chart
+            return (
+              <PieChart
+                key={chart.chart_title}
+                title={chartTitle}
+                data={chart.chart_data}
+                total={chart.chart_total}
+                baseCurrency={displayMetadata.base_currency}
+                hideValues={!isValueVisible}
+                getSymbolName={getSymbolName}
+              />
+            );
+          })}
           {/* RSU Vesting grouped by symbol */}
           {(() => {
             // 1. Gather all plans with their account names

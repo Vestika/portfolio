@@ -4,6 +4,7 @@ export interface CustomChart {
   chart_id: string;
   chart_title: string;
   tag_name: string;
+  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
   portfolio_id?: string;
   created_at: string;
   updated_at: string;
@@ -12,6 +13,7 @@ export interface CustomChart {
 export interface CreateChartRequest {
   chart_title: string;
   tag_name: string;
+  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
   portfolio_id?: string;
 }
 
@@ -41,6 +43,11 @@ class PortfolioAPI {
 
   async deleteCustomChart(chart_id: string): Promise<void> {
     await api.delete(`/user/custom-charts/${chart_id}`);
+  }
+
+  async updateChartType(chart_id: string, chart_type: string): Promise<CustomChart> {
+    const response = await api.patch(`/user/custom-charts/${chart_id}/chart-type`, { chart_type });
+    return response.data;
   }
 
   // Chart markers (user join date, milestones, etc.)

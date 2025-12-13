@@ -128,8 +128,23 @@ export interface PortfolioSelectorProps {
 
 export interface ChartBreakdown {
   chart_title: string;
+  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
   chart_total: number;
   chart_data: ChartDataItem[];
+  // For stacked-bar charts (MAP tags)
+  map_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    weights: Record<string, number>;
+  }>;
+  // For sunburst charts (HIERARCHICAL tags)
+  hierarchical_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    path: string[];
+  }>;
 }
 
 export interface HistoricalPrice {
