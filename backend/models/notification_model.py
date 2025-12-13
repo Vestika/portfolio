@@ -84,6 +84,12 @@ class NotificationTemplate(BaseFeatureModel):
     distribution_type: DistributionType = Field(default=DistributionType.PULL,
         description="How notifications are distributed to users")
 
+    # Targeting configuration
+    target_user_ids: Optional[List[str]] = Field(default=None,
+        description="Specific user IDs to target (if None, targets all users)")
+    target_filter: Optional[Dict[str, Any]] = Field(default=None,
+        description="Filter criteria for targeting users (e.g., has_holding, account_type)")
+
     # Display configuration
     display_type: DisplayType = Field(default=DisplayType.BOTH)
     dismissal_type: DismissalType = Field(default=DismissalType.ONCE)

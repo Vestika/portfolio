@@ -13,18 +13,6 @@ from models.notification_model import (
 import logging
 
 
-class CreateFeatureAnnouncementRequest(BaseModel):
-    """Request to create a feature announcement (legacy endpoint)"""
-    feature_id: str
-    title: str
-    message: str
-    display_type: str = "both"  # "popup", "bell", or "both"
-    dismissal_type: str = "once"  # "once", "until_clicked", or "auto_expire"
-    expires_in_days: Optional[int] = None
-    link_url: Optional[str] = None
-    link_text: Optional[str] = None
-
-
 class CreateNotificationTemplateRequest(BaseModel):
     """Request to create a notification template"""
     template_id: str = Field(..., description="Unique identifier for this template")
@@ -38,6 +26,9 @@ class CreateNotificationTemplateRequest(BaseModel):
     link_url: Optional[str] = Field(default=None, description="URL to navigate to")
     link_text: Optional[str] = Field(default=None, description="Button text for link")
     required_variables: Optional[List[str]] = Field(default=None, description="Required variables for trigger type")
+    # Targeting options
+    target_user_ids: Optional[List[str]] = Field(default=None, description="Specific Firebase UIDs to target (if None, targets all users)")
+    target_filter: Optional[Dict[str, Any]] = Field(default=None, description="Filter criteria: has_holding, has_account_type, has_portfolio")
 
 
 class UpdateNotificationTemplateRequest(BaseModel):
@@ -199,88 +190,6 @@ async def archive_notification(
         raise HTTPException(status_code=500, detail="Failed to archive notification")
 
 
-@router.post("/welcome")
-async def create_welcome_notification(
-    user = Depends(get_current_user)
-) -> Dict[str, str]:
-    """Create a welcome notification for the current user"""
-    try:
-        notification_service = get_notification_service()
-        user_id = user.firebase_uid
-        user_name = user.name
-        
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-        
-        notification_id = await notification_service.create_welcome_notification(user_id, user_name)
-        
-        return {"notification_id": notification_id}
-        
-    except Exception as e:
-        logger.error(f"Failed to create welcome notification: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create welcome notification")
-
-
-@router.post("/check-rsu-events")
-async def check_rsu_vesting_events(
-    user = Depends(get_current_user)
-) -> Dict[str, List[str]]:
-    """Check for RSU vesting events and create notifications"""
-    try:
-        notification_service = get_notification_service()
-        user_id = user.firebase_uid
-
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
-        # This would typically get portfolio data from the portfolio service
-        # For now, we'll return an empty list as this should be called internally
-        # when portfolio data is processed
-
-        return {"notification_ids": []}
-
-    except Exception as e:
-        logger.error(f"Failed to check RSU vesting events: {e}")
-        raise HTTPException(status_code=500, detail="Failed to check RSU vesting events")
-
-
-@router.post("/feature")
-async def create_feature_announcement(
-    request: CreateFeatureAnnouncementRequest,
-    user = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Create a feature announcement that will be distributed to all users on login.
-    Admin only endpoint - restricted to specific email addresses.
-    DEPRECATED: Use POST /notifications/templates instead for new features.
-    """
-    # Check if user is an admin
-    if user.email not in ADMIN_EMAILS:
-        raise HTTPException(status_code=403, detail="Only admins can create feature announcements")
-
-    try:
-        notification_service = get_notification_service()
-
-        announcement_id = await notification_service.create_feature_announcement(
-            feature_id=request.feature_id,
-            title=request.title,
-            message=request.message,
-            display_type=request.display_type,
-            dismissal_type=request.dismissal_type,
-            expires_in_days=request.expires_in_days,
-            link_url=request.link_url,
-            link_text=request.link_text
-        )
-
-        return {
-            "announcement_id": announcement_id,
-            "message": "Feature announcement created successfully. Users will see this on their next login."
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to create feature announcement: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create feature announcement")
-
-
 # ==================== Template Management Endpoints (Admin) ====================
 
 @router.post("/templates")
@@ -293,9 +202,18 @@ async def create_notification_template(
     Admin only endpoint.
 
     Distribution types:
-    - push: Immediately distribute to all existing users (runs in background)
+    - push: Immediately distribute to targeted users (runs in background)
     - pull: Users receive notification when they fetch notifications (on login)
     - trigger: Notifications created by event handlers (RSU vesting, etc.)
+
+    Targeting options (optional):
+    - target_user_ids: List of specific Firebase UIDs to target
+    - target_filter: Filter criteria dict with options:
+      - has_holding: str - User has a holding with this symbol (e.g., "AAPL")
+      - has_account_type: str - User has account of this type (e.g., "401k")
+      - has_portfolio: bool - User has at least one portfolio
+
+    If neither targeting option is specified, notification goes to all users.
     """
     if user.email not in ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="Only admins can create notification templates")
@@ -324,7 +242,9 @@ async def create_notification_template(
             link_url=request.link_url,
             link_text=request.link_text,
             required_variables=request.required_variables,
-            created_by=user.firebase_uid
+            created_by=user.firebase_uid,
+            target_user_ids=request.target_user_ids,
+            target_filter=request.target_filter
         )
 
         response = {

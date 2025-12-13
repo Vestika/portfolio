@@ -46,7 +46,9 @@ class NotificationService:
         link_url: Optional[str] = None,
         link_text: Optional[str] = None,
         required_variables: Optional[List[str]] = None,
-        created_by: Optional[str] = None
+        created_by: Optional[str] = None,
+        target_user_ids: Optional[List[str]] = None,
+        target_filter: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create a new notification template"""
         try:
@@ -79,6 +81,8 @@ class NotificationService:
                 "is_active": True,
                 "created_at": datetime.utcnow(),
                 "created_by": created_by,
+                "target_user_ids": target_user_ids,
+                "target_filter": target_filter,
                 "push_completed_at": None,
                 "push_user_count": None
             }
@@ -292,10 +296,71 @@ class NotificationService:
             logger.error(f"Failed to trigger notification from template {template_id}: {e}")
             raise
 
+    async def _user_matches_filter(self, firebase_uid: str, target_filter: Dict[str, Any]) -> bool:
+        """
+        Check if a user matches the target filter criteria.
+
+        Supported filters:
+        - has_holding: str - User has a holding with this symbol
+        - has_account_type: str - User has an account of this type
+        - has_portfolio: bool - User has at least one portfolio
+
+        Note: firebase_uid is used for notification storage, but portfolios use MongoDB user ID.
+        This method looks up the MongoDB ID from firebase_uid for portfolio queries.
+        """
+        try:
+            # Look up the user's MongoDB ID from firebase_uid
+            users_collection = db_manager.get_collection("users")
+            user_doc = await users_collection.find_one({"firebase_uid": firebase_uid})
+            if not user_doc:
+                logger.warning(f"User with firebase_uid {firebase_uid} not found")
+                return False
+
+            # Portfolios are stored with MongoDB user ID (string of ObjectId)
+            mongo_user_id = str(user_doc["_id"])
+
+            portfolios_collection = db_manager.get_collection("portfolios")
+
+            # Check has_holding filter
+            if "has_holding" in target_filter:
+                symbol = target_filter["has_holding"]
+                portfolio = await portfolios_collection.find_one({
+                    "user_id": mongo_user_id,
+                    "accounts.holdings.symbol": symbol
+                })
+                if not portfolio:
+                    return False
+
+            # Check has_account_type filter
+            if "has_account_type" in target_filter:
+                account_type = target_filter["has_account_type"]
+                portfolio = await portfolios_collection.find_one({
+                    "user_id": mongo_user_id,
+                    "accounts.account_type": account_type
+                })
+                if not portfolio:
+                    return False
+
+            # Check has_portfolio filter
+            if target_filter.get("has_portfolio"):
+                portfolio = await portfolios_collection.find_one({"user_id": mongo_user_id})
+                if not portfolio:
+                    return False
+
+            return True
+        except Exception as e:
+            logger.warning(f"Error checking filter for user {firebase_uid}: {e}")
+            return False
+
     async def push_distribute_template(self, template_id: str) -> int:
         """
-        Distribute notification to ALL existing users immediately.
+        Distribute notification to targeted users immediately.
         Called as background task for PUSH distribution type.
+
+        Supports targeting via:
+        - target_user_ids: List of specific user IDs
+        - target_filter: Filter criteria (has_holding, has_account_type, etc.)
+        - If neither specified, targets all users
         """
         try:
             template = await self.get_template(template_id)
@@ -306,13 +371,31 @@ class NotificationService:
             notifications_collection = self._get_collection()
             templates_collection = self._get_templates_collection()
 
-            # Get all users
-            users = await users_collection.find({}).to_list(length=None)
+            target_user_ids = template.get("target_user_ids")
+            target_filter = template.get("target_filter")
+
+            # Get users based on targeting
+            if target_user_ids:
+                # Specific users targeted
+                users = await users_collection.find({
+                    "firebase_uid": {"$in": target_user_ids}
+                }).to_list(length=None)
+                logger.info(f"Targeting {len(users)} specific users for template {template_id}")
+            else:
+                # All users (will be filtered if target_filter exists)
+                users = await users_collection.find({}).to_list(length=None)
+
             created_count = 0
+            skipped_filter_count = 0
 
             for user in users:
                 user_id = user.get("firebase_uid")
                 if not user_id:
+                    continue
+
+                # Apply target_filter if specified
+                if target_filter and not await self._user_matches_filter(user_id, target_filter):
+                    skipped_filter_count += 1
                     continue
 
                 # Check if user already has this notification
@@ -337,7 +420,7 @@ class NotificationService:
                 }}
             )
 
-            logger.info(f"Push distributed template {template_id} to {created_count} users")
+            logger.info(f"Push distributed template {template_id} to {created_count} users (skipped {skipped_filter_count} due to filter)")
             return created_count
         except Exception as e:
             logger.error(f"Failed to push distribute template {template_id}: {e}")
@@ -347,6 +430,7 @@ class NotificationService:
         """
         Sync all PULL-type templates to a user.
         Creates notifications for any templates they don't have.
+        Respects targeting configuration (target_user_ids and target_filter).
         """
         notification_ids = []
 
@@ -360,6 +444,18 @@ class NotificationService:
             }).to_list(length=100)
 
             for template in templates:
+                # Check targeting: if target_user_ids specified, user must be in list
+                target_user_ids = template.get("target_user_ids")
+                if target_user_ids and user_id not in target_user_ids:
+                    logger.debug(f"Skipping template {template['template_id']} - user {user_id} not in target list")
+                    continue
+
+                # Check targeting: if target_filter specified, user must match filter
+                target_filter = template.get("target_filter")
+                if target_filter and not await self._user_matches_filter(user_id, target_filter):
+                    logger.debug(f"Skipping template {template['template_id']} - user {user_id} doesn't match filter")
+                    continue
+
                 # Check if user already has this notification
                 existing = await self._get_collection().find_one({
                     "user_id": user_id,

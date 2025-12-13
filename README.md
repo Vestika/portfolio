@@ -264,6 +264,108 @@ Once the backend is running, visit:
 - **Swagger UI**: http://localhost:8080/docs
 - **ReDoc**: http://localhost:8080/redoc
 
+## 📢 Notification Templates (Admin)
+
+The system supports a generic notification template system for announcing features, events, and updates to users.
+
+### Creating a Notification Template
+
+**Endpoint**: `POST /notifications/templates` (Admin only)
+
+```bash
+curl -X POST https://api.vestika.io/notifications/templates \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_id": "feature_new_charts",
+    "notification_type": "feature",
+    "title_template": "New Charts Feature!",
+    "message_template": "Hi {user_name}! Check out our new interactive charts.",
+    "distribution_type": "push",
+    "display_type": "both",
+    "dismissal_type": "once",
+    "link_url": "/portfolio",
+    "link_text": "View Charts"
+  }'
+```
+
+### Template Options
+
+| Field | Options | Description |
+|-------|---------|-------------|
+| `notification_type` | `feature`, `welcome`, `rsu_vesting`, `system` | Type of notification |
+| `distribution_type` | `push`, `pull`, `trigger` | How to distribute (see below) |
+| `display_type` | `popup`, `bell`, `both` | Where notification appears |
+| `dismissal_type` | `once`, `until_clicked`, `auto_expire` | When to stop showing |
+
+### Distribution Types
+
+- **`push`**: Immediately sends to targeted users (runs in background)
+- **`pull`**: Users receive notification on next login/fetch
+- **`trigger`**: Only created by event handlers (RSU vesting, etc.)
+
+### Targeting (Optional)
+
+Target specific users or groups instead of all users:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `target_user_ids` | `string[]` | Specific Firebase UIDs to target |
+| `target_filter` | `object` | Filter criteria (see below) |
+
+**Filter Options:**
+- `has_holding`: User has a holding with this symbol (e.g., `"AAPL"`)
+- `has_account_type`: User has account of this type (e.g., `"401k"`, `"company-custodian-account"`)
+- `has_portfolio`: User has at least one portfolio (`true`)
+
+**Examples:**
+
+```json
+// Target specific users
+{
+  "target_user_ids": ["firebase_uid_1", "firebase_uid_2"]
+}
+
+// Target users who hold AAPL
+{
+  "target_filter": {"has_holding": "AAPL"}
+}
+
+// Target users with 401k accounts
+{
+  "target_filter": {"has_account_type": "401k"}
+}
+```
+
+If neither `target_user_ids` nor `target_filter` is specified, the notification goes to all users.
+
+### Variable Substitution
+
+Templates support `{variable}` placeholders:
+- `{user_name}` - User's display name (always available)
+- `{symbol}` - Stock symbol (for RSU notifications)
+- `{units}` - Number of units (for RSU notifications)
+- `{account_name}` - Account name (for RSU notifications)
+
+### Example: Feature Announcement
+
+```json
+{
+  "template_id": "feature_tax_planner_v1",
+  "notification_type": "feature",
+  "title_template": "New Tax Planner Tool!",
+  "message_template": "Hi {user_name}! Plan your tax scenarios with our new Tax Planner tool.",
+  "distribution_type": "pull",
+  "display_type": "both",
+  "dismissal_type": "once",
+  "link_url": "/tools",
+  "link_text": "Try it now"
+}
+```
+
+### Admin
+Only Admins can create/manage templates:
+
 ## 🤝 Contributing
 
 1. Fork the repository
