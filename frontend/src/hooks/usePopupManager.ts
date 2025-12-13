@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 
-export type PopupType = 'welcome' | 'rsu';
+export type PopupType = 'welcome' | 'rsu' | 'feature';
 
 interface PopupData {
   type: PopupType;
@@ -32,6 +32,13 @@ export const usePopupManager = () => {
       notif => (notif.type === 'rsu_vesting' || notif.type === 'rsu_grant') && notif.status === 'unread'
     );
 
+    // Find feature notifications that should show as popups
+    const featureNotifications = notifications.filter(
+      notif => notif.type === 'feature' &&
+               notif.status === 'unread' &&
+               (notif.display_type === 'popup' || notif.display_type === 'both')
+    );
+
     // Priority 1: Welcome notification (if no welcome notification exists or it's unread)
     if (welcomeNotification) {
       if (welcomeNotification.status === 'unread' && !processedPopups.has('welcome')) {
@@ -47,7 +54,26 @@ export const usePopupManager = () => {
       return;
     }
 
-    // Priority 2: RSU notifications (random order)
+    // Priority 2: Feature notifications (newest first)
+    if (featureNotifications.length > 0) {
+      // Filter out already processed feature notifications
+      const unprocessedFeatures = featureNotifications.filter(
+        notif => !processedPopups.has(`feature_${notif._id}`)
+      );
+
+      if (unprocessedFeatures.length > 0) {
+        // Show the newest unprocessed feature notification
+        const selectedFeature = unprocessedFeatures[0];
+
+        setCurrentPopup({
+          type: 'feature',
+          data: selectedFeature
+        });
+        return;
+      }
+    }
+
+    // Priority 3: RSU notifications (random order)
     if (rsuNotifications.length > 0) {
       // Filter out already processed RSU notifications
       const unprocessedRSU = rsuNotifications.filter(
@@ -58,10 +84,10 @@ export const usePopupManager = () => {
         // Randomly select one RSU notification
         const randomIndex = Math.floor(Math.random() * unprocessedRSU.length);
         const selectedRSU = unprocessedRSU[randomIndex];
-        
-        setCurrentPopup({ 
-          type: 'rsu', 
-          data: selectedRSU 
+
+        setCurrentPopup({
+          type: 'rsu',
+          data: selectedRSU
         });
         return;
       }
@@ -87,6 +113,16 @@ export const usePopupManager = () => {
       // Mark RSU notification as read
       await markAsRead(currentPopup.data._id);
       setProcessedPopups(prev => new Set([...prev, `rsu_${currentPopup.data._id}`]));
+    } else if (currentPopup.type === 'feature' && currentPopup.data) {
+      // Mark feature notification as read based on dismissal_type
+      const notification = currentPopup.data;
+
+      // For 'once' and 'until_clicked', mark as read when dismissed
+      if (notification.dismissal_type !== 'auto_expire') {
+        await markAsRead(notification._id);
+      }
+
+      setProcessedPopups(prev => new Set([...prev, `feature_${notification._id}`]));
     }
 
     setCurrentPopup(null);

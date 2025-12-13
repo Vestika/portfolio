@@ -248,6 +248,7 @@ Key endpoints:
 - `POST /ai/chat` - AI analyst chat with tagged entities support
 - `GET /news/feed` - News feed for holdings
 - `POST /ibkr/import` - Import trades from IBKR Flex Query
+- `POST /notifications/templates` - Create notification template (admin only, see README)
 
 ## Testing
 
@@ -282,6 +283,46 @@ pnpm test
 - Support tagged entities in chat (`$SYMBOL` for securities, `@ACCOUNT` for accounts)
 - Parse tagged entities and pass to AI for context-aware responses
 - Use `chat_with_analyst_multi_portfolio()` when multiple portfolios are tagged
+
+### Notification Templates
+Create notifications for features/announcements via `POST /notifications/templates` (admin only).
+
+**Quick Reference:**
+```json
+{
+  "template_id": "feature_xyz",
+  "notification_type": "feature",
+  "title_template": "New Feature!",
+  "message_template": "Hi {user_name}! Check out...",
+  "distribution_type": "pull",
+  "display_type": "both",
+  "dismissal_type": "once",
+  "link_url": "/tools",
+  "link_text": "Try it"
+}
+```
+
+**Options:**
+- `distribution_type`: `push` (targeted users now), `pull` (on login), `trigger` (events only)
+- `display_type`: `popup`, `bell`, `both`
+- `dismissal_type`: `once`, `until_clicked`, `auto_expire`
+- Variables: `{user_name}` always available; `{symbol}`, `{units}`, `{account_name}` for RSU
+
+**Targeting (optional):**
+- `target_user_ids`: `["firebase_uid_1", "firebase_uid_2"]` - specific users
+- `target_filter`: criteria-based targeting:
+  - `{"has_holding": "AAPL"}` - users who hold AAPL
+  - `{"has_account_type": "401k"}` - users with 401k accounts
+  - `{"has_portfolio": true}` - users with portfolios
+
+If neither specified, notification goes to all users.
+
+**Files:**
+- Model: `backend/models/notification_model.py`
+- Service: `backend/core/notification_service.py`
+- Endpoints: `backend/app/endpoints/notifications.py`
+
+See README.md for full documentation.
 
 ### Frontend State Management
 - ALL portfolios data loaded once on app init

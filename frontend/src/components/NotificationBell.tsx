@@ -43,8 +43,27 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
         return '📊';
       case 'system':
         return '🔧';
+      case 'feature':
+        return '✨';
       default:
         return '🔔';
+    }
+  };
+
+  // Handle notification click - navigate if it has a link
+  const handleNotificationClick = (notification: typeof notifications[0]) => {
+    if (notification.status === 'unread') {
+      markAsRead(notification._id);
+    }
+
+    // If it has a link, navigate to it
+    if (notification.link_url) {
+      if (notification.link_url.startsWith('http://') || notification.link_url.startsWith('https://')) {
+        window.open(notification.link_url, '_blank');
+      } else {
+        window.location.href = notification.link_url;
+      }
+      setIsOpen(false);
     }
   };
 
@@ -101,11 +120,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
                   className={`px-4 py-3 border-b border-gray-600 last:border-b-0 hover:bg-gray-600/50 transition-colors cursor-pointer ${
                     notification.status === 'unread' ? 'bg-gray-600/30' : ''
                   }`}
-                  onClick={() => {
-                    if (notification.status === 'unread') {
-                      markAsRead(notification._id);
-                    }
-                  }}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start gap-3">
                     <span className="text-lg flex-shrink-0 mt-0.5">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { WelcomePopup } from './WelcomePopup';
 import { RSUPopup } from './RSUPopup';
+import { FeaturePopup } from './FeaturePopup';
 import { PopupType } from '../hooks/usePopupManager';
 
 interface UnifiedPopupProps {
@@ -10,11 +11,11 @@ interface UnifiedPopupProps {
   onClose: () => void;
 }
 
-export const UnifiedPopup: React.FC<UnifiedPopupProps> = ({ 
-  popupType, 
-  popupData, 
-  userName, 
-  onClose 
+export const UnifiedPopup: React.FC<UnifiedPopupProps> = ({
+  popupType,
+  popupData,
+  userName,
+  onClose
 }) => {
   if (!popupType) return null;
 
@@ -30,6 +31,14 @@ export const UnifiedPopup: React.FC<UnifiedPopupProps> = ({
     case 'rsu':
       return (
         <RSUPopup
+          isOpen={true}
+          onClose={onClose}
+          notification={popupData}
+        />
+      );
+    case 'feature':
+      return (
+        <FeaturePopup
           isOpen={true}
           onClose={onClose}
           notification={popupData}
