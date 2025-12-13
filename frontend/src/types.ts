@@ -123,6 +123,7 @@ export interface PortfolioSelectorProps {
   onPortfolioCreated: (newPortfolioId: string) => Promise<void>;
   onPortfolioDeleted: (deletedPortfolioId: string) => Promise<void>;
   onDefaultPortfolioSet?: (portfolioId: string) => void;
+  titleSuffix?: string;
 }
 
 export interface ChartBreakdown {

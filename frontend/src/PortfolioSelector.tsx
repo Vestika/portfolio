@@ -39,6 +39,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
   onPortfolioCreated,
   onPortfolioDeleted,
   onDefaultPortfolioSet,
+  titleSuffix = 'Portfolio',
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -205,7 +206,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
               <h1 className="text-2xl font-bold flex items-center">
-                {userName}'s Portfolio
+                {userName}'s {titleSuffix}
                 <ChevronDown
                   size={16}
                   className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"
@@ -302,7 +303,7 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
             <h1 className="text-2xl font-bold flex items-center">
-              {userName}'s Portfolio
+              {userName}'s {titleSuffix}
               <ChevronDown
                 size={16}
                 className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"

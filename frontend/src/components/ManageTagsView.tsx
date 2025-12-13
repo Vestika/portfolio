@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
-import { Tags, Plus, Edit, Trash2, Users, BarChart3 } from 'lucide-react';
-import { TagDefinition, TagLibrary, HoldingTags, TagType } from '../types';
+import { Tags, Plus, Edit, Trash2, HelpCircle, X } from 'lucide-react';
+import { TagDefinition, TagLibrary, HoldingTags, TagType, TagValue } from '../types';
 import TagDefinitionManager from './TagDefinitionManager';
+import TagEditor from './TagEditor';
 import TagAPI from '../utils/tag-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
+import PortfolioSelector from '../PortfolioSelector';
 
 const TAG_TYPE_INFO = {
   [TagType.ENUM]: {
@@ -47,7 +49,20 @@ const TAG_TYPE_INFO = {
 };
 
 export function ManageTagsView() {
-  const { refreshTagsOnly, updateCustomCharts, allPortfoliosData } = usePortfolioData();
+  const { 
+    refreshTagsOnly, 
+    updateCustomCharts, 
+    allPortfoliosData, 
+    currentPortfolioData,
+    selectedPortfolioId,
+    setSelectedPortfolioId,
+    getAvailablePortfolios,
+    refreshAllPortfoliosData,
+    getAutocompleteData
+  } = usePortfolioData();
+  
+  const autocompleteData = getAutocompleteData();
+  
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
   const [allHoldingTags, setAllHoldingTags] = useState<HoldingTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,17 +70,37 @@ export function ManageTagsView() {
     isOpen: boolean; 
     definition?: TagDefinition 
   }>({ isOpen: false });
+  const [tagEditor, setTagEditor] = useState<{
+    isOpen: boolean;
+    symbol?: string;
+    tagDefinition?: TagDefinition;
+  }>({ isOpen: false });
+  const [expandedTagged, setExpandedTagged] = useState<Record<string, boolean>>({});
+  const [expandedUntagged, setExpandedUntagged] = useState<Record<string, boolean>>({});
+
+  const availablePortfolios = getAvailablePortfolios();
+  const portfolioMetadata = currentPortfolioData?.portfolio_metadata;
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (selectedPortfolioId) {
+      // Reset state when portfolio changes to avoid showing stale data
+      setAllHoldingTags([]);
+      setExpandedTagged({});
+      setExpandedUntagged({});
+      loadData();
+    }
+  }, [selectedPortfolioId]);
 
   const loadData = async () => {
+    if (!selectedPortfolioId) return;
+    
     setLoading(true);
     try {
+      // Load all tags (global) - tags are stored at user-level with portfolio association
+      // We load all tags and filter client-side to show only tags for holdings in current portfolio
       const [library, allTags] = await Promise.all([
         TagAPI.getUserTagLibrary(),
-        TagAPI.getAllHoldingTags()
+        TagAPI.getAllHoldingTags() // Don't pass portfolio_id - get all tags
       ]);
       setTagLibrary(library);
       setAllHoldingTags(allTags);
@@ -74,6 +109,19 @@ export function ManageTagsView() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePortfolioCreated = async (newPortfolioId: string) => {
+    await refreshAllPortfoliosData();
+    setSelectedPortfolioId(newPortfolioId);
+  };
+
+  const handlePortfolioDeleted = async () => {
+    await refreshAllPortfoliosData();
+  };
+
+  const handleDefaultPortfolioSet = async () => {
+    // Optional: handle default portfolio change
   };
 
   const handleCreateTagDefinition = async (tagDefinition: TagDefinition) => {
@@ -110,20 +158,31 @@ export function ManageTagsView() {
     }
   };
 
-  const getTagUsageStats = (): Record<string, { count: number; symbols: string[] }> => {
-    const usageStats: Record<string, { count: number; symbols: string[] }> = {};
-    
-    allHoldingTags.forEach(holdingTag => {
-      Object.keys(holdingTag.tags).forEach(tagName => {
-        if (!usageStats[tagName]) {
-          usageStats[tagName] = { count: 0, symbols: [] };
-        }
-        usageStats[tagName].count++;
-        usageStats[tagName].symbols.push(holdingTag.symbol);
-      });
-    });
+  const handleRemoveTag = async (symbol: string, tagName: string) => {
+    try {
+      await TagAPI.removeHoldingTag(symbol, tagName, selectedPortfolioId || undefined);
+      await loadData();
+      await refreshTagsOnly();
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
 
-    return usageStats;
+  const handleAddTag = (symbol: string, tagDefinition: TagDefinition) => {
+    setTagEditor({ isOpen: true, symbol, tagDefinition });
+  };
+
+  const handleTagSaved = async (tagValue: TagValue) => {
+    if (!tagEditor.symbol) return;
+    try {
+      await TagAPI.setHoldingTag(tagEditor.symbol, tagValue.tag_name, tagValue, selectedPortfolioId || undefined);
+      await loadData();
+      await refreshTagsOnly();
+      setTagEditor({ isOpen: false });
+    } catch (error) {
+      console.error('Error saving tag:', error);
+      throw error;
+    }
   };
 
   const getUserDefinedTags = (): TagDefinition[] => {
@@ -131,10 +190,88 @@ export function ManageTagsView() {
     return Object.values(tagLibrary.tag_definitions);
   };
 
-  const getBuiltInTags = (): TagDefinition[] => {
-    if (!tagLibrary) return [];
-    return Object.values(tagLibrary.template_tags);
+  const getAllHoldings = (): string[] => {
+    if (!currentPortfolioData?.accounts) return [];
+    const symbols = new Set<string>();
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        symbols.add(holding.symbol);
+      });
+    });
+    return Array.from(symbols);
   };
+
+  const getTaggedHoldings = (tagName: string): string[] => {
+    const allHoldings = getAllHoldings();
+    // Tags are stored globally, but we filter to only show tags for holdings in current portfolio
+    const tagged = allHoldingTags
+      .filter(ht => tagName in ht.tags && allHoldings.includes(ht.symbol))
+      .map(ht => ht.symbol);
+    
+    return tagged;
+  };
+
+  const getUntaggedHoldings = (tagName: string): string[] => {
+    const allHoldings = getAllHoldings();
+    const taggedHoldings = getTaggedHoldings(tagName);
+    return allHoldings.filter(symbol => !taggedHoldings.includes(symbol));
+  };
+
+  // Helper to get display name for badges - uses autocomplete data like PortfolioView
+  // For numerical symbols (TASE stocks), show the textual name
+  // For regular tickers (MSFT, AAPL, etc.), keep the ticker symbol
+  const getHoldingName = useMemo(() => {
+    const nameCache = new Map<string, string>();
+    
+    if (!autocompleteData || autocompleteData.length === 0) {
+      return (symbol: string) => symbol;
+    }
+    
+    return (symbol: string): string => {
+      // Check cache first
+      if (nameCache.has(symbol)) return nameCache.get(symbol)!;
+      
+      // Check if this is a numerical symbol (TASE stock)
+      const isNumericSymbol = /^\d+$/.test(symbol);
+      
+      // If it's not numeric, just return the symbol (regular ticker like MSFT, AAPL)
+      if (!isNumericSymbol) {
+        nameCache.set(symbol, symbol);
+        return symbol;
+      }
+      
+      const symbolUpper = symbol.toUpperCase();
+      
+      // Find matching TASE symbol in autocomplete data
+      const symbolData = autocompleteData.find(s => {
+        const sUpper = s.symbol.toUpperCase();
+        
+        // Direct match
+        if (sUpper === symbolUpper) return true;
+        
+        // TASE symbols are numeric
+        if (s.symbol_type === 'tase' && /^\d+$/.test(symbolUpper)) {
+          const taseNumPart = sUpper.replace('TASE:', '').split('.')[0];
+          if (taseNumPart === symbolUpper) return true;
+        }
+        
+        return false;
+      });
+      
+      // Return the name from autocomplete data, or symbol as fallback
+      const name = symbolData ? symbolData.name : symbol;
+      nameCache.set(symbol, name);
+      return name;
+    };
+  }, [autocompleteData]);
+
+  if (!portfolioMetadata || !selectedPortfolioId) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-2">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -145,156 +282,248 @@ export function ManageTagsView() {
   }
 
   const userDefinedTags = getUserDefinedTags();
-  const builtInTags = getBuiltInTags();
-  const usageStats = getTagUsageStats();
+  const allHoldings = getAllHoldings();
+  
+  // Tags are stored globally (user-level), but we filter to only include holdings from current portfolio
+  // This allows the same symbol (e.g., AAPL) to have different tags in different portfolios
+  const currentPortfolioHoldingTags = allHoldingTags.filter(ht => 
+    allHoldings.includes(ht.symbol)
+  );
+  
+  const allTaggedSymbols = new Set(currentPortfolioHoldingTags.map(ht => ht.symbol));
+  const holdingsWithoutTags = allHoldings.filter(symbol => !allTaggedSymbols.has(symbol));
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-6xl">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Tags className="h-8 w-8 text-blue-400" />
-            <h1 className="text-3xl font-bold text-white">Manage Tags</h1>
+    <>
+      {/* Header Section */}
+      <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
+        <div className="container mx-auto flex justify-between items-start">
+          <div className="flex-1">
+            <PortfolioSelector
+              portfolios={availablePortfolios}
+              selectedPortfolioId={selectedPortfolioId}
+              onPortfolioChange={setSelectedPortfolioId}
+              userName={portfolioMetadata.user_name}
+              onPortfolioCreated={handlePortfolioCreated}
+              onPortfolioDeleted={handlePortfolioDeleted}
+              onDefaultPortfolioSet={handleDefaultPortfolioSet}
+              titleSuffix="Tags"
+            />
+            <p className="text-sm text-gray-400 mt-0">
+              Manage custom tags for your holdings
+            </p>
           </div>
-          <Button
-            onClick={() => setDefinitionManager({ isOpen: true })}
-            variant="default"
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Plus size={16} className="mr-2" />
-            Create Tag
-          </Button>
+          
+          <div className="hidden md:flex items-center space-x-4">
+            <button 
+              className="flex items-center space-x-2 pl-3 pr-4 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group h-[44px]"
+              onClick={() => setDefinitionManager({ isOpen: true })}
+            >
+              <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
+              <span className="text-xs font-medium text-emerald-100">Create Tag</span>
+            </button>
+            <button 
+              className="p-2 rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-colors"
+              title="Help"
+            >
+              <HelpCircle size={20} />
+            </button>
+          </div>
         </div>
-        <p className="text-gray-300">
-          Create and manage custom tags to organize and categorize your investments.
-        </p>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="bg-gray-800/50 border-gray-600/30">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-500/20 rounded-lg">
-                <Users size={24} className="text-green-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">{allHoldingTags.length}</p>
-                <p className="text-sm text-gray-400">Tagged Holdings</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800/50 border-gray-600/30">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-500/20 rounded-lg">
-                <BarChart3 size={24} className="text-yellow-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">{Object.keys(usageStats).length}</p>
-                <p className="text-sm text-gray-400">Tags in Use</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tags Section */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="text-2xl">🏷️</span>
-          Your Tags
-        </h2>
-        
-        {userDefinedTags.length === 0 ? (
-          <Card className="bg-gray-800/30 border-gray-600/30 border-dashed">
-            <CardContent className="p-8 text-center">
-              <Tags size={48} className="mx-auto mb-4 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-300 mb-2">No Tags Yet</h3>
-              <p className="text-gray-400 mb-4">Create your first tag to start organizing your investments.</p>
-                             <Button
-                 onClick={() => setDefinitionManager({ isOpen: true })}
-                 variant="default"
-                 className="bg-blue-600 hover:bg-blue-700 text-white"
-               >
-                <Plus size={16} className="mr-2" />
-                Create Your First Tag
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {userDefinedTags.map((definition) => {
-              const usage = usageStats[definition.name] || { count: 0, symbols: [] };
-              const typeInfo = TAG_TYPE_INFO[definition.tag_type];
-
-              return (
-                <Card key={definition.name} className="bg-gray-800/50 border-gray-600/30 group">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{typeInfo.icon}</span>
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-white truncate">{definition.display_name}</h3>
-                          <p className="text-xs text-gray-400 truncate">{definition.description}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDefinitionManager({ isOpen: true, definition })}
-                          className="text-gray-400 hover:text-gray-200 w-8 h-8 p-0"
-                        >
-                          <Edit size={12} />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteTagDefinition(definition.name)}
-                          className="text-red-400 hover:text-red-300 w-8 h-8 p-0"
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-1">
-                        <Badge variant="outline" className={`text-xs ${typeInfo.color}`}>
-                          {typeInfo.name}
-                        </Badge>
-                      </div>
-
-                      <div className="text-sm text-gray-300">
-                        <span className="font-medium">{usage.count}</span>{' '}
-                        {usage.count === 1 ? 'holding' : 'holdings'}
-                        {usage.count > 0 && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            {usage.symbols.slice(0, 3).join(', ')}
-                            {usage.symbols.length > 3 && ` +${usage.symbols.length - 3} more`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+      {/* Metrics Bar */}
+      <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
+        <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
+          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+            <Tags size={14} className="text-blue-400 mr-1.5" />
+            <span className="text-xs font-medium mr-1">Tags:</span>
+            <span className="text-xs text-blue-400">{userDefinedTags.length}</span>
           </div>
+          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+            <Tags size={14} className="text-green-400 mr-1.5" />
+            <span className="text-xs font-medium mr-1">Tagged:</span>
+            <span className="text-xs text-green-400">{allTaggedSymbols.size}</span>
+          </div>
+          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+            <Tags size={14} className="text-gray-400 mr-1.5" />
+            <span className="text-xs font-medium mr-1">Untagged:</span>
+            <span className="text-xs text-gray-400">{holdingsWithoutTags.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto py-4 px-2 sm:px-4">
+        {/* Tags Grid */}
+      {userDefinedTags.length === 0 ? (
+        <Card className="bg-gray-800/30 border-gray-600/30 border-dashed">
+          <CardContent className="p-12 text-center">
+            <Tags size={64} className="mx-auto mb-4 text-gray-500" />
+            <h3 className="text-xl font-medium text-gray-300 mb-2">No Tags Yet</h3>
+            <p className="text-gray-400 mb-6 max-w-md mx-auto">
+              Create your first tag to start organizing and categorizing your investments.
+            </p>
+            <button
+              onClick={() => setDefinitionManager({ isOpen: true })}
+              className="flex items-center space-x-2 pl-3 pr-4 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group mx-auto h-[44px]"
+            >
+              <Plus size={16} className="text-emerald-200 group-hover:text-emerald-100" />
+              <span className="text-xs font-medium text-emerald-100">Create Your First Tag</span>
+            </button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {userDefinedTags.map((definition) => {
+            const taggedHoldings = getTaggedHoldings(definition.name);
+            const untaggedHoldings = getUntaggedHoldings(definition.name);
+            const typeInfo = TAG_TYPE_INFO[definition.tag_type];
+            const showAllTagged = expandedTagged[definition.name] || false;
+            const showAllUntagged = expandedUntagged[definition.name] || false;
+
+            const displayedTaggedHoldings = showAllTagged ? taggedHoldings : taggedHoldings.slice(0, 10);
+            const displayedUntaggedHoldings = showAllUntagged ? untaggedHoldings : untaggedHoldings.slice(0, 10);
+
+            return (
+              <Card key={definition.name} className="bg-gray-800/50 border-gray-600/30">
+                <CardContent className="p-6">
+                  {/* Tag Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xl font-semibold text-white truncate">{definition.display_name}</h3>
+                      <p className="text-sm text-gray-400 truncate">{definition.description}</p>
+                    </div>
+                    <div className="flex gap-2 ml-4 items-center">
+                      <Badge variant="outline" className={`text-xs ${typeInfo.color} flex items-center gap-1`}>
+                        <span>{typeInfo.icon}</span>
+                        <span>{typeInfo.name}</span>
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDefinitionManager({ isOpen: true, definition })}
+                        className="text-blue-400 hover:text-blue-300 border-blue-400/30 hover:border-blue-400/50"
+                        title="Edit tag definition"
+                      >
+                        <Edit size={14} />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteTagDefinition(definition.name)}
+                        className="text-red-400 hover:text-red-300 border-red-400/30 hover:border-red-400/50"
+                        title="Delete tag"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Tagged Holdings */}
+                  <div className="mb-4">
+                    <h4 className="text-sm font-medium text-gray-300 mb-2">
+                      Tagged Holdings ({taggedHoldings.length})
+                    </h4>
+                    {taggedHoldings.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic">No holdings tagged yet</p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {displayedTaggedHoldings.map((symbol) => (
+                            <Badge
+                              key={symbol}
+                              className="bg-blue-500/20 text-blue-200 border-blue-400/30 hover:bg-blue-500/30"
+                            >
+                              <span 
+                                onClick={() => setTagEditor({ isOpen: true, symbol, tagDefinition: definition })}
+                                className="cursor-pointer"
+                              >
+                                {getHoldingName(symbol)}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTag(symbol, definition.name);
+                                }}
+                                className="ml-1.5 p-0.5 rounded-full hover:bg-red-500/20 transition-colors opacity-60 hover:opacity-100"
+                                title="Remove tag"
+                              >
+                                <X size={10} className="text-red-400" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                        {taggedHoldings.length > 10 && (
+                          <button
+                            onClick={() => setExpandedTagged(prev => ({ ...prev, [definition.name]: !showAllTagged }))}
+                            className="text-xs text-blue-400 hover:text-blue-300 mt-2"
+                          >
+                            {showAllTagged ? 'Show less' : `Show ${taggedHoldings.length - 10} more`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Untagged Holdings */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-300 mb-2">
+                      Holdings Without Tag ({untaggedHoldings.length})
+                    </h4>
+                    {untaggedHoldings.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic">All holdings are tagged</p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {displayedUntaggedHoldings.map((symbol) => (
+                            <Badge
+                              key={symbol}
+                              className="bg-gray-700/30 text-gray-300 border-gray-500/30 cursor-pointer hover:bg-gray-700/50 group"
+                              onClick={() => handleAddTag(symbol, definition)}
+                            >
+                              <Plus size={12} className="mr-1" />
+                              {getHoldingName(symbol)}
+                            </Badge>
+                          ))}
+                        </div>
+                        {untaggedHoldings.length > 10 && (
+                          <button
+                            onClick={() => setExpandedUntagged(prev => ({ ...prev, [definition.name]: !showAllUntagged }))}
+                            className="text-xs text-blue-400 hover:text-blue-300 mt-2"
+                          >
+                            {showAllUntagged ? 'Show less' : `Show ${untaggedHoldings.length - 10} more`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+        {/* Tag Definition Manager Dialog */}
+        <TagDefinitionManager
+          isOpen={definitionManager.isOpen}
+          onClose={() => setDefinitionManager({ isOpen: false })}
+          onSave={handleCreateTagDefinition}
+          existingDefinition={definitionManager.definition}
+        />
+
+        {/* Tag Editor Dialog */}
+        {tagEditor.isOpen && tagEditor.symbol && tagEditor.tagDefinition && (
+          <TagEditor
+            symbol={tagEditor.symbol}
+            tagDefinition={tagEditor.tagDefinition}
+            isOpen={tagEditor.isOpen}
+            onClose={() => setTagEditor({ isOpen: false })}
+            onSave={handleTagSaved}
+          />
         )}
       </div>
-
-      {/* Tag Definition Manager Dialog */}
-      <TagDefinitionManager
-        isOpen={definitionManager.isOpen}
-        onClose={() => setDefinitionManager({ isOpen: false })}
-        onSave={handleCreateTagDefinition}
-        existingDefinition={definitionManager.definition}
-      />
-    </div>
+    </>
   );
 } 
