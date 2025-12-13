@@ -11,6 +11,13 @@ interface Notification {
   created_at: string;
   read_at?: string;
   metadata?: any;
+  // Feature notification specific fields
+  display_type?: 'popup' | 'bell' | 'both';
+  dismissal_type?: 'once' | 'until_clicked' | 'auto_expire';
+  expires_at?: string;
+  link_url?: string;
+  link_text?: string;
+  feature_id?: string;
 }
 
 interface NotificationContextType {
@@ -45,7 +52,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch notifications from API
+  // Fetch notifications from API (also syncs feature notifications on backend)
   const fetchNotifications = useCallback(async () => {
     if (!user) {
       console.log('🔔 [NOTIFICATIONS] No user, clearing notifications');
@@ -53,11 +60,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       setUnreadCount(0);
       return;
     }
-    
+
     try {
       setIsLoading(true);
       console.log('🔔 [NOTIFICATIONS] Fetching notifications for user:', user.uid);
-      
+
       const response = await api.get('/notifications/');
       console.log('🔔 [NOTIFICATIONS] Fetched notifications:', response.data);
       setNotifications(response.data.notifications || []);
@@ -75,11 +82,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     try {
       await api.patch(`/notifications/${notificationId}/read`);
-      
+
       // Update local state
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif._id === notificationId 
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif._id === notificationId
             ? { ...notif, status: 'read' as const, read_at: new Date().toISOString() }
             : notif
         )
@@ -96,12 +103,12 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     try {
       await api.patch('/notifications/mark-all-read');
-      
-      setNotifications(prev => 
-        prev.map(notif => ({ 
-          ...notif, 
-          status: 'read' as const, 
-          read_at: new Date().toISOString() 
+
+      setNotifications(prev =>
+        prev.map(notif => ({
+          ...notif,
+          status: 'read' as const,
+          read_at: new Date().toISOString()
         }))
       );
       setUnreadCount(0);
@@ -116,7 +123,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     try {
       await api.patch(`/notifications/${notificationId}/archive`);
-      
+
       // Remove from local state
       setNotifications(prev => prev.filter(notif => notif._id !== notificationId));
       setUnreadCount(prev => Math.max(0, prev - 1));

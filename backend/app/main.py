@@ -107,6 +107,18 @@ async def startup_event():
             await test_db.list_collection_names()
             logger.info("Database connection tested successfully")
 
+            # Seed default notification templates
+            try:
+                from core.notification_service import get_notification_service
+                notification_service = get_notification_service()
+                seeded_count = await notification_service.seed_default_templates()
+                if seeded_count > 0:
+                    logger.info(f"Seeded {seeded_count} default notification templates")
+                else:
+                    logger.info("Default notification templates already exist")
+            except Exception as e:
+                logger.warning(f"Failed to seed default notification templates: {e}")
+
             # Auto-populate symbols if data is older than 1 month OR collection is empty
             try:
                 logger.info("Checking symbols data age...")

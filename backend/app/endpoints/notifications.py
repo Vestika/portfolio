@@ -1,12 +1,64 @@
 """
 Notification API endpoints for managing user notifications.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from core.auth import get_current_user
 from core.notification_service import get_notification_service
-from models.notification_model import Notification, NotificationStatus
+from models.notification_model import (
+    Notification, NotificationStatus, NotificationType,
+    DistributionType, DisplayType, DismissalType
+)
 import logging
+
+
+class CreateFeatureAnnouncementRequest(BaseModel):
+    """Request to create a feature announcement (legacy endpoint)"""
+    feature_id: str
+    title: str
+    message: str
+    display_type: str = "both"  # "popup", "bell", or "both"
+    dismissal_type: str = "once"  # "once", "until_clicked", or "auto_expire"
+    expires_in_days: Optional[int] = None
+    link_url: Optional[str] = None
+    link_text: Optional[str] = None
+
+
+class CreateNotificationTemplateRequest(BaseModel):
+    """Request to create a notification template"""
+    template_id: str = Field(..., description="Unique identifier for this template")
+    notification_type: str = Field(default="feature", description="Type: welcome, feature, rsu_vesting, etc.")
+    title_template: str = Field(..., description="Title with {variable} placeholders")
+    message_template: str = Field(..., description="Message with {variable} placeholders")
+    distribution_type: str = Field(default="pull", description="Distribution: push, pull, or trigger")
+    display_type: str = Field(default="both", description="Display: popup, bell, or both")
+    dismissal_type: str = Field(default="once", description="Dismissal: once, until_clicked, or auto_expire")
+    expires_in_days: Optional[int] = Field(default=None, description="Days until notification expires")
+    link_url: Optional[str] = Field(default=None, description="URL to navigate to")
+    link_text: Optional[str] = Field(default=None, description="Button text for link")
+    required_variables: Optional[List[str]] = Field(default=None, description="Required variables for trigger type")
+
+
+class UpdateNotificationTemplateRequest(BaseModel):
+    """Request to update a notification template"""
+    title_template: Optional[str] = None
+    message_template: Optional[str] = None
+    display_type: Optional[str] = None
+    dismissal_type: Optional[str] = None
+    expires_in_days: Optional[int] = None
+    link_url: Optional[str] = None
+    link_text: Optional[str] = None
+    required_variables: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+# Admin emails allowed to manage templates
+ADMIN_EMAILS = [
+    "bensterenson@gmail.com",
+    "palarya@gmail.com",
+    "dansterenson@gmail.com"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -23,24 +75,31 @@ async def get_notifications(
     try:
         notification_service = get_notification_service()
         user_id = user.firebase_uid
-        
+        user_name = user.name or "User"
+
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
-        
+
+        # Sync PULL templates (new template system)
+        await notification_service.sync_templates_for_user(user_id, user_name)
+
+        # Also sync legacy feature announcements for backward compatibility
+        await notification_service.sync_feature_notifications_for_user(user_id)
+
         notifications = await notification_service.get_user_notifications(
             user_id=user_id,
             limit=limit,
             include_archived=include_archived
         )
-        
+
         unread_count = await notification_service.get_unread_count(user_id)
-        
+
         return {
             "notifications": notifications,
             "unread_count": unread_count,
             "total": len(notifications)
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get notifications: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve notifications")
@@ -170,18 +229,238 @@ async def check_rsu_vesting_events(
     try:
         notification_service = get_notification_service()
         user_id = user.firebase_uid
-        
+
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
-        
+
         # This would typically get portfolio data from the portfolio service
         # For now, we'll return an empty list as this should be called internally
         # when portfolio data is processed
-        
+
         return {"notification_ids": []}
-        
+
     except Exception as e:
         logger.error(f"Failed to check RSU vesting events: {e}")
         raise HTTPException(status_code=500, detail="Failed to check RSU vesting events")
+
+
+@router.post("/feature")
+async def create_feature_announcement(
+    request: CreateFeatureAnnouncementRequest,
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Create a feature announcement that will be distributed to all users on login.
+    Admin only endpoint - restricted to specific email addresses.
+    DEPRECATED: Use POST /notifications/templates instead for new features.
+    """
+    # Check if user is an admin
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can create feature announcements")
+
+    try:
+        notification_service = get_notification_service()
+
+        announcement_id = await notification_service.create_feature_announcement(
+            feature_id=request.feature_id,
+            title=request.title,
+            message=request.message,
+            display_type=request.display_type,
+            dismissal_type=request.dismissal_type,
+            expires_in_days=request.expires_in_days,
+            link_url=request.link_url,
+            link_text=request.link_text
+        )
+
+        return {
+            "announcement_id": announcement_id,
+            "message": "Feature announcement created successfully. Users will see this on their next login."
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create feature announcement: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create feature announcement")
+
+
+# ==================== Template Management Endpoints (Admin) ====================
+
+@router.post("/templates")
+async def create_notification_template(
+    request: CreateNotificationTemplateRequest,
+    background_tasks: BackgroundTasks,
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Create a notification template with configurable distribution.
+    Admin only endpoint.
+
+    Distribution types:
+    - push: Immediately distribute to all existing users (runs in background)
+    - pull: Users receive notification when they fetch notifications (on login)
+    - trigger: Notifications created by event handlers (RSU vesting, etc.)
+    """
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can create notification templates")
+
+    try:
+        notification_service = get_notification_service()
+
+        # Validate enums
+        try:
+            notification_type = NotificationType(request.notification_type)
+            distribution_type = DistributionType(request.distribution_type)
+            display_type = DisplayType(request.display_type)
+            dismissal_type = DismissalType(request.dismissal_type)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid enum value: {e}")
+
+        template = await notification_service.create_template(
+            template_id=request.template_id,
+            notification_type=notification_type,
+            title_template=request.title_template,
+            message_template=request.message_template,
+            distribution_type=distribution_type,
+            display_type=display_type,
+            dismissal_type=dismissal_type,
+            expires_in_days=request.expires_in_days,
+            link_url=request.link_url,
+            link_text=request.link_text,
+            required_variables=request.required_variables,
+            created_by=user.firebase_uid
+        )
+
+        response = {
+            "template_id": template["template_id"],
+            "distribution_type": request.distribution_type,
+            "available_variables": template.get("available_variables", []),
+            "message": "Template created successfully."
+        }
+
+        # If PUSH distribution, start background task
+        if distribution_type == DistributionType.PUSH:
+            background_tasks.add_task(
+                notification_service.push_distribute_template,
+                request.template_id
+            )
+            response["push_status"] = "started"
+            response["message"] = "Template created. Push distribution started in background."
+
+        return response
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create notification template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create notification template")
+
+
+@router.get("/templates")
+async def list_notification_templates(
+    include_inactive: bool = Query(default=False),
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """List all notification templates. Admin only endpoint."""
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can view notification templates")
+
+    try:
+        notification_service = get_notification_service()
+        templates = await notification_service.list_templates(include_inactive=include_inactive)
+
+        return {
+            "templates": templates,
+            "total": len(templates)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to list notification templates: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list notification templates")
+
+
+@router.get("/templates/{template_id}")
+async def get_notification_template(
+    template_id: str,
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Get a specific notification template. Admin only endpoint."""
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can view notification templates")
+
+    try:
+        notification_service = get_notification_service()
+        template = await notification_service.get_template(template_id)
+
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        return {"template": template}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get notification template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get notification template")
+
+
+@router.patch("/templates/{template_id}")
+async def update_notification_template(
+    template_id: str,
+    request: UpdateNotificationTemplateRequest,
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Update a notification template. Admin only endpoint.
+    Note: PUSH templates cannot be updated after distribution is complete.
+    """
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can update notification templates")
+
+    try:
+        notification_service = get_notification_service()
+
+        # Build updates dict from non-None fields
+        updates = {k: v for k, v in request.dict().items() if v is not None}
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+
+        success = await notification_service.update_template(template_id, updates)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Template not found or no changes made")
+
+        return {"success": True, "message": "Template updated successfully"}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update notification template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update notification template")
+
+
+@router.delete("/templates/{template_id}")
+async def delete_notification_template(
+    template_id: str,
+    user = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Soft delete a notification template (sets is_active to false).
+    Admin only endpoint.
+    """
+    if user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Only admins can delete notification templates")
+
+    try:
+        notification_service = get_notification_service()
+        success = await notification_service.deactivate_template(template_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        return {"success": True, "message": "Template deactivated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete notification template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete notification template")
 
 
