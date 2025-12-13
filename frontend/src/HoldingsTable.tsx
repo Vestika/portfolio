@@ -934,7 +934,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
 
   const handleRemoveTag = async (symbol: string, tagName: string) => {
     try {
-      await TagAPI.removeHoldingTag(symbol, tagName);
+      // Pass portfolio_id to remove tag from current portfolio only
+      await TagAPI.removeHoldingTag(symbol, tagName, selectedPortfolioId || undefined);
       await handleTagsUpdated();
     } catch (error) {
       console.error('Error removing tag:', error);
@@ -954,7 +955,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
     if (!editingTag) return;
 
     try {
-      await TagAPI.setHoldingTag(editingTag.symbol, tagValue.tag_name, tagValue);
+      // Pass portfolio_id to associate tag with current portfolio
+      await TagAPI.setHoldingTag(editingTag.symbol, tagValue.tag_name, tagValue, selectedPortfolioId || undefined);
       await handleTagsUpdated();
       setEditingTag(null);
     } catch (error) {
