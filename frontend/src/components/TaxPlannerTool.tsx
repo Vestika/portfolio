@@ -1,9 +1,14 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Trash2, Search, X, Loader2 } from 'lucide-react'
 import { usePortfolioData, type AccountData, type HoldingData, type PriceData } from '../contexts/PortfolioDataContext'
-import { TaxEntry, TaxScenario, TaxGroupBy, TaxTotals, GroupTotals } from '../types/tax-planner'
+import { TaxEntry, TaxScenario, TaxGroupBy, TaxTotals, GroupTotals, TaxSettings } from '../types/tax-planner'
 import * as taxApi from '../utils/tax-planner-api'
 import { useSymbolAutocomplete, SymbolSuggestion } from '../hooks/useSymbolAutocomplete'
+
+// Default tax settings
+const DEFAULT_TAX_SETTINGS: TaxSettings = {
+  taxRatePercent: 25        // 25% tax rate
+}
 
 // Draft scenario with local ID for tracking unsaved scenarios
 interface DraftScenario extends TaxScenario {
@@ -122,6 +127,7 @@ export function TaxPlannerTool() {
         year: new Date().getFullYear(),
         entries: [],
         baseCurrency,
+        taxSettings: DEFAULT_TAX_SETTINGS,
         isDirty: false
       }
       setDraftScenarios([initialDraft])
@@ -368,6 +374,7 @@ export function TaxPlannerTool() {
       year: new Date().getFullYear(),
       entries: [],
       baseCurrency,
+      taxSettings: DEFAULT_TAX_SETTINGS,
       isDirty: false
     }
     setDraftScenarios(prev => [...prev, newDraft])
@@ -440,7 +447,10 @@ export function TaxPlannerTool() {
   }, [allPortfoliosData])
 
   // Calculate totals for entries (converting to base currency)
-  const calculateTotals = useCallback((entries: TaxEntry[], targetCurrency: string): TaxTotals => {
+  const calculateTotals = useCallback((entries: TaxEntry[], targetCurrency: string, taxSettings?: TaxSettings): TaxTotals => {
+    const settings = taxSettings || DEFAULT_TAX_SETTINGS
+    const taxRate = settings.taxRatePercent / 100
+
     const result = entries.reduce((acc, e) => {
       const costBasis = e.units * e.costBasisPerUnit
       const sellValue = e.units * e.sellPricePerUnit
@@ -459,18 +469,28 @@ export function TaxPlannerTool() {
       }
     }, { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, totalGain: 0, totalLoss: 0 })
 
+    // Tax on gains (before shield)
+    const taxOnGains = result.totalGain * taxRate
+    // Tax shield: tax saved due to losses (losses × tax rate)
+    const taxShieldAmount = result.totalLoss * taxRate
+    // Net tax to pay (can't go below 0)
+    const estimatedTax = Math.max(0, taxOnGains - taxShieldAmount)
+
     return {
       ...result,
       profitLossPercent: result.totalCostBasis > 0
         ? (result.totalProfitLoss / result.totalCostBasis) * 100
-        : 0
+        : 0,
+      taxOnGains,
+      taxShieldAmount,
+      estimatedTax
     }
   }, [getExchangeRate])
 
   // Overall totals (converted to base currency)
   const totals = useMemo(() => {
-    if (!currentScenario) return { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, totalGain: 0, totalLoss: 0, profitLossPercent: 0 }
-    return calculateTotals(currentScenario.entries, currentScenario.baseCurrency)
+    if (!currentScenario) return { totalCostBasis: 0, totalSellValue: 0, totalProfitLoss: 0, totalGain: 0, totalLoss: 0, profitLossPercent: 0, taxOnGains: 0, taxShieldAmount: 0, estimatedTax: 0 }
+    return calculateTotals(currentScenario.entries, currentScenario.baseCurrency, currentScenario.taxSettings)
   }, [currentScenario, calculateTotals])
 
   // Group entries by selected grouping
@@ -478,11 +498,12 @@ export function TaxPlannerTool() {
     if (!currentScenario) return []
     const entries = currentScenario.entries
     const targetCurrency = currentScenario.baseCurrency
+    const taxSettings = currentScenario.taxSettings
     if (groupBy === 'none' || entries.length === 0) {
       return [{
         groupName: 'All Entries',
         entries,
-        totals: calculateTotals(entries, targetCurrency)
+        totals: calculateTotals(entries, targetCurrency, taxSettings)
       }]
     }
 
@@ -502,9 +523,33 @@ export function TaxPlannerTool() {
     return Object.entries(groups).map(([groupName, groupEntries]) => ({
       groupName,
       entries: groupEntries,
-      totals: calculateTotals(groupEntries, targetCurrency)
+      totals: calculateTotals(groupEntries, targetCurrency, taxSettings)
     }))
   }, [currentScenario, groupBy, calculateTotals])
+
+  // Always compute per-account tax breakdown (independent of groupBy setting)
+  const accountTaxBreakdown = useMemo(() => {
+    if (!currentScenario || currentScenario.entries.length === 0) return []
+
+    const targetCurrency = currentScenario.baseCurrency
+    const taxSettings = currentScenario.taxSettings
+
+    // Group entries by account
+    const accountGroups: Record<string, TaxEntry[]> = {}
+    currentScenario.entries.forEach(entry => {
+      const key = entry.accountName || 'Unassigned'
+      if (!accountGroups[key]) accountGroups[key] = []
+      accountGroups[key].push(entry)
+    })
+
+    // Calculate totals per account
+    return Object.entries(accountGroups)
+      .map(([accountName, entries]) => ({
+        accountName,
+        ...calculateTotals(entries, targetCurrency, taxSettings)
+      }))
+      .sort((a, b) => b.estimatedTax - a.estimatedTax) // Sort by tax descending
+  }, [currentScenario, calculateTotals])
 
   const numberFmt = (n: number) =>
     new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(n)
@@ -666,7 +711,7 @@ export function TaxPlannerTool() {
       </div>
 
       {/* Options bar */}
-      <div className="flex items-center gap-4 mb-4">
+      <div className="flex flex-wrap items-center gap-4 mb-4">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-gray-500">Year:</span>
           <input
@@ -676,6 +721,26 @@ export function TaxPlannerTool() {
             value={currentScenario?.year || ''}
             onChange={(e) => updateCurrentScenario({ year: e.target.value ? Number(e.target.value) : undefined })}
           />
+        </div>
+
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-gray-500" title="Tax rate applied to capital gains">Tax Rate:</span>
+          <div className="flex items-center">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              className="w-16 bg-gray-900 text-white rounded-l px-2 py-1 border border-gray-700 text-center text-sm"
+              value={currentScenario?.taxSettings?.taxRatePercent ?? DEFAULT_TAX_SETTINGS.taxRatePercent}
+              onChange={(e) => updateCurrentScenario({
+                taxSettings: {
+                  taxRatePercent: Math.min(100, Math.max(0, Number(e.target.value) || 0))
+                }
+              })}
+            />
+            <span className="bg-gray-700 text-gray-400 px-2 py-1 border border-l-0 border-gray-700 rounded-r text-sm">%</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
@@ -940,12 +1005,17 @@ export function TaxPlannerTool() {
             {group.entries.length > 0 && groupBy !== 'none' && (
               <div className="flex items-center justify-between px-4 py-2 border-t border-gray-700 bg-gray-800/30 text-sm">
                 <span className="text-gray-400">Subtotal ({group.entries.length} entries)</span>
-                <div className="flex gap-6 text-gray-300">
+                <div className="flex flex-wrap gap-4 md:gap-6 text-gray-300">
                   <span>Cost: {numberFmt(group.totals.totalCostBasis)}</span>
                   <span>Sell: {numberFmt(group.totals.totalSellValue)}</span>
                   <span className={group.totals.totalProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}>
                     P/L: {group.totals.totalProfitLoss >= 0 ? '+' : ''}{numberFmt(group.totals.totalProfitLoss)}
                   </span>
+                  {group.totals.estimatedTax > 0 && (
+                    <span className="text-orange-400" title="Estimated tax for this group">
+                      Tax: {numberFmt(group.totals.estimatedTax)}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -956,40 +1026,94 @@ export function TaxPlannerTool() {
 
       {/* Summary cards */}
       {currentScenario && currentScenario.entries.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-6">
-          <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Total Cost Basis</div>
-            <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalCostBasis)} {currentScenario.baseCurrency}</div>
-          </div>
-          <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Total Sell Value</div>
-            <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalSellValue)} {currentScenario.baseCurrency}</div>
-          </div>
-          <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Net Profit/Loss</div>
-            <div className={`text-xl font-semibold ${totals.totalProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {totals.totalProfitLoss >= 0 ? '+' : ''}{numberFmtInt(totals.totalProfitLoss)} {currentScenario.baseCurrency}
+        <>
+          {/* P/L Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-6">
+            <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Total Cost Basis</div>
+              <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalCostBasis)} {currentScenario.baseCurrency}</div>
+            </div>
+            <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Total Sell Value</div>
+              <div className="text-xl font-semibold text-white">{numberFmtInt(totals.totalSellValue)} {currentScenario.baseCurrency}</div>
+            </div>
+            <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Net Profit/Loss</div>
+              <div className={`text-xl font-semibold ${totals.totalProfitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totals.totalProfitLoss >= 0 ? '+' : ''}{numberFmtInt(totals.totalProfitLoss)} {currentScenario.baseCurrency}
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-green-800/50 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Total Gains</div>
+              <div className="text-xl font-semibold text-green-400">
+                +{numberFmtInt(totals.totalGain)} {currentScenario.baseCurrency}
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-red-800/50 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Total Losses</div>
+              <div className="text-xl font-semibold text-red-400">
+                -{numberFmtInt(totals.totalLoss)} {currentScenario.baseCurrency}
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+              <div className="text-gray-400 text-sm">Return %</div>
+              <div className={`text-xl font-semibold ${totals.profitLossPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totals.profitLossPercent >= 0 ? '+' : ''}{numberFmt(totals.profitLossPercent)}%
+              </div>
             </div>
           </div>
-          <div className="bg-gray-900 border border-green-800/50 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Total Gains</div>
-            <div className="text-xl font-semibold text-green-400">
-              +{numberFmtInt(totals.totalGain)} {currentScenario.baseCurrency}
+
+          {/* Tax Summary */}
+          <div className="mt-4">
+            <h3 className="text-sm font-medium text-gray-400 mb-3">Tax Summary</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+                <div className="text-gray-400 text-sm">Tax on Gains</div>
+                <div className="text-xl font-semibold text-white">
+                  {numberFmtInt(totals.taxOnGains)} {currentScenario.baseCurrency}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {numberFmtInt(totals.totalGain)} × {currentScenario.taxSettings?.taxRatePercent ?? DEFAULT_TAX_SETTINGS.taxRatePercent}%
+                </div>
+              </div>
+              <div className="bg-gray-900 border border-green-800/50 rounded-md p-4">
+                <div className="text-gray-400 text-sm">Tax Shield</div>
+                <div className="text-xl font-semibold text-green-400">
+                  -{numberFmtInt(totals.taxShieldAmount)} {currentScenario.baseCurrency}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {numberFmtInt(totals.totalLoss)} × {currentScenario.taxSettings?.taxRatePercent ?? DEFAULT_TAX_SETTINGS.taxRatePercent}%
+                </div>
+              </div>
+              <div className="bg-gray-900 border border-orange-800/50 rounded-md p-4">
+                <div className="text-gray-400 text-sm">Net Tax to Pay</div>
+                <div className="text-xl font-semibold text-orange-400">
+                  {numberFmtInt(totals.estimatedTax)} {currentScenario.baseCurrency}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  After tax shield offset
+                </div>
+              </div>
+
+              {/* Per-account tax breakdown - always show if there are entries with accounts */}
+              {accountTaxBreakdown.length > 0 && (
+                <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+                  <div className="text-gray-400 text-sm mb-2">Tax by Account</div>
+                  <div className="space-y-1.5">
+                    {accountTaxBreakdown.map(item => (
+                      <div key={item.accountName} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-300 truncate mr-2">{item.accountName}</span>
+                        <span className={item.estimatedTax > 0 ? 'text-orange-400' : 'text-gray-500'}>
+                          {numberFmt(item.estimatedTax)} {currentScenario.baseCurrency}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div className="bg-gray-900 border border-red-800/50 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Total Losses</div>
-            <div className="text-xl font-semibold text-red-400">
-              -{numberFmtInt(totals.totalLoss)} {currentScenario.baseCurrency}
-            </div>
-          </div>
-          <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
-            <div className="text-gray-400 text-sm">Return %</div>
-            <div className={`text-xl font-semibold ${totals.profitLossPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {totals.profitLossPercent >= 0 ? '+' : ''}{numberFmt(totals.profitLossPercent)}%
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Info text */}
