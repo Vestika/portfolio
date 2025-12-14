@@ -15,6 +15,11 @@ export interface TaxEntry {
   notes?: string                // Optional notes
 }
 
+// Tax settings for a scenario
+export interface TaxSettings {
+  taxRatePercent: number        // Tax rate on capital gains (0-100)
+}
+
 // Saved scenario (what gets persisted to backend)
 export interface TaxScenario {
   scenarioId?: string           // MongoDB ObjectId (only after save)
@@ -23,6 +28,7 @@ export interface TaxScenario {
   year?: number                 // Tax year (e.g., 2025)
   entries: TaxEntry[]           // List of tax entries
   baseCurrency: string          // Base currency for totals
+  taxSettings?: TaxSettings     // Tax calculation settings
   createdAt?: string            // ISO timestamp
   updatedAt?: string            // ISO timestamp
 }
@@ -38,6 +44,10 @@ export interface TaxTotals {
   totalGain: number      // Sum of all positive P/L entries
   totalLoss: number      // Sum of all negative P/L entries (as positive number)
   profitLossPercent: number
+  // Tax calculations
+  taxShieldAmount: number // Tax saved due to losses (losses × tax rate)
+  taxOnGains: number      // Tax on gains before shield (gains × tax rate)
+  estimatedTax: number    // Net tax to pay (taxOnGains - taxShieldAmount, min 0)
 }
 
 // Group totals for grouped views

@@ -1,5 +1,5 @@
 import api from './api'
-import { TaxScenario, TaxEntry } from '../types/tax-planner'
+import { TaxScenario, TaxEntry, TaxSettings } from '../types/tax-planner'
 
 // Backend response types
 interface TaxEntryResponse {
@@ -16,6 +16,10 @@ interface TaxEntryResponse {
   notes?: string
 }
 
+interface TaxSettingsResponse {
+  tax_rate_percent: number
+}
+
 interface TaxScenarioResponse {
   scenario_id: string
   name: string
@@ -23,6 +27,7 @@ interface TaxScenarioResponse {
   year?: number
   entries: TaxEntryResponse[]
   base_currency: string
+  tax_settings?: TaxSettingsResponse
   created_at: string
   updated_at: string
 }
@@ -47,7 +52,8 @@ export async function createScenario(scenario: TaxScenario): Promise<TaxScenario
     description: scenario.description,
     year: scenario.year,
     entries: scenario.entries.map(mapEntryToRequest),
-    base_currency: scenario.baseCurrency
+    base_currency: scenario.baseCurrency,
+    tax_settings: scenario.taxSettings ? mapTaxSettingsToRequest(scenario.taxSettings) : undefined
   })
   return mapResponseToScenario(response.data)
 }
@@ -65,6 +71,9 @@ export async function updateScenario(
     payload.entries = scenario.entries.map(mapEntryToRequest)
   }
   if (scenario.baseCurrency !== undefined) payload.base_currency = scenario.baseCurrency
+  if (scenario.taxSettings !== undefined) {
+    payload.tax_settings = mapTaxSettingsToRequest(scenario.taxSettings)
+  }
 
   const response = await api.put<TaxScenarioResponse>(
     `/tax-planner/scenarios/${scenarioId}`,
@@ -87,8 +96,21 @@ function mapResponseToScenario(response: TaxScenarioResponse): TaxScenario {
     year: response.year,
     entries: response.entries.map(mapResponseToEntry),
     baseCurrency: response.base_currency,
+    taxSettings: response.tax_settings ? mapResponseToTaxSettings(response.tax_settings) : undefined,
     createdAt: response.created_at,
     updatedAt: response.updated_at
+  }
+}
+
+function mapResponseToTaxSettings(settings: TaxSettingsResponse): TaxSettings {
+  return {
+    taxRatePercent: settings.tax_rate_percent
+  }
+}
+
+function mapTaxSettingsToRequest(settings: TaxSettings): Record<string, number> {
+  return {
+    tax_rate_percent: settings.taxRatePercent
   }
 }
 

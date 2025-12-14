@@ -30,6 +30,11 @@ class TaxEntryModel(BaseModel):
     notes: Optional[str] = None
 
 
+class TaxSettingsModel(BaseModel):
+    """Tax calculation settings"""
+    tax_rate_percent: float = 25.0  # Tax rate on capital gains (0-100)
+
+
 class CreateTaxScenarioRequest(BaseModel):
     """Request to create a new scenario"""
     name: str
@@ -37,6 +42,7 @@ class CreateTaxScenarioRequest(BaseModel):
     year: Optional[int] = None
     entries: List[TaxEntryModel] = []
     base_currency: str = "USD"
+    tax_settings: Optional[TaxSettingsModel] = None
 
 
 class UpdateTaxScenarioRequest(BaseModel):
@@ -46,6 +52,7 @@ class UpdateTaxScenarioRequest(BaseModel):
     year: Optional[int] = None
     entries: Optional[List[TaxEntryModel]] = None
     base_currency: Optional[str] = None
+    tax_settings: Optional[TaxSettingsModel] = None
 
 
 class TaxScenarioResponse(BaseModel):
@@ -56,6 +63,7 @@ class TaxScenarioResponse(BaseModel):
     year: Optional[int] = None
     entries: List[TaxEntryModel]
     base_currency: str
+    tax_settings: Optional[TaxSettingsModel] = None
     created_at: str
     updated_at: str
 
@@ -75,6 +83,9 @@ async def get_scenarios(
 
         scenarios = []
         async for doc in collection.find(query).sort("updated_at", -1):
+            tax_settings = None
+            if doc.get("tax_settings"):
+                tax_settings = TaxSettingsModel(**doc["tax_settings"])
             scenarios.append(TaxScenarioResponse(
                 scenario_id=str(doc["_id"]),
                 name=doc["name"],
@@ -82,6 +93,7 @@ async def get_scenarios(
                 year=doc.get("year"),
                 entries=[TaxEntryModel(**e) for e in doc.get("entries", [])],
                 base_currency=doc.get("base_currency", "USD"),
+                tax_settings=tax_settings,
                 created_at=doc["created_at"].isoformat(),
                 updated_at=doc["updated_at"].isoformat()
             ))
@@ -108,6 +120,10 @@ async def get_scenario(
         if not doc:
             raise HTTPException(status_code=404, detail="Scenario not found")
 
+        tax_settings = None
+        if doc.get("tax_settings"):
+            tax_settings = TaxSettingsModel(**doc["tax_settings"])
+
         return TaxScenarioResponse(
             scenario_id=str(doc["_id"]),
             name=doc["name"],
@@ -115,6 +131,7 @@ async def get_scenario(
             year=doc.get("year"),
             entries=[TaxEntryModel(**e) for e in doc.get("entries", [])],
             base_currency=doc.get("base_currency", "USD"),
+            tax_settings=tax_settings,
             created_at=doc["created_at"].isoformat(),
             updated_at=doc["updated_at"].isoformat()
         )
@@ -141,6 +158,7 @@ async def create_scenario(
             "year": request.year,
             "entries": [entry.model_dump() for entry in request.entries],
             "base_currency": request.base_currency,
+            "tax_settings": request.tax_settings.model_dump() if request.tax_settings else None,
             "created_at": now,
             "updated_at": now
         }
@@ -154,6 +172,7 @@ async def create_scenario(
             year=request.year,
             entries=request.entries,
             base_currency=request.base_currency,
+            tax_settings=request.tax_settings,
             created_at=now.isoformat(),
             updated_at=now.isoformat()
         )
@@ -192,6 +211,8 @@ async def update_scenario(
             update_fields["entries"] = [entry.model_dump() for entry in request.entries]
         if request.base_currency is not None:
             update_fields["base_currency"] = request.base_currency
+        if request.tax_settings is not None:
+            update_fields["tax_settings"] = request.tax_settings.model_dump()
 
         await collection.update_one(
             {"_id": ObjectId(scenario_id)},
@@ -201,6 +222,10 @@ async def update_scenario(
         # Return updated document
         updated = await collection.find_one({"_id": ObjectId(scenario_id)})
 
+        tax_settings = None
+        if updated.get("tax_settings"):
+            tax_settings = TaxSettingsModel(**updated["tax_settings"])
+
         return TaxScenarioResponse(
             scenario_id=str(updated["_id"]),
             name=updated["name"],
@@ -208,6 +233,7 @@ async def update_scenario(
             year=updated.get("year"),
             entries=[TaxEntryModel(**e) for e in updated.get("entries", [])],
             base_currency=updated.get("base_currency", "USD"),
+            tax_settings=tax_settings,
             created_at=updated["created_at"].isoformat(),
             updated_at=updated["updated_at"].isoformat()
         )
