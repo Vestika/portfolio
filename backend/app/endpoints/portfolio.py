@@ -62,7 +62,9 @@ async def _safe_yfinance_download(symbols, start, end, progress=False, auto_adju
     
     async with _yfinance_lock:
         def _download_sync():
-            return yf.download(symbols, start=start, end=end, progress=progress, auto_adjust=auto_adjust)
+            # threads=False prevents yfinance's internal threading which uses a shared _DFS dictionary
+            # that can cause data to get mixed between symbols (see yfinance issue #2557)
+            return yf.download(symbols, start=start, end=end, progress=progress, auto_adjust=auto_adjust, threads=False)
         
         try:
             loop = asyncio.get_running_loop()
