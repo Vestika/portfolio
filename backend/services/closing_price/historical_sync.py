@@ -260,26 +260,28 @@ class HistoricalSyncService:
                 def _fetch_sync():
                     # Add 1 day to end_date because yfinance end is exclusive
                     end_inclusive = end_date + timedelta(days=1)
-                    data = yf.download(yf_symbol, start=start_date, end=end_inclusive, progress=False, auto_adjust=True)
-                    return data
-                
+                    # threads=False prevents yfinance's internal threading which uses a shared _DFS dictionary
+                    # that can cause data to get mixed between symbols (see yfinance issue #2557)
+                    result_df = yf.download(yf_symbol, start=start_date, end=end_inclusive, progress=False, auto_adjust=True, threads=False)
+                    return result_df
+
                 loop = asyncio.get_running_loop()
-                data = await asyncio.wait_for(
+                df = await asyncio.wait_for(
                     loop.run_in_executor(None, _fetch_sync),
                     timeout=30.0  # 30 second timeout for large date ranges
                 )
                 
                 logger.debug(f"[FETCH HISTORICAL] Released yfinance lock for {yf_symbol}")
-            
-            if data.empty:
+
+            if df.empty:
                 logger.warning(f"[FETCH HISTORICAL] No data from yfinance for {yf_symbol} (original: {symbol})")
                 return None
-            
+
             # Parse the data into our format
             historical_data = []
-            
-            if "Close" in data.columns:
-                prices = data["Close"].dropna()
+
+            if "Close" in df.columns:
+                prices = df["Close"].dropna()
                 logger.info(f"[FETCH HISTORICAL] yfinance returned {len(prices)} raw data points for {yf_symbol}")
                 
                 for dt in prices.index:
