@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
@@ -82,9 +82,9 @@ const App: React.FC = () => {
   const activeView: NavigationView = pathnameToView(location.pathname) || 'portfolios';
   
   // Use the new ALL portfolios data context
-  const { 
-    isLoading: portfolioLoading, 
-    error: portfolioError, 
+  const {
+    isLoading: portfolioLoading,
+    error: portfolioError,
     selectedPortfolioId,
     setSelectedPortfolioId,
     selectedAccountNames,
@@ -93,6 +93,7 @@ const App: React.FC = () => {
     computedData,
     loadAllPortfoliosData,
     refreshAllPortfoliosData,
+    clearAllPortfoliosData,
     getAvailablePortfolios,
     getOptionsVestingByAccount,
     allPortfoliosData
@@ -105,6 +106,29 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
+
+  // Track previous user to detect user changes (logout -> login with different account)
+  const previousUserIdRef = useRef<string | null>(null);
+
+  // Clear portfolio data when user changes
+  useEffect(() => {
+    const currentUserId = user?.uid || null;
+    const previousUserId = previousUserIdRef.current;
+
+    // Detect user change (different user logged in, or logout)
+    if (previousUserId !== null && previousUserId !== currentUserId) {
+      console.log('👤 [APP] User changed, clearing portfolio data', {
+        previousUserId,
+        currentUserId
+      });
+      clearAllPortfoliosData();
+      setIsInitialized(false);
+      setHasCheckedPortfolios(false);
+    }
+
+    // Update the ref to current user
+    previousUserIdRef.current = currentUserId;
+  }, [user?.uid, clearAllPortfoliosData]);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();

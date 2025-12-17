@@ -193,6 +193,7 @@ interface PortfolioDataContextType {
   refreshAllPortfoliosData: () => Promise<void>;
   refreshTagsOnly: () => Promise<void>;
   updateCustomCharts: (charts: any[]) => void;
+  clearAllPortfoliosData: () => void;
   
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
@@ -1122,6 +1123,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     });
   }, []);
 
+  // Clear all portfolio data (used on logout/user change)
+  const clearAllPortfoliosData = useCallback(() => {
+    console.log('🧹 [PORTFOLIO CONTEXT] Clearing all portfolio data');
+    setAllPortfoliosData(null);
+    setAutocompleteData([]);
+    setSelectedPortfolioId(null);
+    setSelectedAccountNames([]);
+    setError(null);
+    setIsLoading(false);
+  }, []);
+
   const value: PortfolioDataContextType = {
     allPortfoliosData,
     autocompleteData,
@@ -1138,6 +1150,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     refreshAllPortfoliosData,
     refreshTagsOnly,
     updateCustomCharts,
+    clearAllPortfoliosData,
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,
