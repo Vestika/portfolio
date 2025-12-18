@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
@@ -106,29 +106,6 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
-
-  // Track previous user to detect user changes (logout -> login with different account)
-  const previousUserIdRef = useRef<string | null>(null);
-
-  // Clear portfolio data when user changes
-  useEffect(() => {
-    const currentUserId = user?.uid || null;
-    const previousUserId = previousUserIdRef.current;
-
-    // Detect user change (different user logged in, or logout)
-    if (previousUserId !== null && previousUserId !== currentUserId) {
-      console.log('👤 [APP] User changed, clearing portfolio data', {
-        previousUserId,
-        currentUserId
-      });
-      clearAllPortfoliosData();
-      setIsInitialized(false);
-      setHasCheckedPortfolios(false);
-    }
-
-    // Update the ref to current user
-    previousUserIdRef.current = currentUserId;
-  }, [user?.uid, clearAllPortfoliosData]);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();
@@ -364,6 +341,11 @@ const App: React.FC = () => {
 
   const handleSignOut = async () => {
     try {
+      // Clear all portfolio data before signing out to prevent data leakage
+      console.log('🚪 [APP] Signing out - clearing portfolio data');
+      clearAllPortfoliosData();
+      setIsInitialized(false);
+      setHasCheckedPortfolios(false);
       await signOutUser();
     } catch (error) {
       console.error('Error signing out:', error);
