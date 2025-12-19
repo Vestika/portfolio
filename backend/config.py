@@ -97,6 +97,20 @@ class Settings(BaseSettings):
         description="Telegram chat ID (user/group/channel) to receive feedback notifications"
     )
 
+    # Resend Email Configuration
+    resend_api_key: Optional[str] = Field(
+        default=None,
+        description="Resend API key for sending email reports"
+    )
+    resend_from_email: str = Field(
+        default="support@vestika.io",
+        description="Email address to send reports from"
+    )
+    resend_from_name: str = Field(
+        default="Vestika Reports",
+        description="Display name for report emails"
+    )
+
 
 # Global settings instance
 settings = Settings() 

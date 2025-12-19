@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }} - Vestika</title>
+    <style>
+        /* Reset and Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4;
+            margin: 1cm;
+        }
+
+        body {
+            font-family: 'Times New Roman', Georgia, serif;
+            line-height: 1.5;
+            color: #1a1a1a;
+            background: #ffffff;
+            font-size: 11pt;
+        }
+
+        /* Container */
+        .container {
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        /* Letterhead Style Header */
+        .header {
+            border-bottom: 3px double #1a365d;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+        }
+
+        .company-name {
+            font-size: 28px;
+            font-weight: bold;
+            color: #1a365d;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .company-tagline {
+            font-size: 10px;
+            color: #718096;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        .report-info {
+            text-align: right;
+            color: #4a5568;
+            font-size: 10pt;
+        }
+
+        .report-info .report-type {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #1a365d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .report-date {
+            margin-top: 4px;
+        }
+
+        .client-section {
+            margin-top: 15px;
+            padding: 15px 0;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .client-label {
+            font-size: 9pt;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .client-name {
+            font-size: 16pt;
+            color: #1a365d;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        /* Executive Summary */
+        .executive-summary {
+            background: #f7fafc;
+            border-left: 4px solid #1a365d;
+            padding: 20px 25px;
+            margin-bottom: 30px;
+        }
+
+        .executive-summary h2 {
+            font-size: 12pt;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #1a365d;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .summary-metrics {
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+        }
+
+        .metric {
+            text-align: center;
+            flex: 1;
+        }
+
+        .metric-value {
+            font-size: 28pt;
+            font-weight: bold;
+            color: #1a365d;
+            font-family: 'Georgia', serif;
+        }
+
+        .metric-label {
+            font-size: 9pt;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .section-number {
+            background: #1a365d;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11pt;
+            font-weight: bold;
+            margin-right: 12px;
+            font-family: Arial, sans-serif;
+        }
+
+        .section-title {
+            font-size: 13pt;
+            font-weight: 600;
+            color: #1a365d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Portfolio Card */
+        .portfolio-section {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+
+        .portfolio-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .portfolio-name {
+            font-size: 14pt;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .portfolio-value {
+            font-size: 20pt;
+            font-weight: bold;
+            font-family: 'Georgia', serif;
+        }
+
+        .portfolio-body {
+            padding: 20px;
+        }
+
+        .portfolio-meta {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .meta-item {
+            text-align: center;
+        }
+
+        .meta-value {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #2c5282;
+        }
+
+        .meta-label {
+            font-size: 9pt;
+            color: #718096;
+            text-transform: uppercase;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+
+        th {
+            background: #edf2f7;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #1a365d;
+            font-size: 9pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #cbd5e0;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #2d3748;
+        }
+
+        tr:nth-child(even) {
+            background: #f7fafc;
+        }
+
+        tr:hover {
+            background: #edf2f7;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .font-mono {
+            font-family: 'Courier New', monospace;
+        }
+
+        .symbol-cell {
+            font-weight: 600;
+            color: #1a365d;
+        }
+
+        /* Allocation Section */
+        .allocation-section {
+            margin-top: 20px;
+        }
+
+        .allocation-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .allocation-row:last-child {
+            border-bottom: none;
+        }
+
+        .allocation-type {
+            width: 140px;
+            font-weight: 500;
+            color: #2d3748;
+        }
+
+        .allocation-bar-container {
+            flex: 1;
+            height: 20px;
+            background: #edf2f7;
+            border-radius: 2px;
+            margin: 0 15px;
+            overflow: hidden;
+        }
+
+        .allocation-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #1a365d 0%, #3182ce 100%);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .allocation-pct {
+            width: 60px;
+            text-align: right;
+            font-weight: 600;
+            color: #1a365d;
+            font-family: 'Courier New', monospace;
+        }
+
+        .allocation-value {
+            width: 100px;
+            text-align: right;
+            color: #718096;
+            font-size: 10pt;
+        }
+
+        /* Risk Metrics */
+        .risk-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .risk-box {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .risk-value {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #2c5282;
+            font-family: 'Georgia', serif;
+        }
+
+        .risk-label {
+            font-size: 9pt;
+            color: #718096;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Disclaimer */
+        .disclaimer {
+            background: #fffbeb;
+            border: 1px solid #fbbf24;
+            border-radius: 4px;
+            padding: 15px 20px;
+            margin-top: 30px;
+            font-size: 9pt;
+            color: #92400e;
+        }
+
+        .disclaimer-title {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #1a365d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 9pt;
+            color: #718096;
+        }
+
+        .footer-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .footer-logo-icon {
+            width: 20px;
+            height: 20px;
+            background: #1a365d;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+        }
+
+        .confidential {
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #e53e3e;
+            font-weight: 600;
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .section {
+                page-break-inside: avoid;
+            }
+            .portfolio-section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-top">
+                <div class="logo-section">
+                    <div class="logo">V</div>
+                    <div>
+                        <div class="company-name">Vestika</div>
+                        <div class="company-tagline">Portfolio Intelligence</div>
+                    </div>
+                </div>
+                <div class="report-info">
+                    <div class="report-type">{{ period_label }} Report</div>
+                    <div class="report-date">{{ period_start|format_date }} - {{ period_end|format_date }}</div>
+                </div>
+            </div>
+            <div class="client-section">
+                <div class="client-label">Prepared For</div>
+                <div class="client-name">{{ user_name }}</div>
+            </div>
+        </div>
+
+        {% if 'portfolio_summary' in sections_included %}
+        <!-- Executive Summary -->
+        <div class="executive-summary">
+            <h2>Executive Summary</h2>
+            <div class="summary-metrics">
+                <div class="metric">
+                    <div class="metric-value">{{ total_value|format_currency(base_currency) }}</div>
+                    <div class="metric-label">Total Portfolio Value</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">{{ portfolios_count }}</div>
+                    <div class="metric-label">{{ 'Portfolio' if portfolios_count == 1 else 'Portfolios' }}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">{{ total_holdings }}</div>
+                    <div class="metric-label">Total Positions</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% set section_num = namespace(value=1) %}
+
+        <!-- Portfolio Details -->
+        {% for portfolio in portfolios %}
+        <div class="section">
+            <div class="section-header">
+                <span class="section-number">{{ section_num.value }}</span>
+                <span class="section-title">Portfolio Analysis: {{ portfolio.portfolio_name }}</span>
+            </div>
+            {% set section_num.value = section_num.value + 1 %}
+
+            <div class="portfolio-section">
+                <div class="portfolio-header">
+                    <span class="portfolio-name">{{ portfolio.portfolio_name }}</span>
+                    <span class="portfolio-value">{{ portfolio.total_value|format_currency(portfolio.base_currency) }}</span>
+                </div>
+                <div class="portfolio-body">
+                    <div class="portfolio-meta">
+                        <div class="meta-item">
+                            <div class="meta-value">{{ portfolio.total_holdings }}</div>
+                            <div class="meta-label">Positions</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-value">{{ portfolio.accounts_count }}</div>
+                            <div class="meta-label">Accounts</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-value">{{ portfolio.base_currency }}</div>
+                            <div class="meta-label">Base Currency</div>
+                        </div>
+                    </div>
+
+                    {% if 'asset_allocation' in sections_included and portfolio.asset_allocation %}
+                    <!-- Asset Allocation -->
+                    <div class="allocation-section">
+                        <h4 style="font-size: 11pt; font-weight: 600; color: #1a365d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Asset Allocation</h4>
+                        {% for item in portfolio.asset_allocation %}
+                        <div class="allocation-row">
+                            <span class="allocation-type">{{ item.type }}</span>
+                            <div class="allocation-bar-container">
+                                <div class="allocation-bar" style="width: {{ item.percentage }}%;"></div>
+                            </div>
+                            <span class="allocation-pct">{{ item.percentage|format_percentage }}</span>
+                            <span class="allocation-value">{{ item.value|format_currency(portfolio.base_currency) }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if 'holdings_table' in sections_included and portfolio.top_holdings %}
+                    <!-- Holdings Table -->
+                    <div style="margin-top: 25px;">
+                        <h4 style="font-size: 11pt; font-weight: 600; color: #1a365d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Top Holdings</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 80px;">Symbol</th>
+                                    <th>Security Name</th>
+                                    <th class="text-right" style="width: 80px;">Units</th>
+                                    <th class="text-right" style="width: 120px;">Market Value</th>
+                                    <th class="text-right" style="width: 80px;">Weight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for holding in portfolio.top_holdings[:15] %}
+                                <tr>
+                                    <td class="symbol-cell">{{ holding.symbol }}</td>
+                                    <td>{{ holding.name }}</td>
+                                    <td class="text-right font-mono">{{ holding.units|format_number }}</td>
+                                    <td class="text-right font-mono">{{ holding.value|format_currency(portfolio.base_currency) }}</td>
+                                    <td class="text-right font-mono">{{ holding.percentage|format_percentage }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% if 'concentration_analysis' in sections_included and portfolio.concentration %}
+                    <!-- Risk & Concentration Metrics -->
+                    <div style="margin-top: 25px;">
+                        <h4 style="font-size: 11pt; font-weight: 600; color: #1a365d; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Concentration & Risk Metrics</h4>
+                        <div class="risk-grid">
+                            <div class="risk-box">
+                                <div class="risk-value">{{ portfolio.concentration.top_5_percentage|format_percentage }}</div>
+                                <div class="risk-label">Top 5 Concentration</div>
+                            </div>
+                            <div class="risk-box">
+                                <div class="risk-value">{{ portfolio.concentration.top_10_percentage|format_percentage }}</div>
+                                <div class="risk-label">Top 10 Concentration</div>
+                            </div>
+                            <div class="risk-box">
+                                <div class="risk-value">{{ portfolio.concentration.largest_holding_symbol }}</div>
+                                <div class="risk-label">Largest Position</div>
+                            </div>
+                            <div class="risk-box">
+                                <div class="risk-value">{{ portfolio.concentration.unique_symbols }}</div>
+                                <div class="risk-label">Diversification</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if 'ai_insights' in sections_included %}
+        {% for portfolio in portfolios %}
+        {% if portfolio.ai_insights %}
+        <div class="section">
+            <div class="section-header">
+                <span class="section-number">{{ section_num.value }}</span>
+                <span class="section-title">AI Portfolio Analysis</span>
+            </div>
+            {% set section_num.value = section_num.value + 1 %}
+            <div style="background: #f0f4f8; border-left: 4px solid #3182ce; padding: 20px; margin-top: 15px;">
+                <p style="color: #2d3748; line-height: 1.8;">{{ portfolio.ai_insights }}</p>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+
+        <!-- Disclaimer -->
+        <div class="disclaimer">
+            <div class="disclaimer-title">Important Disclosure</div>
+            <p>This report is provided for informational purposes only and does not constitute investment advice, financial advice, trading advice, or any other sort of advice. The information contained in this report is not an offer to buy or sell securities. Past performance is not indicative of future results. All investments involve risk, including the possible loss of principal.</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-logo">
+                <div class="footer-logo-icon">V</div>
+                <span>Vestika Portfolio Intelligence</span>
+            </div>
+            <div>Report Generated: {{ generated_at|format_date }}</div>
+            <div class="confidential">Confidential</div>
+        </div>
+    </div>
+</body>
+</html>

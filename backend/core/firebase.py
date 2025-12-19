@@ -41,10 +41,14 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         self.exclude_paths = exclude_paths or ["/docs", "/openapi.json", "/redoc"]
     
     async def dispatch(self, request: Request, call_next):
-        
+
         # Initialize Firebase if not already done (only in production)
         _initialize_firebase()
-        
+
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip authentication for excluded paths (use startswith for pattern matching)
         for excluded_path in self.exclude_paths:
             if request.url.path.startswith(excluded_path):

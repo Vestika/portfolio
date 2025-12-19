@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Settings, Bell, Shield, Eye, EyeOff, Save, Volume2, VolumeX, CheckCircle, AlertCircle, ArrowLeft, FileText, Download } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from '../contexts/AuthContext';
+import ReportSubscriptionCard from './ReportSubscriptionCard';
+import api from '../utils/api';
 
 interface SettingsViewProps {
   onToggleVisibility: () => void;
@@ -257,6 +259,70 @@ const SettingsView: React.FC<SettingsViewProps> = ({ onToggleVisibility, isValue
             </div>
           </CardContent>
         </Card>
+
+        {/* Report Subscription */}
+        <ReportSubscriptionCard />
+
+        {/* Test Report Generation - Only for bensterenson@gmail.com */}
+        {user?.email === 'bensterenson@gmail.com' && (
+          <Card className="bg-gray-800/40 backdrop-blur-xl border-gray-700/50 shadow-2xl border-yellow-500/30">
+            <CardHeader className="pb-6">
+              <CardTitle className="text-2xl text-white flex items-center">
+                <FileText size={24} className="mr-3 text-yellow-400" />
+                Test Report Generation
+                <span className="ml-3 text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded">DEV ONLY</span>
+              </CardTitle>
+              <CardDescription className="text-gray-400 text-lg">
+                Generate and send a test report to your email
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-4">
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await api.get('/reports/test-generate?format=email', {
+                        responseType: 'text'
+                      });
+                      alert('Report sent to your email! Check your inbox.');
+                    } catch (error) {
+                      console.error('Failed to send report email:', error);
+                      alert('Failed to send report. Check console for details.');
+                    }
+                  }}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600"
+                >
+                  <Download size={18} className="mr-2" />
+                  Send Report to Email
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await api.get('/reports/test-generate?format=html', {
+                        responseType: 'text'
+                      });
+                      // Create a blob URL and open it
+                      const blob = new Blob([response.data], { type: 'text/html' });
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                    } catch (error) {
+                      console.error('Failed to generate HTML report:', error);
+                      alert('Failed to generate report. Check console for details.');
+                    }
+                  }}
+                  variant="outline"
+                  className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <Eye size={18} className="mr-2" />
+                  Preview HTML
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Sends a full report with PDF attachment to {user?.email}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Privacy Settings */}
         <Card className="bg-gray-800/40 backdrop-blur-xl border-gray-700/50 shadow-2xl">

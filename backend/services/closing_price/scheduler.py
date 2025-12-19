@@ -1,10 +1,11 @@
 """
-APScheduler Service for Historical Price Caching
+APScheduler Service for Historical Price Caching and Reports
 
 This module sets up scheduled jobs for the historical price caching system:
 1. Historical sync (every 3 hours) - Transfers prices from cache to MongoDB
 2. Live price updates (every 15 minutes) - Updates in-memory cache with latest prices
 3. Earnings sync (every 24 hours) - Fetches and caches earnings data
+4. Report generation (daily at 6 AM UTC) - Sends scheduled portfolio reports
 
 The scheduler runs in the background and is initialized on app startup.
 """
@@ -73,15 +74,26 @@ class CacheSchedulerService:
                 replace_existing=True,
                 max_instances=1
             )
-            
+
+            # Job 4: Report generation daily at 6 AM UTC
+            self.scheduler.add_job(
+                func=self._run_report_generation,
+                trigger=CronTrigger(hour='6', minute='0'),
+                id='report_generation',
+                name='Report Generation (Daily at 6 AM UTC)',
+                replace_existing=True,
+                max_instances=1
+            )
+
             # Start the scheduler
             self.scheduler.start()
-            
+
             logger.info(
                 "[SCHEDULER] Started with jobs:\n"
                 "  - Historical sync: Every 3 hours at :00\n"
                 "  - Live price updates: Every 15 minutes\n"
-                "  - Earnings sync: Daily at midnight"
+                "  - Earnings sync: Daily at midnight\n"
+                "  - Report generation: Daily at 6 AM UTC"
             )
             
             # Run initial sync immediately (T+0)
@@ -174,10 +186,10 @@ class CacheSchedulerService:
         try:
             logger.info("[SCHEDULER] Running earnings sync job")
             from services.earnings_cache import get_earnings_cache_service
-            
+
             earnings_service = get_earnings_cache_service()
             result = await earnings_service.sync_earnings_for_tracked_stocks()
-            
+
             logger.info(
                 f"[SCHEDULER] Earnings sync completed: "
                 f"{result['success_count']} symbols updated, "
@@ -185,7 +197,54 @@ class CacheSchedulerService:
             )
         except Exception as e:
             logger.error(f"[SCHEDULER] Error in earnings sync job: {e}")
-    
+
+    async def _run_report_generation(self) -> None:
+        """Wrapper for report generation job"""
+        try:
+            logger.info("[SCHEDULER] Running report generation job")
+            from core.report_service import get_report_service
+
+            report_service = get_report_service()
+
+            # Get all subscriptions due for report generation
+            due_subscriptions = await report_service.get_due_subscriptions()
+
+            if not due_subscriptions:
+                logger.info("[SCHEDULER] No reports due for generation")
+                return
+
+            sent_count = 0
+            error_count = 0
+
+            for subscription in due_subscriptions:
+                try:
+                    # TODO: Fetch actual portfolio data for each user
+                    # This would require calling the portfolio endpoint with the user's ID
+                    # For now, we log and skip - full implementation needs portfolio data fetching
+                    logger.info(
+                        f"[SCHEDULER] Report due for user {subscription['user_id']}, "
+                        f"email: {subscription['email_address']}"
+                    )
+                    # await report_service.generate_and_send_report(
+                    #     subscription_id=subscription['id'],
+                    #     portfolio_data=[]  # Would be fetched from portfolio service
+                    # )
+                    # sent_count += 1
+                except Exception as sub_error:
+                    logger.error(
+                        f"[SCHEDULER] Failed to generate report for subscription "
+                        f"{subscription.get('id')}: {sub_error}"
+                    )
+                    error_count += 1
+
+            logger.info(
+                f"[SCHEDULER] Report generation completed: "
+                f"{sent_count} sent, {error_count} errors, "
+                f"{len(due_subscriptions)} total due"
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Error in report generation job: {e}")
+
     def trigger_historical_sync_now(self) -> None:
         """Manually trigger historical sync job immediately"""
         if self.scheduler:
