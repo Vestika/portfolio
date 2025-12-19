@@ -171,13 +171,22 @@ export function PortfolioValueLineChart({
       const sortedSeries = [...series].sort((a, b) => a.date.localeCompare(b.date))
       
       sortedDates.forEach(date => {
+        // For currency holdings (FX: symbols), the historical data contains the exchange rate,
+        // but we need to treat it as 1 unit of currency, then apply the FX rate once.
+        // For regular securities, use the actual price from historical data.
+        const isCurrencyHolding = symbol.startsWith('FX:')
+        
         // Find exact price for this date
         const exactPrice = sortedSeries.find(p => p.date === date)
         if (exactPrice) {
-          // CALCULATION: originalPrice (in symbol's currency) × FX rate = price in base currency
-          // Example: $140.50 × 3.65 (USD→ILS) = ₪512.83
+          // CALCULATION: 
+          // - For currency holdings: 1.0 (1 unit) × FX rate = price in base currency
+          //   Example: 1.0 USD × 3.65 (USD→ILS) = ₪3.65
+          // - For regular securities: originalPrice (in symbol's currency) × FX rate = price in base currency
+          //   Example: $140.50 × 3.65 (USD→ILS) = ₪512.83
           const fxRate = getFXRate(symbolCurrency, date)
-          const convertedPrice = exactPrice.price * fxRate
+          const basePrice = isCurrencyHolding ? 1.0 : exactPrice.price
+          const convertedPrice = basePrice * fxRate
           lastKnownConvertedPrice = convertedPrice
           symbolPrices.set(date, convertedPrice)
         } else if (lastKnownConvertedPrice > 0) {
@@ -188,7 +197,8 @@ export function PortfolioValueLineChart({
           const futurePrice = sortedSeries.find(p => p.date > date)
           if (futurePrice) {
             const fxRate = getFXRate(symbolCurrency, date)
-            const convertedPrice = futurePrice.price * fxRate
+            const basePrice = isCurrencyHolding ? 1.0 : futurePrice.price
+            const convertedPrice = basePrice * fxRate
             symbolPrices.set(date, convertedPrice)
           }
         }
