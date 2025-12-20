@@ -147,6 +147,13 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
 
         {/* Right side - Profile and Notifications (Desktop only) */}
         <div className="hidden md:flex items-center gap-2">
+          {/* Q&A button */}
+          <a
+            href="https://vestika.io"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-300 transform hover:scale-105 border border-blue-400/30 hover:border-blue-300/40 no-underline"
+          >
+            Q&A
+          </a>
           {/* Feedback button */}
           <button
             onClick={() => {
@@ -205,6 +212,13 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
 
         {/* Mobile Menu Button and Icons */}
         <div className="md:hidden flex items-center gap-2">
+          {/* Q&A button mobile */}
+          <a
+            href="https://vestika.io"
+            className="px-2 py-1 rounded-md text-xs font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-200 border border-blue-400/30 hover:border-blue-300/40 no-underline"
+          >
+            Q&A
+          </a>
           {/* Feedback button mobile */}
           <button
             onClick={() => {
