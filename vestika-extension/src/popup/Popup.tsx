@@ -524,20 +524,22 @@ function Popup() {
               </div>
             </div>
 
-            <button
-              onClick={() => handleExtractWithConfig(matchedConfigs[0])}
-              disabled={extracting}
-              className="btn-primary"
-            >
-              {extracting ? 'Extracting...' : 'Extract Data'}
-            </button>
+            <div className="config-actions">
+              <button
+                onClick={() => handleExtractWithConfig(matchedConfigs[0])}
+                disabled={extracting}
+                className="btn-primary"
+              >
+                {extracting ? 'Extracting...' : 'Extract Data'}
+              </button>
 
-            <button
-              onClick={() => setShowManualMode(true)}
-              className="btn-link"
-            >
-              or select elements manually &gt;
-            </button>
+              <button
+                onClick={() => setShowManualMode(true)}
+                className="btn-link"
+              >
+                or select elements manually &gt;
+              </button>
+            </div>
           </div>
         )}
 
