@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
 import { User, Users, Info, Download, Wallet } from 'lucide-react'
+import * as cashFlowApi from '../utils/cash-flow-api'
+import type { CashFlowScenario } from '../types/cashflow'
+import { calculateMonthlyTotals } from '../utils/cashflow-helpers'
 
 type Mode = 'single' | 'couple'
 
@@ -54,8 +57,13 @@ export function FIRECalculator() {
   // Parameters
   const [withdrawalRate, setWithdrawalRate] = useState(4.0)
   const [taxRate, setTaxRate] = useState(25)
-  
+
   const [showExplanation, setShowExplanation] = useState(false)
+
+  // Cash Flow Scenario Integration
+  const [cashFlowScenarios, setCashFlowScenarios] = useState<CashFlowScenario[]>([])
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null)
+  const [cashFlowInputMode, setCashFlowInputMode] = useState<'manual' | 'scenario'>('scenario')
 
   const formatNumber = (n: number) => {
     if (n === null || n === undefined || isNaN(n)) return '0'
@@ -67,6 +75,74 @@ export function FIRECalculator() {
     const cleaned = val.toString().replace(/,/g, '').trim()
     return parseFloat(cleaned) || 0
   }
+
+  // Load cash flow scenarios on mount
+  useEffect(() => {
+    const loadScenarios = async () => {
+      try {
+        const scenarios = await cashFlowApi.getScenarios()
+        setCashFlowScenarios(scenarios)
+      } catch (error) {
+        console.error('Failed to load cash flow scenarios:', error)
+      }
+    }
+    loadScenarios()
+  }, [])
+
+  // Populate values from selected cash flow scenario
+  useEffect(() => {
+    if (cashFlowInputMode !== 'scenario' || !selectedScenarioId) return
+
+    const selectedScenario = cashFlowScenarios.find(s => s.scenarioId === selectedScenarioId)
+    if (!selectedScenario) return
+
+    // Calculate monthly totals from scenario
+    // Note: We don't have access to actual account balances here, so we pass an empty map
+    // This means percentage-based flows won't be calculated accurately
+    const accountBalances = new Map<string, number>()
+    const conversionRate = 3.7 // Default ILS to USD rate
+
+    const totals = calculateMonthlyTotals(
+      selectedScenario.items,
+      accountBalances,
+      'ILS', // Default to ILS
+      conversionRate
+    )
+
+    // Map to FIRE calculator inputs
+    // For single mode: use total inflows as income1
+    // For couple mode: split inflows evenly between income1 and income2
+    if (mode === 'single') {
+      setIncome1(Math.round(totals.inflows))
+    } else {
+      const perPerson = Math.round(totals.inflows / 2)
+      setIncome1(perPerson)
+      setIncome2(perPerson)
+    }
+
+    // Set expenses from outflows
+    setMonthlyExpenses(Math.round(totals.outflows))
+
+    // Transfers could go to pension/tax-free deposits
+    // Split transfers: 60% to pension, 40% to tax-free
+    if (totals.transfers > 0) {
+      const transferPerPerson = mode === 'couple' ? totals.transfers / 2 : totals.transfers
+      const pensionShare = Math.round(transferPerPerson * 0.6)
+      const taxFreeShare = Math.round(transferPerPerson * 0.4)
+
+      if (usePension) {
+        setPensionDeposit1(pensionShare)
+        if (mode === 'couple') {
+          setPensionDeposit2(pensionShare)
+        }
+      }
+
+      setTaxFreeDeposit1(taxFreeShare)
+      if (mode === 'couple') {
+        setTaxFreeDeposit2(taxFreeShare)
+      }
+    }
+  }, [cashFlowInputMode, selectedScenarioId, cashFlowScenarios, mode, usePension])
 
   const result: CalculationResult = useMemo(() => {
     const currentAge = age1
@@ -599,6 +675,64 @@ export function FIRECalculator() {
               </div>
               Monthly Cash Flow
             </h4>
+
+            {/* Input Mode Selector */}
+            <div className="mb-4">
+              <div className="flex gap-2 mb-4">
+                <button
+                  className={`flex-1 px-4 py-2.5 rounded-lg border-2 transition-all duration-200 font-medium text-sm ${
+                    cashFlowInputMode === 'manual'
+                      ? 'bg-purple-600/20 border-purple-500 text-white'
+                      : 'bg-gray-900/50 border-gray-600 text-gray-400 hover:bg-gray-800 hover:border-gray-500'
+                  }`}
+                  onClick={() => {
+                    setCashFlowInputMode('manual')
+                    setSelectedScenarioId(null)
+                  }}
+                >
+                  Enter Manually
+                </button>
+                <button
+                  className={`flex-1 px-4 py-2.5 rounded-lg border-2 transition-all duration-200 font-medium text-sm ${
+                    cashFlowInputMode === 'scenario'
+                      ? 'bg-blue-600/20 border-blue-500 text-white'
+                      : 'bg-gray-900/50 border-gray-600 text-gray-400 hover:bg-gray-800 hover:border-gray-500'
+                  }`}
+                  onClick={() => setCashFlowInputMode('scenario')}
+                >
+                  Use Existing Scenario
+                </button>
+              </div>
+
+              {/* Scenario Selection */}
+              {cashFlowInputMode === 'scenario' && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 space-y-3">
+                  <label className="block text-sm font-medium text-blue-300">
+                    Select Cash Flow Scenario
+                  </label>
+                  <select
+                    className="w-full bg-gray-800/50 text-white rounded-lg px-3 py-2.5 border border-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                    value={selectedScenarioId || ''}
+                    onChange={(e) => setSelectedScenarioId(e.target.value || null)}
+                  >
+                    <option value="">Select a scenario...</option>
+                    {cashFlowScenarios.map((scenario) => (
+                      <option key={scenario.scenarioId} value={scenario.scenarioId}>
+                        {scenario.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedScenarioId && (
+                    <div className="text-xs text-blue-200/80">
+                      ✓ Monthly cash flow values will be calculated from this scenario
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Input Fields */}
+            {cashFlowInputMode === 'manual' && (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Net Income (Bank)</label>
@@ -704,6 +838,11 @@ export function FIRECalculator() {
                   onChange={(e) => setLeakage(parseInput(e.target.value))}
                 />
               </div>
+            </div>
+            )}
+
+            {/* Common Fields (always visible) */}
+            <div className="space-y-4">
               <hr className="border-gray-700 my-5" />
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
