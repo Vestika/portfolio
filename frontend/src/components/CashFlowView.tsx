@@ -354,13 +354,6 @@ export function CashFlowView() {
     }
   }
 
-  // Tab name change
-  const handleTabNameChange = (newName: string) => {
-    if (!currentScenario || !newName.trim()) return
-    updateCurrentScenario({ name: newName.trim() })
-    setEditingTabName(false)
-  }
-
   // Portfolio change handler
   const handlePortfolioChange = (portfolioId: string) => {
     setSelectedPortfolioId(portfolioId)
