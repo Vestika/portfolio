@@ -158,6 +158,8 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           {/* Q&A button */}
           <a
             href="https://vestika.io"
+            target="_blank"
+            rel="noopener noreferrer"
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-300 transform hover:scale-105 border border-blue-400/30 hover:border-blue-300/40 no-underline"
           >
             Q&A
@@ -223,6 +225,8 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           {/* Q&A button mobile */}
           <a
             href="https://vestika.io"
+            target="_blank"
+            rel="noopener noreferrer"
             className="px-2 py-1 rounded-md text-xs font-medium bg-blue-500/20 backdrop-blur-sm text-blue-200 hover:text-blue-100 hover:bg-blue-500/30 transition-all duration-200 border border-blue-400/30 hover:border-blue-300/40 no-underline"
           >
             Q&A

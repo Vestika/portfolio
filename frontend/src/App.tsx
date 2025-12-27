@@ -640,6 +640,38 @@ const App: React.FC = () => {
                 }
               />
               <Route
+                path="/tools/fire"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/tools/mortgage-invest"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/tools/buy-or-rent"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
+                path="/tools/cash-flow"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <ViewTransitionSkeleton />
+                    : <ToolsView />
+                }
+              />
+              <Route
                 path="/config-gallery"
                 element={
                   (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
