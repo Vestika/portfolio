@@ -42,11 +42,19 @@ function calculateMonthlyAmount(
 ): number {
   if (!item.isActive) return 0
 
-  if (item.percentage !== undefined && sourceAccountBalance !== undefined) {
+  // Use percentage mode only if percentage is a valid positive number AND source balance exists
+  if (
+    item.percentage !== undefined &&
+    item.percentage !== null &&
+    item.percentage > 0 &&
+    sourceAccountBalance !== undefined &&
+    sourceAccountBalance > 0
+  ) {
     const baseAmount = (sourceAccountBalance * item.percentage) / 100
     return convertToMonthly(baseAmount, item.frequency)
   }
 
+  // Otherwise use fixed amount
   return convertToMonthly(item.amount, item.frequency)
 }
 
