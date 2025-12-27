@@ -15,7 +15,7 @@ interface ToolsViewProps {
 const tools: Array<{ key: ToolKey; name: string; description: string; icon: LucideIcon; path: string }> = [
   { key: 'tax-planner', name: 'Tax Planner', description: 'Plan sells and estimate gains/losses', icon: Receipt, path: '/tools/tax-planner' },
   { key: 'compound', name: 'Compound Interest', description: 'Project growth with deposits and rate', icon: Calculator, path: '/tools/compound' },
-  { key: 'scenario', name: 'Scenario Comparison', description: 'Compare mortgage vs investing cases', icon: BarChart3, path: '/tools/scenario' }
+  { key: 'scenario', name: 'Scenario Comparison', description: 'Compare mortgage vs investing cases', icon: BarChart3, path: '/tools/scenario' },
 ]
 
 export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {

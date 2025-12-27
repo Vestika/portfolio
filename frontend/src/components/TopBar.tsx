@@ -9,7 +9,8 @@ import {
   User,
   Settings,
   LogOut,
-  Library
+  Library,
+  ArrowRightLeft
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -26,11 +27,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useUserProfile } from '../contexts/UserProfileContext'
 
-export type NavigationView = 'portfolios' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
+export type NavigationView = 'portfolios' | 'cashflow' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
 // Map view IDs to URL paths
 const viewToPath: Record<NavigationView, string> = {
   'portfolios': '/portfolio',
+  'cashflow': '/cashflow',
   'news': '/news',
   'analyst': '/analyst',
   'tags': '/tags',
@@ -42,6 +44,7 @@ const viewToPath: Record<NavigationView, string> = {
 const pathToView: Record<string, NavigationView> = {
   '/portfolio': 'portfolios',
   '/portfolios': 'portfolios',
+  '/cashflow': 'cashflow',
   '/news': 'news',
   '/analyst': 'analyst',
   '/tags': 'tags',
@@ -74,6 +77,11 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
       id: 'portfolios' as NavigationView,
       label: 'My Portfolios',
       icon: <PieChart className="h-4 w-4" />,
+    },
+    {
+      id: 'cashflow' as NavigationView,
+      label: 'Cash Flow',
+      icon: <ArrowRightLeft className="h-4 w-4" />,
     },
     {
       id: 'news' as NavigationView,

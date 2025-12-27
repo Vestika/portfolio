@@ -16,6 +16,7 @@ import OnboardingFlow from './components/OnboardingFlow';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
 import { NewsView } from './components/NewsView';
+import { CashFlowView } from './components/CashFlowView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
@@ -48,6 +49,7 @@ const pathnameToView = (pathname: string): NavigationView | null => {
   const viewMap: Record<string, NavigationView> = {
     '/portfolio': 'portfolios',
     '/portfolios': 'portfolios',
+    '/cashflow': 'cashflow',
     '/news': 'news',
     '/analyst': 'analyst',
     '/tags': 'tags',
@@ -60,6 +62,7 @@ const pathnameToView = (pathname: string): NavigationView | null => {
 const viewToPathname = (view: NavigationView): string => {
   const pathMap: Record<NavigationView, string> = {
     'portfolios': '/portfolio',
+    'cashflow': '/cashflow',
     'news': '/news',
     'analyst': '/analyst',
     'tags': '/tags',
@@ -574,6 +577,14 @@ const App: React.FC = () => {
                       />
                     );
                   })()
+                }
+              />
+              <Route
+                path="/cashflow"
+                element={
+                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
+                    ? <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div></div>
+                    : <CashFlowView />
                 }
               />
               <Route
