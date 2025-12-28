@@ -11,7 +11,6 @@ import type {
   CashFlowCategory,
   AccountInfo,
   SankeyNodeInfo,
-  SankeyLinkInfo,
   SankeyNodeType,
   TimePeriod,
 } from '../types/cashflow'
@@ -25,7 +24,6 @@ interface CashFlowSankeyChartProps {
   baseCurrency: string
   timePeriod?: TimePeriod
   currencyConversionRate?: number
-  onFlowRightClick?: (event: { x: number; y: number }, linkInfo: SankeyLinkInfo) => void
   onNodeClick?: (nodeInfo: SankeyNodeInfo) => void
   onAddFlow?: () => void
 }
@@ -75,7 +73,6 @@ export function CashFlowSankeyChart({
   baseCurrency,
   timePeriod = 'monthly',
   currencyConversionRate = 1,
-  onFlowRightClick,
   onNodeClick,
   onAddFlow,
 }: CashFlowSankeyChartProps) {
@@ -260,28 +257,6 @@ export function CashFlowSankeyChart({
     return { data: aggregatedData, nodes, nodeColors }
   }, [items, categories, accounts, accountBalances, baseCurrency, currencyConversionRate, periodMultiplier])
 
-  // Handle link right-click
-  const handleLinkRightClick = useCallback(
-    (point: any, event: MouseEvent) => {
-      if (!onFlowRightClick) return
-
-      const from = point.from
-      const to = point.to
-      const key = `${from}|||${to}`
-      const flowItems = linkToItemsMap.get(key) || []
-
-      const linkInfo: SankeyLinkInfo = {
-        from,
-        to,
-        weight: point.weight || 0,
-        flowItems,
-      }
-
-      onFlowRightClick({ x: event.clientX, y: event.clientY }, linkInfo)
-    },
-    [onFlowRightClick, linkToItemsMap]
-  )
-
   // Handle node click
   const handleNodeClick = useCallback(
     (point: any) => {
@@ -358,21 +333,6 @@ export function CashFlowSankeyChart({
     chart: {
       backgroundColor: 'transparent',
       height: 500,
-      events: {
-        load: function () {
-          // Add context menu event listener after chart loads
-          const chart = this
-          const container = chart.container
-
-          container.addEventListener('contextmenu', (e: MouseEvent) => {
-            const point = (chart as any).hoverPoint
-            if (point && !point.isNode) {
-              e.preventDefault()
-              handleLinkRightClick(point, e)
-            }
-          })
-        },
-      },
     },
     credits: {
       enabled: false,
@@ -396,7 +356,7 @@ export function CashFlowSankeyChart({
         }
         // It's a link
         const weight = this.point?.weight || 0
-        return `${this.point?.from} → ${this.point?.to}<br/><b>${formatCurrency(weight)}${periodSuffix}</b><br/><span style="font-size:10px;color:#9ca3af">Right-click for options</span>`
+        return `${this.point?.from} → ${this.point?.to}<br/><b>${formatCurrency(weight)}${periodSuffix}</b>`
       },
     },
     plotOptions: {
