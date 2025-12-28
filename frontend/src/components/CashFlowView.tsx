@@ -10,7 +10,6 @@ import type {
   AccountInfo,
   ViewMode,
   TimePeriod,
-  SankeyLinkInfo,
   SankeyNodeInfo,
 } from '../types/cashflow'
 import {
@@ -24,7 +23,6 @@ import {
 import * as cashFlowApi from '../utils/cash-flow-api'
 import { ChevronDown, Table as TableIcon, Network, Trash2, Plus, X, Loader2, Download, Upload, MoreVertical } from 'lucide-react'
 import { CashFlowSankeyChart } from './CashFlowSankeyChart'
-import { FlowContextMenu } from './cashflow/FlowContextMenu'
 import { EditFlowDialog } from './cashflow/EditFlowDialog'
 import { SplitFlowDialog } from './cashflow/SplitFlowDialog'
 import { NodeInfoDialog } from './cashflow/NodeInfoDialog'
@@ -78,8 +76,6 @@ export function CashFlowView() {
   const actionsMenuRef = useRef<HTMLDivElement>(null)
 
   // Dialog states
-  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null)
-  const [selectedLinkInfo, setSelectedLinkInfo] = useState<SankeyLinkInfo | null>(null)
   const [editFlowOpen, setEditFlowOpen] = useState(false)
   const [splitFlowOpen, setSplitFlowOpen] = useState(false)
   const [nodeInfoOpen, setNodeInfoOpen] = useState(false)
@@ -360,52 +356,10 @@ export function CashFlowView() {
   }
 
   // Flow handlers
-  const handleFlowRightClick = useCallback(
-    (event: { x: number; y: number }, linkInfo: SankeyLinkInfo) => {
-      setContextMenuPosition(event)
-      setSelectedLinkInfo(linkInfo)
-    },
-    []
-  )
-
   const handleNodeClick = useCallback((nodeInfo: SankeyNodeInfo) => {
     setSelectedNodeInfo(nodeInfo)
     setNodeInfoOpen(true)
   }, [])
-
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenuPosition(null)
-    setSelectedLinkInfo(null)
-  }, [])
-
-  const handleEditFromContextMenu = useCallback((linkInfo: SankeyLinkInfo) => {
-    if (linkInfo.flowItems.length > 0) {
-      setSelectedFlow(linkInfo.flowItems[0])
-      setEditFlowOpen(true)
-    }
-  }, [])
-
-  const handleSplitFromContextMenu = useCallback((linkInfo: SankeyLinkInfo) => {
-    setSelectedLinkInfo(linkInfo)
-    setSplitFlowOpen(true)
-  }, [])
-
-  const handleDeleteFromContextMenu = useCallback(
-    (linkInfo: SankeyLinkInfo) => {
-      if (!currentScenario || linkInfo.flowItems.length === 0) return
-
-      const confirmed = window.confirm(
-        `Delete ${linkInfo.flowItems.length} flow(s) from "${linkInfo.from}" to "${linkInfo.to}"?`
-      )
-
-      if (confirmed) {
-        const idsToDelete = new Set(linkInfo.flowItems.map((f) => f.id))
-        const newItems = currentScenario.items.filter((item) => !idsToDelete.has(item.id))
-        updateCurrentScenario({ items: newItems })
-      }
-    },
-    [currentScenario, updateCurrentScenario]
-  )
 
   const handleSaveFlow = useCallback(
     (updatedFlow: CashFlowItem) => {
@@ -988,13 +942,12 @@ export function CashFlowView() {
                 accountBalances={accountBalances}
                 baseCurrency={displayCurrency}
                 timePeriod={timePeriod}
-                onFlowRightClick={handleFlowRightClick}
                 onNodeClick={handleNodeClick}
                 onAddFlow={handleAddItem}
                 currencyConversionRate={USD_TO_ILS_RATE}
               />
               <div className="text-center text-xs text-gray-500">
-                Click on nodes to view details. Right-click on flows to edit, split, or delete.
+                Click on nodes to view details and manage flows.
               </div>
             </>
           ) : (
@@ -1012,16 +965,6 @@ export function CashFlowView() {
           )}
         </>
       )}
-
-      {/* Context Menu */}
-      <FlowContextMenu
-        position={contextMenuPosition}
-        linkInfo={selectedLinkInfo}
-        onClose={handleCloseContextMenu}
-        onEdit={handleEditFromContextMenu}
-        onSplit={handleSplitFromContextMenu}
-        onDelete={handleDeleteFromContextMenu}
-      />
 
       {/* Edit Flow Dialog */}
       <EditFlowDialog
