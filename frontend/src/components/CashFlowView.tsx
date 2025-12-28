@@ -24,7 +24,6 @@ import * as cashFlowApi from '../utils/cash-flow-api'
 import { ChevronDown, Table as TableIcon, Network, Trash2, Plus, X, Loader2, Download, Upload, MoreVertical } from 'lucide-react'
 import { CashFlowSankeyChart } from './CashFlowSankeyChart'
 import { EditFlowDialog } from './cashflow/EditFlowDialog'
-import { SplitFlowDialog } from './cashflow/SplitFlowDialog'
 import { NodeInfoDialog } from './cashflow/NodeInfoDialog'
 import { AddFlowDialog } from './cashflow/AddFlowDialog'
 import { CashFlowTable } from './cashflow/CashFlowTable'
@@ -77,7 +76,6 @@ export function CashFlowView() {
 
   // Dialog states
   const [editFlowOpen, setEditFlowOpen] = useState(false)
-  const [splitFlowOpen, setSplitFlowOpen] = useState(false)
   const [nodeInfoOpen, setNodeInfoOpen] = useState(false)
   const [addFlowOpen, setAddFlowOpen] = useState(false)
   const [selectedFlow, setSelectedFlow] = useState<CashFlowItem | null>(null)
@@ -377,27 +375,6 @@ export function CashFlowView() {
     setEditFlowOpen(false)
     setSelectedFlow(null)
   }, [])
-
-  const handleCloseSplitDialog = useCallback(() => {
-    setSplitFlowOpen(false)
-    setSelectedLinkInfo(null)
-  }, [])
-
-  const handleSaveSplit = useCallback(
-    (originalFlowId: string, newFlows: CashFlowItem[], newCategory?: CashFlowCategory) => {
-      if (!currentScenario) return
-      const filteredItems = currentScenario.items.filter((item) => item.id !== originalFlowId)
-      const newItems = [...filteredItems, ...newFlows]
-      const newCategories = newCategory
-        ? [...currentScenario.categories, newCategory]
-        : currentScenario.categories
-
-      updateCurrentScenario({ items: newItems, categories: newCategories })
-      setSplitFlowOpen(false)
-      setSelectedLinkInfo(null)
-    },
-    [currentScenario, updateCurrentScenario]
-  )
 
   const handleCloseNodeInfoDialog = useCallback(() => {
     setNodeInfoOpen(false)
@@ -974,16 +951,6 @@ export function CashFlowView() {
         onCreateCategory={handleCreateCategory}
         onDeleteCategory={handleDeleteCategory}
         flow={selectedFlow}
-        categories={currentScenario?.categories || []}
-        accounts={accounts}
-      />
-
-      {/* Split Flow Dialog */}
-      <SplitFlowDialog
-        isOpen={splitFlowOpen}
-        onClose={handleCloseSplitDialog}
-        onSave={handleSaveSplit}
-        linkInfo={selectedLinkInfo}
         categories={currentScenario?.categories || []}
         accounts={accounts}
       />
