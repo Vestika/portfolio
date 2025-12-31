@@ -89,6 +89,10 @@ EVENT_CASH_FLOW_DELETED = "Cash Flow Deleted"
 EVENT_CASH_FLOW_SCENARIO_CREATED = "Cash Flow Scenario Created"
 EVENT_CASH_FLOW_SCENARIO_DELETED = "Cash Flow Scenario Deleted"
 
+# Tax Planning Operations
+EVENT_TAX_SCENARIO_CREATED = "Tax Scenario Created"
+EVENT_TAX_SCENARIO_DELETED = "Tax Scenario Deleted"
+
 # Feedback & Notifications
 EVENT_FEEDBACK_SUBMITTED = "Feedback Submitted"
 EVENT_NOTIFICATION_DISMISSED = "Notification Dismissed"
@@ -345,5 +349,27 @@ def build_ibkr_properties(
         props["query_id"] = query_id
     if error_message:
         props["error_message"] = error_message[:200]
+
+    return props
+
+
+def build_tax_properties(
+    scenario_id: str,
+    scenario_name: Optional[str] = None,
+    entries_count: Optional[int] = None,
+    total_gain: Optional[float] = None,
+    total_tax: Optional[float] = None
+) -> Dict[str, Any]:
+    """Build properties for tax scenario events."""
+    props = {"scenario_id": scenario_id}
+
+    if scenario_name:
+        props["scenario_name"] = scenario_name
+    if entries_count is not None:
+        props["entries_count"] = entries_count
+    if total_gain is not None:
+        props["total_gain"] = total_gain
+    if total_tax is not None:
+        props["total_tax"] = total_tax
 
     return props
