@@ -7,6 +7,13 @@ from bson import ObjectId
 
 from core.auth import get_current_user
 from core.database import db_manager
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_CHART_CREATED,
+    EVENT_CHART_UPDATED,
+    EVENT_CHART_DELETED,
+    build_chart_properties
+)
 
 # Create router for this module
 router = APIRouter(prefix="/user/custom-charts", tags=["custom-charts"])
@@ -49,9 +56,25 @@ async def create_custom_chart(
         }
         
         result = await collection.insert_one(chart_doc)
-        
+
+        chart_id = str(result.inserted_id)
+
+        # Track chart creation
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_CHART_CREATED,
+            properties=build_chart_properties(
+                chart_id=chart_id,
+                chart_title=request.chart_title,
+                tag_name=request.tag_name,
+                chart_type=request.chart_type or 'pie',
+                portfolio_id=request.portfolio_id
+            )
+        )
+
         return CustomChartResponse(
-            chart_id=str(result.inserted_id),
+            chart_id=chart_id,
             chart_title=request.chart_title,
             tag_name=request.tag_name,
             chart_type=request.chart_type or 'pie',
@@ -120,7 +143,20 @@ async def update_chart_type(
         
         # Get updated chart
         updated_chart = await collection.find_one({"_id": ObjectId(chart_id)})
-        
+
+        # Track chart update
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_CHART_UPDATED,
+            properties=build_chart_properties(
+                chart_id=chart_id,
+                chart_title=updated_chart["chart_title"],
+                tag_name=updated_chart["tag_name"],
+                chart_type=request.chart_type
+            )
+        )
+
         return CustomChartResponse(
             chart_id=str(updated_chart["_id"]),
             chart_title=updated_chart["chart_title"],
@@ -151,7 +187,19 @@ async def delete_custom_chart(
         
         # Delete the chart
         await collection.delete_one({"_id": ObjectId(chart_id)})
-        
+
+        # Track chart deletion
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_CHART_DELETED,
+            properties=build_chart_properties(
+                chart_id=chart_id,
+                chart_title=chart.get("chart_title"),
+                tag_name=chart.get("tag_name")
+            )
+        )
+
         return {"message": "Chart deleted successfully", "chart_id": chart_id}
     except HTTPException:
         raise
