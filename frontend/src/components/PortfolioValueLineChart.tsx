@@ -2,6 +2,13 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import Highcharts from 'highcharts'
 import { AccountInfo } from '../types'
 import { Layers, User } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select'
 
 // Chart marker interface for reusable event markers
 export interface ChartMarker {
@@ -37,6 +44,7 @@ export function PortfolioValueLineChart({
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInstanceRef = useRef<Highcharts.Chart | null>(null)
   const [viewMode, setViewMode] = useState<'aggregated' | 'separate'>('aggregated')
+  const [selectedZoom, setSelectedZoom] = useState<'all' | 'year' | 'month' | 'week'>('all')
 
   // Filter to selected accounts only
   const selectedAccounts = useMemo(() => {
@@ -518,8 +526,12 @@ export function PortfolioValueLineChart({
     // Calculate padding for Y-axis
     const padding = (maxValue - minValue) * 0.1 // 10% padding
 
-    chartInstanceRef.current = Highcharts.chart(chartRef.current, {
+    const chartElement = chartRef.current
+    if (!chartElement) return
+
+    chartInstanceRef.current = Highcharts.chart({
       chart: {
+        renderTo: chartElement,
         backgroundColor: 'transparent',
         height: 400,
         style: {
@@ -577,9 +589,24 @@ export function PortfolioValueLineChart({
         labels: {
           enabled: false  // Hide x-axis labels (shown in tooltip instead)
         },
-        gridLineColor: '#374151',
+        gridLineColor: 'rgba(55, 65, 81, 0.3)', // Softer grid lines
         lineColor: '#374151',
         tickLength: 0,
+        crosshair: {
+          width: 1,
+          color: '#60a5fa',
+          dashStyle: 'Dash',
+          zIndex: 5,
+          label: {
+            backgroundColor: 'rgba(31, 41, 55, 0.9)',
+            borderColor: '#60a5fa',
+            borderRadius: 4,
+            style: {
+              color: '#e5e7eb',
+              fontSize: '11px'
+            }
+          }
+        },
         // Add vertical plotLines for markers (e.g., user join date)
         plotLines: markers.map(marker => {
           const markerTimestamp = new Date(marker.date).getTime()
@@ -625,7 +652,8 @@ export function PortfolioValueLineChart({
             }).format(val)
           }
         },
-        gridLineColor: '#374151',
+        gridLineColor: 'rgba(55, 65, 81, 0.3)', // Softer, more subtle grid lines
+        gridLineWidth: 1,
         min: viewMode === 'separate' ? minValue - padding : Math.max(0, minValue - padding),
         max: maxValue + padding,
         plotLines: viewMode === 'separate' ? [{
@@ -638,33 +666,84 @@ export function PortfolioValueLineChart({
       },
       tooltip: {
         enabled: true,  // Always show tooltip
-        backgroundColor: '#1f2937',
-        borderColor: '#374151',
-        style: {
-          color: '#fff'
+        useHTML: true, // Enable HTML rendering for proper line breaks
+        backgroundColor: 'rgba(31, 41, 55, 0.95)', // Slightly transparent for modern look
+        borderColor: '#60a5fa',
+        borderWidth: 1,
+        borderRadius: 8,
+        shadow: {
+          color: 'rgba(0, 0, 0, 0.3)',
+          offsetX: 0,
+          offsetY: 2,
+          opacity: 0.5,
+          width: 4
         },
+        style: {
+          color: '#fff',
+          fontSize: '13px',
+          fontWeight: '400'
+        },
+        shared: true, // Show all series in one tooltip
         formatter: function() {
           const date = Highcharts.dateFormat('%b %d, %Y', this.x as number)
-          const seriesName = (this as any).series?.name || 'Portfolio'
+          let tooltip = `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 600; color: #e5e7eb; font-size: 14px;">${date}</div>`
           
-          if (!isValueVisible) {
-            // When values are hidden, show only date and series name
-            return `<b>${date}</b><br/>${seriesName}`
-          }
-          
-          const yValue = this.y as number
-          const value = new Intl.NumberFormat('en-US', {
-            maximumFractionDigits: 0
-          }).format(Math.abs(yValue))
-          
-          if (viewMode === 'separate') {
-            // Show change from start
-            const sign = yValue >= 0 ? '+' : '-'
-            return `<b>${date}</b><br/>${seriesName}<br/>Change: ${sign}${value} ${baseCurrency}`
+          const tooltipContext = this as any // TooltipFormatterContextObject when shared=true
+          if (tooltipContext.points && tooltipContext.points.length > 0) {
+            tooltipContext.points.forEach((point: any) => {
+              const seriesName = point.series.name
+              const color = point.color
+              
+              if (!isValueVisible) {
+                tooltip += `<div style="margin: 6px 0; line-height: 1.6;">
+                  <span style="display: inline-block; width: 14px; height: 3px; background-color: ${color}; margin-right: 12px; vertical-align: middle; border-radius: 1px;"></span>
+                  <span style="color: #e5e7eb; vertical-align: middle;">${seriesName}</span>
+                </div>`
+              } else {
+                const yValue = point.y as number
+                const value = new Intl.NumberFormat('en-US', {
+                  maximumFractionDigits: 0
+                }).format(Math.abs(yValue))
+                
+                if (viewMode === 'separate') {
+                  const sign = yValue >= 0 ? '+' : '-'
+                  tooltip += `<div style="margin: 6px 0; line-height: 1.6;">
+                    <span style="display: inline-block; width: 14px; height: 3px; background-color: ${color}; margin-right: 12px; vertical-align: middle; border-radius: 1px;"></span>
+                    <span style="color: #e5e7eb; vertical-align: middle;">${seriesName}</span>
+                    <span style="color: #fff; font-weight: 600; margin-left: 12px; vertical-align: middle;">${sign}${value} ${baseCurrency}</span>
+                  </div>`
+                } else {
+                  tooltip += `<div style="margin: 6px 0; line-height: 1.6;">
+                    <span style="display: inline-block; width: 14px; height: 3px; background-color: ${color}; margin-right: 12px; vertical-align: middle; border-radius: 1px;"></span>
+                    <span style="color: #e5e7eb; vertical-align: middle;">${seriesName}</span>
+                    <span style="color: #fff; font-weight: 600; margin-left: 12px; vertical-align: middle;">${value} ${baseCurrency}</span>
+                  </div>`
+                }
+              }
+            })
           } else {
-            // Show absolute value
-            return `<b>${date}</b><br/>${seriesName}<br/>Value: ${value} ${baseCurrency}`
+            // Fallback for single point
+            const seriesName = (this as any).series?.name || 'Portfolio'
+            if (!isValueVisible) {
+              return `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 600; color: #e5e7eb; font-size: 14px;">${date}</div>
+                <div style="color: #e5e7eb; margin-top: 6px; display: block;">${seriesName}</div>`
+            }
+            const yValue = this.y as number
+            const value = new Intl.NumberFormat('en-US', {
+              maximumFractionDigits: 0
+            }).format(Math.abs(yValue))
+            
+            if (viewMode === 'separate') {
+              const sign = yValue >= 0 ? '+' : '-'
+              return `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 600; color: #e5e7eb; font-size: 14px;">${date}</div>
+                <div style="color: #e5e7eb; margin-top: 6px; display: block;">${seriesName}: <strong style="color: #fff;">${sign}${value} ${baseCurrency}</strong></div>`
+            } else {
+              return `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 600; color: #e5e7eb; font-size: 14px;">${date}</div>
+                <div style="color: #e5e7eb; margin-top: 6px; display: block;">${seriesName}: <strong style="color: #fff;">${value} ${baseCurrency}</strong></div>`
+            }
           }
+          
+          return tooltip
         }
       },
       legend: {
@@ -683,16 +762,45 @@ export function PortfolioValueLineChart({
       plotOptions: {
         series: {
           marker: {
-            enabled: false,  // Disable markers globally for all series types
+            enabled: false,  // Disable markers by default
             states: {
               hover: {
-                enabled: false  // No markers on hover either
+                enabled: true,  // Show markers on hover for better interactivity
+                radius: 5,
+                lineWidth: 2,
+                lineColor: '#fff',
+                fillColor: undefined // Use series color
               }
             }
+          },
+          states: {
+            hover: {
+              halo: {
+                size: 10,
+                opacity: 0.25
+              }
+            }
+          },
+          animation: {
+            duration: 750,
+            easing: 'easeOutQuart'
           }
         },
         spline: {
           lineWidth: 3,  // Thicker line
+          states: {
+            hover: {
+              lineWidth: 4,
+              halo: {
+                size: 12,
+                opacity: 0.3
+              }
+            }
+          }
+        },
+        area: {
+          fillOpacity: 0.1,
+          lineWidth: 3,
           states: {
             hover: {
               lineWidth: 4
@@ -704,7 +812,7 @@ export function PortfolioValueLineChart({
         // Check if this is the S&P 500 benchmark
         const isBenchmark = series.name === 'S&P 500 Benchmark'
         
-        // Use same color palette as PieChart for consistency
+        // Use the same colors as other charts (PieChart, BarChart, RSUTimelineChart)
         const colors = [
           '#4E6BA6', // True Blue
           '#938FB8', // Cool gray
@@ -720,20 +828,111 @@ export function PortfolioValueLineChart({
           '#B8D8C8'  // Mint green
         ]
         
+        // Use a distinct color for benchmark (amber/orange tone that stands out)
+        const seriesColor = isBenchmark ? '#f59e0b' : colors[index % colors.length]
+        // Apply gradient to all portfolio lines (not benchmarks)
+        const shouldHaveGradient = !isBenchmark
+        
+        // Convert hex to rgba for gradient (helper function)
+        const hexToRgba = (hex: string, alpha: number) => {
+          const r = parseInt(hex.slice(1, 3), 16)
+          const g = parseInt(hex.slice(3, 5), 16)
+          const b = parseInt(hex.slice(5, 7), 16)
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
+        
         return {
           name: series.name,
-          type: 'spline',
+          type: shouldHaveGradient ? 'areaspline' : 'spline', // Area chart for all portfolio lines
           data: series.data,  // Always show actual data, even when values are "hidden"
-          color: isBenchmark ? '#f59e0b' : colors[index % colors.length], // Gold for S&P 500
+          color: seriesColor,
           dashStyle: isBenchmark ? 'Dash' : 'Solid', // Dashed line for benchmark
           lineWidth: isBenchmark ? 2 : 3, // Thinner line for benchmark
           zIndex: isBenchmark ? 1 : 2, // Portfolio lines on top
+          fillColor: shouldHaveGradient ? {
+            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+            stops: [
+              [0, hexToRgba(seriesColor, 0.15)], // Start with 15% opacity using series color
+              [1, hexToRgba(seriesColor, 0.0)]    // Fade to transparent
+            ]
+          } : undefined,
           marker: {
-            enabled: false  // Explicitly disable markers for each series
+            enabled: false,  // Disabled by default
+            states: {
+              hover: {
+                enabled: true,
+                radius: 5,
+                lineWidth: 2,
+                lineColor: '#fff',
+                fillColor: seriesColor
+              }
+            }
+          },
+          // Add constant glow effect using halo
+          halo: {
+            size: 8, // Base glow size
+            opacity: 0.3, // Subtle constant glow
+            attributes: {
+              fill: seriesColor,
+              'fill-opacity': 0.3
+            } as any
+          },
+          states: {
+            hover: {
+              lineWidth: isBenchmark ? 3 : 4,
+              halo: {
+                size: 15, // Larger halo for stronger glow on hover
+                opacity: 0.6, // More visible glow on hover
+                attributes: {
+                  fill: seriesColor,
+                  'fill-opacity': 0.6
+                } as any
+              }
+            }
           }
-        } as Highcharts.SeriesSplineOptions
+        } as any // Type assertion to allow shadow and custom properties
       })
     })
+
+    // Apply zoom after chart is created
+    if (chartInstanceRef.current && seriesData.length > 0 && seriesData[0].data.length > 0) {
+      // Calculate date range
+      const allTimestamps: number[] = []
+      seriesData.forEach(series => {
+        series.data.forEach(([timestamp]) => {
+          allTimestamps.push(timestamp as number)
+        })
+      })
+      
+      if (allTimestamps.length > 0) {
+        const maxTimestamp = Math.max(...allTimestamps)
+        
+        // Apply selected zoom
+        if (selectedZoom !== 'all') {
+          const endDate = new Date(maxTimestamp)
+          let startDate = new Date(endDate)
+          
+          switch (selectedZoom) {
+            case 'year':
+              startDate.setFullYear(endDate.getFullYear() - 1)
+              break
+            case 'month':
+              startDate.setMonth(endDate.getMonth() - 1)
+              break
+            case 'week':
+              startDate.setDate(endDate.getDate() - 7)
+              break
+          }
+          
+          // Small delay to ensure chart is fully rendered
+          setTimeout(() => {
+            if (chartInstanceRef.current) {
+              chartInstanceRef.current.xAxis[0].setExtremes(startDate.getTime(), endDate.getTime(), true)
+            }
+          }, 100)
+        }
+      }
+    }
 
     return () => {
       if (chartInstanceRef.current) {
@@ -741,7 +940,67 @@ export function PortfolioValueLineChart({
         chartInstanceRef.current = null
       }
     }
-  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode, markers])
+  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode, markers, selectedZoom])
+
+  // Calculate date range from series data
+  const dateRange = useMemo(() => {
+    if (seriesData.length === 0 || seriesData[0].data.length === 0) {
+      return { min: null, max: null }
+    }
+    
+    // Get all timestamps from all series
+    const allTimestamps: number[] = []
+    seriesData.forEach(series => {
+      series.data.forEach(([timestamp]) => {
+        allTimestamps.push(timestamp as number)
+      })
+    })
+    
+    if (allTimestamps.length === 0) {
+      return { min: null, max: null }
+    }
+    
+    return {
+      min: Math.min(...allTimestamps),
+      max: Math.max(...allTimestamps)
+    }
+  }, [seriesData])
+
+  // Zoom functions
+  const zoomToPeriod = (period: 'all' | 'year' | 'month' | 'week') => {
+    if (!chartInstanceRef.current || !dateRange.min || !dateRange.max) return
+    
+    setSelectedZoom(period)
+    
+    const chart = chartInstanceRef.current
+    const xAxis = chart.xAxis[0]
+    
+    if (period === 'all') {
+      // Reset to full range
+      xAxis.setExtremes(dateRange.min, dateRange.max, true)
+      return
+    }
+    
+    // Calculate the end date (most recent date)
+    const endDate = new Date(dateRange.max)
+    let startDate = new Date(endDate)
+    
+    // Calculate start date based on period
+    switch (period) {
+      case 'year':
+        startDate.setFullYear(endDate.getFullYear() - 1)
+        break
+      case 'month':
+        startDate.setMonth(endDate.getMonth() - 1)
+        break
+      case 'week':
+        startDate.setDate(endDate.getDate() - 7)
+        break
+    }
+    
+    // Set the extremes
+    xAxis.setExtremes(startDate.getTime(), endDate.getTime(), true)
+  }
 
   // Show empty state if no data
   if (seriesData.length === 0 || seriesData[0].data.length === 0) {
@@ -759,43 +1018,66 @@ export function PortfolioValueLineChart({
 
   return (
     <div className="w-full rounded-lg mb-6">
-      {/* Header with title and toggle */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Header with title, zoom buttons, and toggle */}
+      <div className="flex items-center justify-between mb-2 gap-4">
         <h3 className="text-lg font-bold text-white">
           {viewMode === 'separate' 
             ? 'Estimated Portfolio Performance (Normalized)' 
             : 'Estimated Portfolio Value'}
         </h3>
         
-        {/* View Mode Toggle */}
-        <div
-          className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
-        >
-          <div 
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
-              viewMode === 'aggregated'
-                ? 'bg-blue-500/20 text-blue-200 shadow-sm'
-                : 'text-gray-400'
-            }`}
-            onClick={() => setViewMode('aggregated')}
+        <div className="flex items-center gap-3">
+          {/* Zoom Dropdown */}
+          <Select value={selectedZoom} onValueChange={(value) => zoomToPeriod(value as 'all' | 'year' | 'month' | 'week')}>
+            <SelectTrigger className="w-[120px] h-9 bg-gray-700/20 backdrop-blur-sm border-blue-400/30 text-gray-300 hover:text-white focus:ring-blue-500/50">
+              <SelectValue placeholder="Time Range" />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 border-gray-700">
+              <SelectItem value="week" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                Week
+              </SelectItem>
+              <SelectItem value="month" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                Month
+              </SelectItem>
+              <SelectItem value="year" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                Year
+              </SelectItem>
+              <SelectItem value="all" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                All
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {/* View Mode Toggle */}
+          <div
+            className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
           >
-            <Layers size={16} />
-            Aggregated
-          </div>
-          <div 
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
-              viewMode === 'separate'
-                ? 'bg-blue-500/20 text-blue-200 shadow-sm'
-                : selectedAccounts.length <= 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'
-            }`}
-            onClick={() => {
-              if (selectedAccounts.length > 1) {
-                setViewMode('separate')
-              }
-            }}
-          >
-            <User size={16} />
-            By Account
+            <div 
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+                viewMode === 'aggregated'
+                  ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                  : 'text-gray-400'
+              }`}
+              onClick={() => setViewMode('aggregated')}
+            >
+              <Layers size={16} />
+              Aggregated
+            </div>
+            <div 
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+                viewMode === 'separate'
+                  ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                  : selectedAccounts.length <= 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'
+              }`}
+              onClick={() => {
+                if (selectedAccounts.length > 1) {
+                  setViewMode('separate')
+                }
+              }}
+            >
+              <User size={16} />
+              By Account
+            </div>
           </div>
         </div>
       </div>
