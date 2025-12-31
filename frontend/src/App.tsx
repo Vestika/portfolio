@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
@@ -114,41 +114,45 @@ const App: React.FC = () => {
   const availablePortfolios = getAvailablePortfolios();
 
   // Derive legacy data structures for compatibility with existing components
-  const portfolioMetadata: PortfolioMetadata | null = currentPortfolioData ? {
-    base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
-    user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
-    accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
-      account_name: acc.account_name,
-      account_type: acc.account_type,
-      owners: acc.owners,
-      holdings: (acc.holdings || []).map((h: any) => {
-        const holding: any = {
-          symbol: h.symbol,
-          units: h.units,
-          original_currency: h.original_currency,
-          security_type: h.security_type,
-          security_name: h.security_name
-        };
-        
-        // Include custom holding fields if present
-        if (h.is_custom) {
-          holding.is_custom = true;
-          holding.custom_price = h.custom_price;
-          holding.custom_currency = h.custom_currency;
-          holding.custom_name = h.custom_name;
-        }
-        
-        return holding;
-      }),
-      rsu_plans: acc.rsu_plans || [],
-      espp_plans: acc.espp_plans || [],
-      options_plans: acc.options_plans || [],
-      rsu_vesting_data: acc.rsu_vesting_data || [],
-      account_properties: acc.account_properties || {},
-      account_cash: acc.account_cash || {},
-      isSelected: selectedAccountNames.includes(acc.account_name)
-    }))
-  } : null;
+  // Memoize to prevent unnecessary re-renders of child components (especially charts)
+  const portfolioMetadata: PortfolioMetadata | null = useMemo(() => {
+    if (!currentPortfolioData) return null;
+    return {
+      base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
+      user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
+      accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
+        account_name: acc.account_name,
+        account_type: acc.account_type,
+        owners: acc.owners,
+        holdings: (acc.holdings || []).map((h: any) => {
+          const holding: any = {
+            symbol: h.symbol,
+            units: h.units,
+            original_currency: h.original_currency,
+            security_type: h.security_type,
+            security_name: h.security_name
+          };
+          
+          // Include custom holding fields if present
+          if (h.is_custom) {
+            holding.is_custom = true;
+            holding.custom_price = h.custom_price;
+            holding.custom_currency = h.custom_currency;
+            holding.custom_name = h.custom_name;
+          }
+          
+          return holding;
+        }),
+        rsu_plans: acc.rsu_plans || [],
+        espp_plans: acc.espp_plans || [],
+        options_plans: acc.options_plans || [],
+        rsu_vesting_data: acc.rsu_vesting_data || [],
+        account_properties: acc.account_properties || {},
+        account_cash: acc.account_cash || {},
+        isSelected: selectedAccountNames.includes(acc.account_name)
+      }))
+    };
+  }, [currentPortfolioData, selectedAccountNames]);
 
   const portfolioData: PortfolioData | null = computedData ? computedData.filteredAggregations : null;
   const holdingsData: HoldingsTableData | null = computedData ? computedData.holdingsTable : null;
