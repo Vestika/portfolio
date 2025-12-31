@@ -30,6 +30,7 @@ aiofiles = "^24.1.0"
 python-telegram-bot = "^21.6"
 pynadlan = "^0.2.1"
 apscheduler = "^3.10.4"
+mixpanel = "^4.10.1"
 
 
 [build-system]

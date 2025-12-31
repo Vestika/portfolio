@@ -2,6 +2,7 @@
 import logging
 import json
 import re
+import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
@@ -14,6 +15,14 @@ from google.genai import types
 
 from core.auth import get_current_user
 from core.database import db_manager, get_db
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_HOLDINGS_IMPORT_STARTED,
+    EVENT_HOLDINGS_IMPORT_COMPLETED,
+    EVENT_HOLDINGS_IMPORT_FAILED,
+    EVENT_FILE_UPLOADED,
+    build_import_properties
+)
 from config import settings
 from models.extension_models import (
     SharedConfig,
@@ -602,6 +611,18 @@ async def upload_file(
 
         logger.info(f"Created file upload extraction session {session.session_id} for user {user.id} (file: {file.filename})")
 
+        # Track file upload
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_FILE_UPLOADED,
+            properties={
+                "session_id": session.session_id,
+                "file_type": file.content_type,
+                "file_name": file.filename
+            }
+        )
+
         return ExtractHoldingsResponse(
             session_id=session.session_id
         )
@@ -686,6 +707,8 @@ async def import_holdings(
     - NOTE: We always OVERRIDE holdings, never merge/append
     """
     session_shared_config_id: Optional[str] = None
+    start_time = time.time()
+    analytics = get_analytics_service()
 
     try:
         # Load extraction session
@@ -709,6 +732,17 @@ async def import_holdings(
         # Extract holdings from session
         session_holdings = session_doc.get("extracted_holdings", [])
         holdings = [{"symbol": h["symbol"], "units": h["units"]} for h in session_holdings]
+
+        # Track import started
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_HOLDINGS_IMPORT_STARTED,
+            properties=build_import_properties(
+                portfolio_id=request.portfolio_id,
+                account_name=request.account_name or "Unnamed Account",
+                holdings_count=len(holdings)
+            )
+        )
 
         collection = db.portfolios
 
@@ -757,6 +791,19 @@ async def import_holdings(
 
             await increment_successful_imports_count(db, session_shared_config_id)
 
+            # Track successful import
+            duration_ms = (time.time() - start_time) * 1000
+            analytics.track_event(
+                user=user,
+                event_name=EVENT_HOLDINGS_IMPORT_COMPLETED,
+                properties=build_import_properties(
+                    portfolio_id=request.portfolio_id,
+                    account_name=request.account_name,
+                    holdings_count=len(holdings),
+                    duration_ms=duration_ms
+                )
+            )
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
@@ -795,6 +842,19 @@ async def import_holdings(
 
             await increment_successful_imports_count(db, session_shared_config_id)
 
+            # Track successful import
+            duration_ms = (time.time() - start_time) * 1000
+            analytics.track_event(
+                user=user,
+                event_name=EVENT_HOLDINGS_IMPORT_COMPLETED,
+                properties=build_import_properties(
+                    portfolio_id=request.portfolio_id,
+                    account_name=request.account_name,
+                    holdings_count=len(holdings),
+                    duration_ms=duration_ms
+                )
+            )
+
             return ImportHoldingsResponse(
                 success=True,
                 portfolio_id=request.portfolio_id,
@@ -805,9 +865,37 @@ async def import_holdings(
             )
 
     except HTTPException as http_err:
+        # Track failure for HTTP exceptions
+        duration_ms = (time.time() - start_time) * 1000
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_HOLDINGS_IMPORT_FAILED,
+            properties=build_import_properties(
+                portfolio_id=request.portfolio_id,
+                account_name=request.account_name or "Unknown",
+                holdings_count=0,
+                duration_ms=duration_ms,
+                error_message=str(http_err.detail)
+            )
+        )
         raise http_err
     except Exception as e:
         logger.error(f"Error in import_holdings: {e}", exc_info=True)
+
+        # Track failure
+        duration_ms = (time.time() - start_time) * 1000
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_HOLDINGS_IMPORT_FAILED,
+            properties=build_import_properties(
+                portfolio_id=request.portfolio_id,
+                account_name=request.account_name or "Unknown",
+                holdings_count=0,
+                duration_ms=duration_ms,
+                error_message=str(e)
+            )
+        )
+
         try:
             await increment_failure_count(db, session_shared_config_id)
         except Exception as metrics_error:

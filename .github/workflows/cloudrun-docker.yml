@@ -36,6 +36,8 @@ jobs:
           GOOGLE_AI_API_KEY: "${{ secrets.GOOGLE_AI_API_KEY }}"
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
+          MIXPANEL_API_KEY: "${{ secrets.MIXPANEL_API_KEY }}"
+          MIXPANEL_ENABLED: "true"
           EOF
 
       # Build the Docker image
