@@ -66,6 +66,7 @@ interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
   onAccountsChange: (accountNames: string[]) => void;
   onToggleVisibility: () => void;
+  isValueVisible: boolean;
   availableFiles: PortfolioFile[];
   selectedFile: string;
   onPortfolioChange: (portfolio_id: string) => void;
@@ -302,6 +303,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   portfolioMetadata,
   onAccountsChange,
   onToggleVisibility,
+  isValueVisible,
   availableFiles = [], // Provide default empty array
   selectedFile,
   onPortfolioChange,
@@ -319,7 +321,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       isSelected: true
     }))
   );
-  const [isValueVisible, setIsValueVisible] = useState(true);
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showEditAccountModal, setShowEditAccountModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
@@ -550,7 +551,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   };
 
   const toggleValueVisibility = () => {
-    setIsValueVisible(!isValueVisible);
     onToggleVisibility();
   };
 

@@ -6,9 +6,6 @@ import {
   Menu,
   X,
   Newspaper,
-  User,
-  Settings,
-  LogOut,
   Library,
   ArrowRightLeft
 } from 'lucide-react'
@@ -18,13 +15,6 @@ import { AboutModal } from './AboutModal'
 import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
 import GoogleProfilePicture from './GoogleProfilePicture'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { useUserProfile } from '../contexts/UserProfileContext'
 
 export type NavigationView = 'portfolios' | 'cashflow' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
@@ -56,12 +46,10 @@ interface TopBarProps {
   activeView?: NavigationView // Now optional, derived from URL
   onViewChange?: (view: NavigationView) => void // Now optional
   onProfileClick?: () => void
-  onSettingsClick?: () => void
-  onSignOutClick?: () => void
   onFeedbackClick?: () => void
 }
 
-export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick, onFeedbackClick }: TopBarProps) {
+export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onFeedbackClick }: TopBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
@@ -177,47 +165,18 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           {/* Notification Bell */}
           <NotificationBell />
           
-          {/* Profile Icon Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-8 h-8">
-                <GoogleProfilePicture
-                  photoURL={googleProfileData?.photoURL}
-                  displayName={googleProfileData?.displayName}
-                  size="sm"
-                  className="border-0 bg-transparent"
-                />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
-              sideOffset={8}
-            >
-              <DropdownMenuItem
-                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <User size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Profile Icon */}
+          <button 
+            onClick={onProfileClick}
+            className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-8 h-8"
+          >
+            <GoogleProfilePicture
+              photoURL={googleProfileData?.photoURL}
+              displayName={googleProfileData?.displayName}
+              size="sm"
+              className="border-0 bg-transparent"
+            />
+          </button>
         </div>
 
         {/* Mobile Menu Button and Icons */}
@@ -245,46 +204,17 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           <NotificationBell />
 
           {/* Profile Icon for mobile */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-7 h-7">
-                <GoogleProfilePicture
-                  photoURL={googleProfileData?.photoURL}
-                  displayName={googleProfileData?.displayName}
-                  size="sm"
-                  className="border-0 bg-transparent"
-                />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
-              sideOffset={8}
-            >
-              <DropdownMenuItem
-                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <User size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button 
+            onClick={onProfileClick}
+            className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-7 h-7"
+          >
+            <GoogleProfilePicture
+              photoURL={googleProfileData?.photoURL}
+              displayName={googleProfileData?.displayName}
+              size="sm"
+              className="border-0 bg-transparent"
+            />
+          </button>
           
           {/* Mobile Menu Button */}
           <button

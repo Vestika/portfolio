@@ -22,8 +22,7 @@ import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { ImportView } from './components/ImportView';
 import { UploadView } from './components/UploadView';
-import ProfileView from './components/ProfileView';
-import SettingsView from './components/SettingsView';
+import ProfileSidebar from './components/ProfileSidebar';
 import { ConfigGalleryView } from './components/ConfigGalleryView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
@@ -109,6 +108,7 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
+  const [isProfileSidebarOpen, setIsProfileSidebarOpen] = useState(false);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();
@@ -356,23 +356,11 @@ const App: React.FC = () => {
   };
 
   const handleProfileClick = () => {
-    navigate('/profile');
-  };
-
-  const handleSettingsClick = () => {
-    navigate('/settings');
+    setIsProfileSidebarOpen(true);
   };
 
   const handleViewChange = (view: NavigationView) => {
     navigate(viewToPathname(view));
-  };
-
-  const handleBackToPortfolio = () => {
-    navigate('/portfolio');
-  };
-
-  const handleSignOutClick = async () => {
-    await handleSignOut();
   };
 
 
@@ -490,8 +478,6 @@ const App: React.FC = () => {
           activeView={activeView} 
           onViewChange={handleViewChange}
           onProfileClick={handleProfileClick}
-          onSettingsClick={handleSettingsClick}
-          onSignOutClick={handleSignOutClick}
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
@@ -508,6 +494,7 @@ const App: React.FC = () => {
                 portfolioMetadata={displayMetadata}
                 onAccountsChange={handleAccountsChange}
                 onToggleVisibility={handleToggleVisibility}
+                isValueVisible={isValueVisible}
                 availableFiles={availablePortfolios}
                 selectedFile={selectedPortfolioId || ""}
                 onPortfolioChange={setSelectedPortfolioId}  // Now instant, no API call!
@@ -538,22 +525,6 @@ const App: React.FC = () => {
         >
           <main className="flex-1">
             <Routes>
-              {/* Profile and Settings routes */}
-              <Route
-                path="/profile"
-                element={<ProfileView onBackToPortfolio={handleBackToPortfolio} />}
-              />
-              <Route
-                path="/settings"
-                element={
-                  <SettingsView
-                    onToggleVisibility={handleToggleVisibility}
-                    isValueVisible={isValueVisible}
-                    onBackToPortfolio={handleBackToPortfolio}
-                  />
-                }
-              />
-
               {/* Main views */}
               <Route
                 path="/portfolio"
@@ -689,6 +660,15 @@ const App: React.FC = () => {
           </main>
         </div>
       </div>
+      
+      {/* Profile Sidebar */}
+      <ProfileSidebar 
+        isOpen={isProfileSidebarOpen}
+        onClose={() => setIsProfileSidebarOpen(false)}
+        onSignOut={handleSignOut}
+        onToggleVisibility={handleToggleVisibility}
+        isValueVisible={isValueVisible}
+      />
       </div>
       </UserProfileProvider>
     </NotificationProvider>
