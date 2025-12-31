@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
-import { Tags, Plus, Edit, Trash2, HelpCircle, X, PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+import { Tags, Plus, Edit, Trash2, HelpCircle, X, PieChart as PieChartIcon, BarChart3, Grid3x3, Layers, CircleDot, Calendar as CalendarIcon, GanttChart } from 'lucide-react';
 import { TagDefinition, TagLibrary, HoldingTags, TagType, TagValue, ChartDataItem } from '../types';
 import TagDefinitionManager from './TagDefinitionManager';
 import TagEditor from './TagEditor';
@@ -14,6 +14,13 @@ import PieChart from '../PieChart';
 import BarChart from '../BarChart';
 import StackedBarChart from './StackedBarChart';
 import SunburstChart from './SunburstChart';
+import SankeyChart from '../SankeyChart';
+import TreeMapChart, { TreeMapDataItem } from '../TreeMapChart';
+import BubbleChart, { BubbleChartDataItem } from '../BubbleChart';
+import DependencyWheelChart, { DependencyWheelDataItem } from '../DependencyWheelChart';
+import TimelineChart, { TimelineChartDataItem } from '../TimelineChart';
+import CalendarView, { CalendarViewDataItem } from '../CalendarView';
+import GaugeChart from '../GaugeChart';
 import {
   Dialog,
   DialogContent,
@@ -119,7 +126,7 @@ export function ManageTagsView() {
   const [expandedTagged, setExpandedTagged] = useState<Record<string, boolean>>({});
   const [expandedUntagged, setExpandedUntagged] = useState<Record<string, boolean>>({});
   const [showHelpDialog, setShowHelpDialog] = useState(false);
-  const [chartTypePreference, setChartTypePreference] = useState<Record<string, 'pie' | 'bar'>>({});
+  const [chartTypePreference, setChartTypePreference] = useState<Record<string, 'pie' | 'bar' | 'treemap' | 'stacked-bar' | 'sunburst' | 'sankey' | 'dependency-wheel' | 'timeline' | 'calendar' | 'gauge'>>({});
 
   const availablePortfolios = getAvailablePortfolios();
   const portfolioMetadata = currentPortfolioData?.portfolio_metadata;
@@ -127,10 +134,10 @@ export function ManageTagsView() {
   // Initialize chart type preferences from existing charts
   useEffect(() => {
     if (allPortfoliosData?.custom_charts) {
-      const preferences: Record<string, 'pie' | 'bar'> = {};
+      const preferences: Record<string, 'pie' | 'bar' | 'treemap' | 'stacked-bar' | 'sunburst' | 'sankey' | 'dependency-wheel' | 'timeline' | 'calendar' | 'gauge'> = {};
       allPortfoliosData.custom_charts.forEach(chart => {
-        if (chart.chart_type === 'pie' || chart.chart_type === 'bar') {
-          preferences[chart.tag_name] = chart.chart_type;
+        if (chart.chart_type === 'pie' || chart.chart_type === 'bar' || chart.chart_type === 'treemap' || chart.chart_type === 'stacked-bar' || chart.chart_type === 'sunburst' || chart.chart_type === 'sankey' || chart.chart_type === 'dependency-wheel' || chart.chart_type === 'timeline' || chart.chart_type === 'calendar' || chart.chart_type === 'gauge') {
+          preferences[chart.tag_name] = chart.chart_type as 'pie' | 'bar' | 'treemap' | 'stacked-bar' | 'sunburst' | 'sankey' | 'dependency-wheel' | 'timeline' | 'calendar' | 'gauge';
         }
       });
       setChartTypePreference(preferences);
@@ -367,6 +374,57 @@ export function ManageTagsView() {
     return holdings.length > 0 ? holdings : null;
   };
 
+  const generateMapSunburstData = (tagName: string): any[] | null => {
+    if (!currentPortfolioData?.accounts) return null;
+
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    const hierarchicalData: any[] = [];
+    
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+    
+    // Now process unique symbols with MAP tags
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        if (tagValue?.map_value && typeof tagValue.map_value === 'object') {
+          const priceData = globalPrices[symbol];
+          const totalValue = priceData ? holdingData.units * priceData.price : 0;
+          
+          // Create hierarchical entries for each category in the map
+          // Each weight creates a path: [category, symbol]
+          Object.entries(tagValue.map_value).forEach(([category, weight]) => {
+            const weightDecimal = (weight as number) / 100; // Convert percentage to decimal
+            const weightedValue = totalValue * weightDecimal;
+            
+            if (weightedValue > 0) {
+              hierarchicalData.push({
+                symbol: symbol,
+                name: holdingData.name,
+                value: weightedValue,
+                path: [category, symbol] // 2-level hierarchy: category -> holding
+              });
+            }
+          });
+        }
+      }
+    }
+
+    return hierarchicalData.length > 0 ? hierarchicalData : null;
+  };
+
   const generateHierarchicalChartData = (tagName: string): any[] | null => {
     if (!currentPortfolioData?.accounts) return null;
 
@@ -407,6 +465,389 @@ export function ManageTagsView() {
     return holdings.length > 0 ? holdings : null;
   };
 
+  const generateTreeMapData = (tagName: string, tagDefinition: TagDefinition): TreeMapDataItem[] | null => {
+    // Only ENUM and BOOLEAN tags support treemap
+    if (tagDefinition.tag_type !== TagType.ENUM && tagDefinition.tag_type !== TagType.BOOLEAN) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with tags
+    const allHoldings: any[] = [];
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      if (holdingTag && tagName in holdingTag.tags) {
+        allHoldings.push({
+          symbol: symbol,
+          name: holdingData.name,
+          units: holdingData.units,
+          tags: holdingTag.tags
+        });
+      }
+    }
+
+    // Group holdings by tag value (category)
+    const groups: Record<string, any[]> = {};
+    
+    allHoldings.forEach(holding => {
+      const tagValue = holding.tags?.[tagName] as any;
+      let groupKey = 'Uncategorized';
+      
+      if (tagValue && typeof tagValue === 'object') {
+        if ('enum_value' in tagValue && tagValue.enum_value) {
+          groupKey = tagValue.enum_value as string;
+        } else if ('boolean_value' in tagValue) {
+          groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+        }
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(holding);
+    });
+
+    // Calculate values using global prices
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    const treeMapData: TreeMapDataItem[] = Object.entries(groups).map(([groupName, holdings]) => {
+      const categoryHoldings = holdings.map(h => {
+        const priceData = globalPrices[h.symbol];
+        const value = priceData ? h.units * priceData.price : 0;
+        
+        return {
+          symbol: h.symbol,
+          name: h.name,
+          value
+        };
+      }).filter(h => h.value > 0); // Only include holdings with value
+
+      return {
+        label: groupName,
+        holdings: categoryHoldings
+      };
+    }).filter(category => category.holdings.length > 0); // Only include categories with holdings
+
+    return treeMapData.length > 0 ? treeMapData : null;
+  };
+
+  const generateBubbleChartData = (tagName: string, tagDefinition: TagDefinition): BubbleChartDataItem[] | null => {
+    // Only SCALAR tags support bubble chart
+    if (tagDefinition.tag_type !== TagType.SCALAR) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with scalar tag values
+    const bubbleData: BubbleChartDataItem[] = [];
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        if (tagValue?.scalar_value !== undefined && tagValue.scalar_value !== null) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          if (value > 0) {
+            bubbleData.push({
+              symbol: symbol,
+              name: holdingData.name,
+              value,
+              scalar_value: tagValue.scalar_value
+            });
+          }
+        }
+      }
+    }
+
+    return bubbleData.length > 0 ? bubbleData : null;
+  };
+
+  const generateDependencyWheelData = (tagName: string, tagDefinition: TagDefinition): DependencyWheelDataItem[] | null => {
+    // Only RELATIONSHIP tags support dependency wheel
+    if (tagDefinition.tag_type !== TagType.RELATIONSHIP) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with relationship tag values
+    const wheelData: DependencyWheelDataItem[] = [];
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        // Use relationship_value (correct field name from TagValue interface)
+        if (tagValue?.relationship_value && Array.isArray(tagValue.relationship_value)) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          if (value > 0) {
+            wheelData.push({
+              symbol: symbol,
+              name: holdingData.name,
+              value,
+              related_symbols: tagValue.relationship_value
+            });
+          }
+        }
+      }
+    }
+
+    return wheelData.length > 0 ? wheelData : null;
+  };
+
+  const generateRelationshipSankeyData = (tagName: string, tagDefinition: TagDefinition): any[] | null => {
+    // Only RELATIONSHIP tags support sankey
+    if (tagDefinition.tag_type !== TagType.RELATIONSHIP) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with relationship tag values
+    const sankeyData: any[] = [];
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        // Use relationship_value (correct field name from TagValue interface)
+        if (tagValue?.relationship_value && Array.isArray(tagValue.relationship_value)) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          if (value > 0) {
+            // For Sankey, we need the same structure as hierarchical data
+            // Create a simple 2-level hierarchy: [symbol, related_symbol]
+            tagValue.relationship_value.forEach((relatedSymbol: string) => {
+              sankeyData.push({
+                symbol: symbol,
+                name: holdingData.name,
+                value,
+                path: [symbol, relatedSymbol] // Simple 2-level path for relationships
+              });
+            });
+          }
+        }
+      }
+    }
+
+    return sankeyData.length > 0 ? sankeyData : null;
+  };
+
+  const generateTimelineData = (tagName: string, tagDefinition: TagDefinition): TimelineChartDataItem[] | null => {
+    // Only TIME_BASED tags support timeline
+    if (tagDefinition.tag_type !== TagType.TIME_BASED) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with time-based tag values
+    const timelineData: TimelineChartDataItem[] = [];
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        if (tagValue?.time_value) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          if (value > 0) {
+            // For frequency-based tags, generate individual occurrences
+            if (tagValue.time_value.frequency) {
+              const startDate = tagValue.time_value.frequency_start || tagValue.time_value.date || new Date().toISOString().split('T')[0];
+              const start = new Date(startDate);
+              const threeMonthsLater = new Date(start);
+              threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+              
+              const current = new Date(start);
+              let occurrenceIndex = 0;
+              
+              // Generate individual occurrences
+              while (current <= threeMonthsLater && occurrenceIndex < 50) { // Safety limit
+                timelineData.push({
+                  symbol: `${symbol}_${occurrenceIndex}`, // Unique key for each occurrence
+                  name: `${holdingData.name} (${tagValue.time_value.frequency})`,
+                  value,
+                  single_date: current.toISOString().split('T')[0],
+                  frequency: tagValue.time_value.frequency
+                });
+                
+                // Increment based on frequency
+                switch (tagValue.time_value.frequency) {
+                  case 'daily':
+                    current.setDate(current.getDate() + 1);
+                    break;
+                  case 'weekly':
+                    current.setDate(current.getDate() + 7);
+                    break;
+                  case 'monthly':
+                    current.setMonth(current.getMonth() + 1);
+                    break;
+                  case 'quarterly':
+                    current.setMonth(current.getMonth() + 3);
+                    break;
+                  case 'yearly':
+                  case 'annually':
+                    current.setFullYear(current.getFullYear() + 1);
+                    break;
+                  default:
+                    current.setDate(current.getDate() + 1);
+                }
+                occurrenceIndex++;
+              }
+            } else {
+              // Regular single date or date range
+              timelineData.push({
+                symbol: symbol,
+                name: holdingData.name,
+                value,
+                start_date: tagValue.time_value.start_date,
+                end_date: tagValue.time_value.end_date,
+                single_date: tagValue.time_value.date // Use 'date' not 'single_date'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return timelineData.length > 0 ? timelineData : null;
+  };
+
+  const generateCalendarData = (tagName: string, tagDefinition: TagDefinition): CalendarViewDataItem[] | null => {
+    // Only TIME_BASED tags support calendar
+    if (tagDefinition.tag_type !== TagType.TIME_BASED) {
+      return null;
+    }
+
+    if (!currentPortfolioData?.accounts) return null;
+
+    // First, aggregate holdings by symbol across all accounts
+    const aggregatedHoldings: Record<string, { units: number; name: string }> = {};
+    
+    currentPortfolioData.accounts.forEach(account => {
+      account.holdings.forEach(holding => {
+        if (!aggregatedHoldings[holding.symbol]) {
+          aggregatedHoldings[holding.symbol] = { units: 0, name: holding.security_name };
+        }
+        aggregatedHoldings[holding.symbol].units += holding.units;
+      });
+    });
+
+    // Get all unique holdings with time-based tag values
+    const calendarData: CalendarViewDataItem[] = [];
+    const globalPrices = allPortfoliosData?.global_current_prices || {};
+    
+    for (const [symbol, holdingData] of Object.entries(aggregatedHoldings)) {
+      const holdingTag = getHoldingTagForCurrentPortfolio(symbol);
+      
+      if (holdingTag && tagName in holdingTag.tags) {
+        const tagValue = holdingTag.tags[tagName] as any;
+        
+        if (tagValue?.time_value) {
+          const priceData = globalPrices[symbol];
+          const value = priceData ? holdingData.units * priceData.price : 0;
+          
+          if (value > 0) {
+            // For calendar view, pass all the time data as-is
+            calendarData.push({
+              symbol: symbol,
+              name: holdingData.name,
+              value,
+              start_date: tagValue.time_value.start_date,
+              end_date: tagValue.time_value.end_date,
+              single_date: tagValue.time_value.date, // Use 'date' not 'single_date'
+              frequency: tagValue.time_value.frequency,
+              frequency_start: tagValue.time_value.frequency_start || tagValue.time_value.date // Use date as start if no frequency_start
+            });
+          }
+        }
+      }
+    }
+
+    return calendarData.length > 0 ? calendarData : null;
+  };
+
   const getExistingChart = (tagName: string) => {
     if (!allPortfoliosData?.custom_charts) return null;
     return allPortfoliosData.custom_charts.find(chart => 
@@ -418,13 +859,25 @@ export function ManageTagsView() {
   const getChartType = (tagDefinition: TagDefinition): string => {
     switch (tagDefinition.tag_type) {
       case TagType.ENUM:
-      case TagType.BOOLEAN:
         // Use user preference, default to pie
         return chartTypePreference[tagDefinition.name] || 'pie';
+      case TagType.BOOLEAN:
+        // Boolean tags always use gauge
+        return 'gauge';
       case TagType.MAP:
-        return 'stacked-bar';
+        // Use user preference, default to stacked-bar
+        return chartTypePreference[tagDefinition.name] || 'stacked-bar';
       case TagType.HIERARCHICAL:
-        return 'sunburst';
+        // Use user preference, default to sunburst
+        return chartTypePreference[tagDefinition.name] || 'sunburst';
+      case TagType.SCALAR:
+        return 'bubble';
+      case TagType.RELATIONSHIP:
+        // Use user preference, default to dependency-wheel
+        return chartTypePreference[tagDefinition.name] || 'dependency-wheel';
+      case TagType.TIME_BASED:
+        // Use user preference, default to timeline
+        return chartTypePreference[tagDefinition.name] || 'timeline';
       default:
         return 'pie';
     }
@@ -475,7 +928,7 @@ export function ManageTagsView() {
     }
   };
 
-  const handleChartTypeToggle = async (tagName: string, chartType: 'pie' | 'bar') => {
+  const handleChartTypeToggle = async (tagName: string, chartType: 'pie' | 'bar' | 'treemap' | 'stacked-bar' | 'sunburst' | 'sankey' | 'dependency-wheel' | 'timeline' | 'calendar' | 'gauge') => {
     // Update local state immediately for responsive UI
     setChartTypePreference(prev => ({ ...prev, [tagName]: chartType }));
     
@@ -496,7 +949,7 @@ export function ManageTagsView() {
       } catch (error) {
         console.error('Error updating chart type:', error);
         // Revert on error
-        const originalType = existingChart.chart_type as 'pie' | 'bar' | undefined;
+        const originalType = existingChart.chart_type as 'pie' | 'bar' | 'treemap' | 'stacked-bar' | 'sunburst' | 'sankey' | 'dependency-wheel' | 'timeline' | 'calendar' | 'gauge' | undefined;
         setChartTypePreference(prev => ({ ...prev, [tagName]: originalType || 'pie' }));
       }
     }
@@ -710,7 +1163,7 @@ export function ManageTagsView() {
             const showAllTagged = expandedTagged[definition.name] || false;
             const showAllUntagged = expandedUntagged[definition.name] || false;
             const existingChart = getExistingChart(definition.name);
-            const currentChartType = existingChart?.chart_type || chartTypePreference[definition.name] || 'pie';
+            const currentChartType = existingChart?.chart_type || chartTypePreference[definition.name] || getChartType(definition);
 
             const displayedTaggedHoldings = showAllTagged ? taggedHoldings : taggedHoldings.slice(0, 10);
             const displayedUntaggedHoldings = showAllUntagged ? untaggedHoldings : untaggedHoldings.slice(0, 10);
@@ -834,8 +1287,8 @@ export function ManageTagsView() {
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="text-sm font-medium text-gray-300">Chart Preview</h4>
                       <div className="flex items-center gap-2">
-                        {/* Chart Type Toggle for ENUM/BOOLEAN tags */}
-                        {(definition.tag_type === TagType.ENUM || definition.tag_type === TagType.BOOLEAN) && (
+                        {/* Chart Type Toggle for ENUM tags only (BOOLEAN uses gauge exclusively) */}
+                        {definition.tag_type === TagType.ENUM && (
                           <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
                             <button
                               onClick={() => handleChartTypeToggle(definition.name, 'pie')}
@@ -859,13 +1312,136 @@ export function ManageTagsView() {
                               <BarChart3 size={12} />
                               Bar
                             </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'treemap')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'treemap'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <Grid3x3 size={12} />
+                              Tree
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Chart Type Toggle for MAP tags */}
+                        {definition.tag_type === TagType.MAP && (
+                          <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'stacked-bar')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'stacked-bar'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <BarChart3 size={12} />
+                              Stacked
+                            </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'sunburst')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'sunburst'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <CircleDot size={12} />
+                              Sunburst
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Chart Type Toggle for HIERARCHICAL tags */}
+                        {definition.tag_type === TagType.HIERARCHICAL && (
+                          <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'sunburst')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'sunburst'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <CircleDot size={12} />
+                              Sunburst
+                            </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'sankey')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'sankey'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <Layers size={12} />
+                              Sankey
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Chart Type Toggle for RELATIONSHIP tags */}
+                        {definition.tag_type === TagType.RELATIONSHIP && (
+                          <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'dependency-wheel')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'dependency-wheel'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <CircleDot size={12} />
+                              Wheel
+                            </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'sankey')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'sankey'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <Layers size={12} />
+                              Sankey
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Chart Type Toggle for TIME_BASED tags */}
+                        {definition.tag_type === TagType.TIME_BASED && (
+                          <div className="flex items-center bg-gray-700/20 rounded-md border border-gray-600/30 p-0.5">
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'timeline')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'timeline'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <GanttChart size={12} />
+                              Timeline
+                            </button>
+                            <button
+                              onClick={() => handleChartTypeToggle(definition.name, 'calendar')}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ${
+                                currentChartType === 'calendar'
+                                  ? 'bg-blue-500/20 text-blue-200'
+                                  : 'text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <CalendarIcon size={12} />
+                              Calendar
+                            </button>
                           </div>
                         )}
                         
                         {/* Add/Remove Chart Button */}
                         {(() => {
                           const existingChart = getExistingChart(definition.name);
-                          const isChartable = [TagType.ENUM, TagType.BOOLEAN, TagType.MAP, TagType.HIERARCHICAL].includes(definition.tag_type);
+                          const isChartable = [TagType.ENUM, TagType.BOOLEAN, TagType.MAP, TagType.HIERARCHICAL, TagType.SCALAR, TagType.RELATIONSHIP, TagType.TIME_BASED].includes(definition.tag_type);
                           
                           if (!isChartable) {
                             return null;
@@ -900,27 +1476,123 @@ export function ManageTagsView() {
                     {(() => {
                       // Use the currentChartType calculated above
                       // Handle different tag types
-                      if (definition.tag_type === TagType.MAP) {
-                        const mapData = generateMapChartData(definition.name);
-                        if (!mapData) {
+                      
+                      // Handle SCALAR tags (bubble chart)
+                      if (definition.tag_type === TagType.SCALAR) {
+                        const bubbleData = generateBubbleChartData(definition.name, definition);
+                        if (!bubbleData) {
                           return (
                             <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
-                              <BarChart3 size={48} className="mx-auto mb-3 text-gray-500" />
-                              <p className="text-sm text-gray-400">No weighted exposure data</p>
+                              <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No scalar data available</p>
                             </div>
                           );
                         }
                         return (
                           <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
-                            <StackedBarChart
+                            <BubbleChart
                               title=""
-                              data={mapData}
+                              data={bubbleData}
                               baseCurrency={portfolioMetadata.base_currency}
                               hideValues={false}
                               getSymbolName={getHoldingName}
                             />
                           </div>
                         );
+                      }
+                      
+                      // Handle RELATIONSHIP tags (dependency wheel or sankey)
+                      if (definition.tag_type === TagType.RELATIONSHIP) {
+                        if (currentChartType === 'sankey') {
+                          const sankeyData = generateRelationshipSankeyData(definition.name, definition);
+                          if (!sankeyData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No relationship data available</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <SankeyChart
+                                title=""
+                                data={sankeyData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        } else {
+                          const wheelData = generateDependencyWheelData(definition.name, definition);
+                          if (!wheelData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No relationship data available</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <DependencyWheelChart
+                                title=""
+                                data={wheelData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        }
+                      }
+                      
+                      if (definition.tag_type === TagType.MAP) {
+                        // Support both stacked-bar and sunburst for MAP tags
+                        if (currentChartType === 'sunburst') {
+                          const sunburstData = generateMapSunburstData(definition.name);
+                          if (!sunburstData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <CircleDot size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No weighted exposure data</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <SunburstChart
+                                title=""
+                                data={sunburstData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        } else {
+                          const mapData = generateMapChartData(definition.name);
+                          if (!mapData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <BarChart3 size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No weighted exposure data</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <StackedBarChart
+                                title=""
+                                data={mapData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        }
                       }
                       
                       if (definition.tag_type === TagType.HIERARCHICAL) {
@@ -935,54 +1607,165 @@ export function ManageTagsView() {
                         }
                         return (
                           <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
-                            <SunburstChart
-                              title=""
-                              data={hierarchicalData}
-                              baseCurrency={portfolioMetadata.base_currency}
-                              hideValues={false}
-                              getSymbolName={getHoldingName}
-                            />
+                            {currentChartType === 'sankey' ? (
+                              <SankeyChart
+                                title=""
+                                data={hierarchicalData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            ) : (
+                              <SunburstChart
+                                title=""
+                                data={hierarchicalData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            )}
                           </div>
                         );
                       }
                       
-                      // Handle ENUM and BOOLEAN tags
-                      const chartData = generateChartData(definition.name, definition);
-                      if (!chartData) {
+                      // Handle TIME_BASED tags (timeline or calendar)
+                      if (definition.tag_type === TagType.TIME_BASED) {
+                        if (currentChartType === 'calendar') {
+                          const calendarData = generateCalendarData(definition.name, definition);
+                          if (!calendarData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <CalendarIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No time-based data available</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <CalendarView
+                                title=""
+                                data={calendarData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        } else {
+                          const timelineData = generateTimelineData(definition.name, definition);
+                          if (!timelineData) {
+                            return (
+                              <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                                <GanttChart size={48} className="mx-auto mb-3 text-gray-500" />
+                                <p className="text-sm text-gray-400">No timeline data available</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                              <TimelineChart
+                                title=""
+                                data={timelineData}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            </div>
+                          );
+                        }
+                      }
+                      
+                      // Handle BOOLEAN tags - always use gauge
+                      if (definition.tag_type === TagType.BOOLEAN) {
+                        const chartData = generateChartData(definition.name, definition);
+                        if (!chartData) {
+                          return (
+                            <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                              <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No tagged holdings to display</p>
+                            </div>
+                          );
+                        }
                         return (
-                          <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
-                            <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
-                            <p className="text-sm text-gray-400">
-                              {(definition.tag_type === TagType.ENUM || definition.tag_type === TagType.BOOLEAN)
-                                ? 'No tagged holdings to display'
-                                : 'Chart type not supported for this tag'}
-                            </p>
+                          <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                            <GaugeChart
+                              title=""
+                              data={chartData}
+                              baseCurrency={portfolioMetadata.base_currency}
+                              hideValues={false}
+                            />
                           </div>
                         );
                       }
                       
-                      const chartTotal = chartData.reduce((sum, item) => sum + item.value, 0);
-                      
-                      return (
-                        <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
-                          {currentChartType === 'pie' ? (
-                            <PieChart
+                      // Handle ENUM tags
+                      // For treemap, use different data structure
+                      if (currentChartType === 'treemap' && definition.tag_type === TagType.ENUM) {
+                        const treeMapData = generateTreeMapData(definition.name, definition);
+                        if (!treeMapData) {
+                          return (
+                            <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                              <Grid3x3 size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No tagged holdings to display</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                            <TreeMapChart
                               title=""
-                              data={chartData}
-                              total={chartTotal}
+                              data={treeMapData}
                               baseCurrency={portfolioMetadata.base_currency}
                               hideValues={false}
                               getSymbolName={getHoldingName}
                             />
-                          ) : (
-                            <BarChart
-                              title=""
-                              data={chartData}
-                              total={chartTotal}
-                              baseCurrency={portfolioMetadata.base_currency}
-                              hideValues={false}
-                            />
-                          )}
+                          </div>
+                        );
+                      }
+                      
+                      // For ENUM tags - pie and bar charts
+                      if (definition.tag_type === TagType.ENUM) {
+                        const chartData = generateChartData(definition.name, definition);
+                        if (!chartData) {
+                          return (
+                            <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                              <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                              <p className="text-sm text-gray-400">No tagged holdings to display</p>
+                            </div>
+                          );
+                        }
+                        
+                        const chartTotal = chartData.reduce((sum, item) => sum + item.value, 0);
+                        
+                        return (
+                          <div className="bg-gray-900/50 border border-gray-600/30 rounded-lg overflow-hidden">
+                            {currentChartType === 'pie' ? (
+                              <PieChart
+                                title=""
+                                data={chartData}
+                                total={chartTotal}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                                getSymbolName={getHoldingName}
+                              />
+                            ) : (
+                              <BarChart
+                                title=""
+                                data={chartData}
+                                total={chartTotal}
+                                baseCurrency={portfolioMetadata.base_currency}
+                                hideValues={false}
+                              />
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      // Fallback for unsupported tag types
+                      return (
+                        <div className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-8 text-center">
+                          <PieChartIcon size={48} className="mx-auto mb-3 text-gray-500" />
+                          <p className="text-sm text-gray-400">Chart type not supported for this tag</p>
                         </div>
                       );
                     })()}

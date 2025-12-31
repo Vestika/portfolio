@@ -15,7 +15,7 @@ router = APIRouter(prefix="/user/custom-charts", tags=["custom-charts"])
 class CreateCustomChartRequest(BaseModel):
     chart_title: str
     tag_name: str
-    chart_type: Optional[str] = 'pie'  # 'pie', 'bar', 'stacked-bar', 'sunburst'
+    chart_type: Optional[str] = 'pie'  # 'pie', 'bar', 'treemap', 'stacked-bar', 'sunburst', 'sankey', 'bubble', 'dependency-wheel', 'timeline', 'calendar', 'gauge'
     portfolio_id: Optional[str] = None
     # Note: chart_data and chart_total are calculated dynamically in frontend, not stored
 
@@ -95,7 +95,7 @@ async def get_custom_charts(
 
 
 class UpdateChartTypeRequest(BaseModel):
-    chart_type: str  # 'pie', 'bar', 'stacked-bar', 'sunburst'
+    chart_type: str  # 'pie', 'bar', 'treemap', 'stacked-bar', 'sunburst', 'sankey', 'bubble', 'dependency-wheel', 'timeline', 'calendar', 'gauge'
 
 @router.patch("/{chart_id}/chart-type", response_model=CustomChartResponse)
 async def update_chart_type(

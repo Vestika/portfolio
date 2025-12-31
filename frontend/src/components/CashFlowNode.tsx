@@ -1,8 +1,19 @@
 // Custom React Flow Node Component for Cash Flow Diagram
 
 import { memo } from 'react'
-import { Handle, Position, type NodeProps } from 'reactflow'
+// import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { FlowNodeData } from '../types/cashflow'
+
+// Temporary stubs until reactflow is properly installed
+const Position = {
+  Top: 'top' as const,
+  Right: 'right' as const,
+  Bottom: 'bottom' as const,
+  Left: 'left' as const,
+};
+type NodeProps<T = any> = { data: T; id: string };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const Handle = (_props: any) => <div />;
 import { formatCurrency } from '../utils/cashflow-helpers'
 import {
   Wallet,
