@@ -97,6 +97,20 @@ class Settings(BaseSettings):
         description="Telegram chat ID (user/group/channel) to receive feedback notifications"
     )
 
+    # Mixpanel Analytics Configuration
+    mixpanel_api_key: Optional[str] = Field(
+        default=None,
+        description="Mixpanel API key for analytics tracking"
+    )
+    mixpanel_enabled: bool = Field(
+        default=False,
+        description="Enable/disable Mixpanel analytics"
+    )
+    mixpanel_mock_mode: bool = Field(
+        default=False,
+        description="Run Mixpanel in mock mode (for testing)"
+    )
+
 
 # Global settings instance
 settings = Settings() 

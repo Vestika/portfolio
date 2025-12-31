@@ -7,6 +7,12 @@ from bson import ObjectId
 
 from core.auth import get_current_user
 from core.database import db_manager
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_CASH_FLOW_SCENARIO_CREATED,
+    EVENT_CASH_FLOW_SCENARIO_DELETED,
+    build_cash_flow_properties
+)
 
 # Create router for this module
 router = APIRouter(prefix="/cash-flow", tags=["cash-flow"])
@@ -158,8 +164,24 @@ async def create_scenario(
 
         result = await collection.insert_one(doc)
 
+        scenario_id = str(result.inserted_id)
+
+        # Track cash flow scenario creation
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_CASH_FLOW_SCENARIO_CREATED,
+            properties=build_cash_flow_properties(
+                scenario_id=scenario_id,
+                scenario_name=request.name,
+                portfolio_id=request.portfolio_id,
+                items_count=len(request.items),
+                categories_count=len(request.categories)
+            )
+        )
+
         return CashFlowScenarioResponse(
-            scenario_id=str(result.inserted_id),
+            scenario_id=scenario_id,
             portfolio_id=request.portfolio_id,
             name=request.name,
             items=request.items,
@@ -245,6 +267,18 @@ async def delete_scenario(
             raise HTTPException(status_code=404, detail="Scenario not found")
 
         await collection.delete_one({"_id": ObjectId(scenario_id)})
+
+        # Track cash flow scenario deletion
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_CASH_FLOW_SCENARIO_DELETED,
+            properties=build_cash_flow_properties(
+                scenario_id=scenario_id,
+                scenario_name=existing.get("name", "Unknown"),
+                portfolio_id=existing.get("portfolio_id")
+            )
+        )
 
         return {"message": "Scenario deleted successfully", "scenario_id": scenario_id}
     except HTTPException:

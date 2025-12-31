@@ -1,5 +1,6 @@
 """AI and chat endpoints"""
 import logging
+import time
 from typing import Any, Optional
 from datetime import datetime
 from bson import ObjectId
@@ -11,6 +12,8 @@ from core.database import db_manager
 from core.ai_analyst import ai_analyst
 from core.portfolio_analyzer import portfolio_analyzer
 from core.chat_manager import chat_manager
+from core.analytics import get_analytics_service
+from core.analytics_events import EVENT_AI_CHAT_SENT, build_ai_properties
 from models.portfolio import Portfolio
 from .portfolio import get_or_create_calculator
 
@@ -72,6 +75,8 @@ async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_cur
     """
     Interactive chat with AI financial analyst about portfolios.
     """
+    start_time = time.time()
+
     try:
         # Check if AI service is available
         if not ai_analyst.is_available:
@@ -173,7 +178,23 @@ async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_cur
         
         # Add AI response to session
         await chat_manager.add_message_to_session(session_id, user.id, "assistant", ai_response["response"])
-        
+
+        # Track AI chat event
+        duration_ms = (time.time() - start_time) * 1000
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_AI_CHAT_SENT,
+            properties=build_ai_properties(
+                portfolio_id=portfolio_context[0]["id"] if portfolio_context else None,
+                message_length=len(request.message),
+                session_id=session_id,
+                tagged_entities_count=len(request.tagged_entities) if request.tagged_entities else 0,
+                model_used=ai_response["model_used"],
+                duration_ms=duration_ms
+            )
+        )
+
         return {
             "session_id": session_id,
             "response": ai_response["response"],

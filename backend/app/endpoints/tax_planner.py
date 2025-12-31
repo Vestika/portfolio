@@ -7,6 +7,12 @@ from bson import ObjectId
 
 from core.auth import get_current_user
 from core.database import db_manager
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_TAX_SCENARIO_CREATED,
+    EVENT_TAX_SCENARIO_DELETED,
+    build_tax_properties
+)
 
 # Create router for this module
 router = APIRouter(prefix="/tax-planner", tags=["tax-planner"])
@@ -165,8 +171,24 @@ async def create_scenario(
 
         result = await collection.insert_one(doc)
 
+        scenario_id = str(result.inserted_id)
+
+        # Track tax scenario creation
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_TAX_SCENARIO_CREATED,
+            properties=build_tax_properties(
+                scenario_id=scenario_id,
+                scenario_name=request.name,
+                year=request.year,
+                entries_count=len(request.entries),
+                base_currency=request.base_currency
+            )
+        )
+
         return TaxScenarioResponse(
-            scenario_id=str(result.inserted_id),
+            scenario_id=scenario_id,
             name=request.name,
             description=request.description,
             year=request.year,
@@ -262,6 +284,18 @@ async def delete_scenario(
             raise HTTPException(status_code=404, detail="Scenario not found")
 
         await collection.delete_one({"_id": ObjectId(scenario_id)})
+
+        # Track tax scenario deletion
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_TAX_SCENARIO_DELETED,
+            properties=build_tax_properties(
+                scenario_id=scenario_id,
+                scenario_name=existing.get("name", "Unknown"),
+                year=existing.get("year")
+            )
+        )
 
         return {"message": "Scenario deleted successfully", "scenario_id": scenario_id}
     except HTTPException:

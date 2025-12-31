@@ -120,6 +120,15 @@ async def startup_event():
             except Exception as e:
                 logger.warning(f"Failed to seed default notification templates: {e}")
 
+            # Initialize analytics service
+            try:
+                from core.analytics import get_analytics_service
+                analytics_service = get_analytics_service()
+                await analytics_service.start()
+                logger.info("Analytics service started successfully")
+            except Exception as e:
+                logger.warning(f"Failed to start analytics service: {e}")
+
             # Auto-populate symbols if data is older than 1 month OR collection is empty
             try:
                 logger.info("Checking symbols data age...")
@@ -172,7 +181,7 @@ async def shutdown_event():
     """Clean up resources on application shutdown"""
     try:
         logger.info("Shutting down Portfolio API...")
-        
+
         # Stop the scheduler
         try:
             from services.closing_price.scheduler import stop_scheduler
@@ -180,7 +189,16 @@ async def shutdown_event():
             logger.info("Scheduler stopped successfully")
         except Exception as scheduler_err:
             logger.warning(f"Error stopping scheduler: {scheduler_err}")
-        
+
+        # Stop analytics service
+        try:
+            from core.analytics import get_analytics_service
+            analytics_service = get_analytics_service()
+            await analytics_service.stop()
+            logger.info("Analytics service stopped successfully")
+        except Exception as e:
+            logger.warning(f"Error stopping analytics service: {e}")
+
         # Clean up the closing price service
         await closing_price_service.cleanup()
         

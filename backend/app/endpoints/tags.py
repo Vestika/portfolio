@@ -5,6 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core.auth import get_current_user
 from core.database import db_manager
 from core.tag_service import TagService
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_TAG_CREATED,
+    EVENT_TAG_DELETED,
+    EVENT_TAG_ADOPTED,
+    EVENT_HOLDING_TAGGED,
+    EVENT_HOLDING_UNTAGGED,
+    build_tag_properties
+)
 from models import User, TagDefinition, TagValue, DEFAULT_TAG_TEMPLATES
 
 # Create router for this module
@@ -36,6 +45,19 @@ async def create_tag_definition(
     """Create or update a tag definition"""
     user_id = current_user.firebase_uid
     result = await tag_service.add_tag_definition(user_id, tag_definition)
+
+    # Track tag creation
+    analytics = get_analytics_service()
+    analytics.track_event(
+        user=current_user,
+        event_name=EVENT_TAG_CREATED,
+        properties=build_tag_properties(
+            tag_name=tag_definition.name,
+            tag_type=tag_definition.tag_type.value if tag_definition.tag_type else None,
+            is_template=False
+        )
+    )
+
     return result.dict()
 
 @router.delete("/tags/definitions/{tag_name}")
@@ -62,7 +84,15 @@ async def delete_tag_definition(
     except Exception as e:
         print(f"⚠️ [TAG DELETE] Failed to delete custom charts for tag '{tag_name}': {e}")
         # Don't fail the tag deletion if chart cleanup fails
-    
+
+    # Track tag deletion
+    analytics = get_analytics_service()
+    analytics.track_event(
+        user=current_user,
+        event_name=EVENT_TAG_DELETED,
+        properties=build_tag_properties(tag_name=tag_name)
+    )
+
     return {"message": f"Tag definition '{tag_name}' deleted successfully"}
 
 @router.post("/tags/adopt-template/{template_name}")
@@ -76,6 +106,18 @@ async def adopt_template_tag(
     user_id = current_user.firebase_uid
     try:
         result = await tag_service.adopt_template_tag(user_id, template_name, custom_name)
+
+        # Track template adoption
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=current_user,
+            event_name=EVENT_TAG_ADOPTED,
+            properties=build_tag_properties(
+                tag_name=custom_name or template_name,
+                is_template=True
+            )
+        )
+
         return result.dict()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -106,6 +148,18 @@ async def set_holding_tag(
     user_id = current_user.firebase_uid
     try:
         result = await tag_service.set_holding_tag(user_id, symbol, tag_name, tag_value, portfolio_id)
+
+        # Track holding tagged
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=current_user,
+            event_name=EVENT_HOLDING_TAGGED,
+            properties=build_tag_properties(
+                tag_name=tag_name,
+                symbol=symbol
+            )
+        )
+
         return result.dict()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -123,6 +177,18 @@ async def remove_holding_tag(
     success = await tag_service.remove_holding_tag(user_id, symbol, tag_name, portfolio_id)
     if not success:
         raise HTTPException(status_code=404, detail="Tag not found for this holding")
+
+    # Track holding untagged
+    analytics = get_analytics_service()
+    analytics.track_event(
+        user=current_user,
+        event_name=EVENT_HOLDING_UNTAGGED,
+        properties=build_tag_properties(
+            tag_name=tag_name,
+            symbol=symbol
+        )
+    )
+
     return {"message": f"Tag '{tag_name}' removed from {symbol}"}
 
 @router.get("/holdings/tags")

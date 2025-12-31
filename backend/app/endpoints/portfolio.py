@@ -13,6 +13,16 @@ import pandas as pd
 
 from core.auth import get_current_user
 from core.database import db_manager
+from core.analytics import get_analytics_service
+from core.analytics_events import (
+    EVENT_PORTFOLIO_CREATED,
+    EVENT_PORTFOLIO_DELETED,
+    EVENT_ACCOUNT_CREATED,
+    EVENT_ACCOUNT_UPDATED,
+    EVENT_ACCOUNT_DELETED,
+    build_portfolio_properties,
+    build_account_properties
+)
 from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
@@ -2408,12 +2418,26 @@ async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_cur
         # Insert portfolio and get the ObjectId
         result = await collection.insert_one(portfolio_data)
         portfolio_id = str(result.inserted_id)
-        
+
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
 
+        # Track portfolio creation
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_PORTFOLIO_CREATED,
+            properties=build_portfolio_properties(
+                portfolio_id=portfolio_id,
+                portfolio_name=request.portfolio_name,
+                base_currency=request.base_currency,
+                accounts_count=0,
+                holdings_count=0
+            )
+        )
+
         return {
-            "message": f"Portfolio '{request.portfolio_name}' created successfully", 
+            "message": f"Portfolio '{request.portfolio_name}' created successfully",
             "portfolio_id": portfolio_id  # Return the actual ObjectId, not the name
         }
     except HTTPException:
@@ -2549,6 +2573,20 @@ async def add_account_to_portfolio(portfolio_id: str, request: CreateAccountRequ
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, portfolio_data)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+
+        # Track account creation
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_ACCOUNT_CREATED,
+            properties=build_account_properties(
+                portfolio_id=portfolio_id,
+                account_name=request.account_name,
+                account_type=request.account_type,
+                holdings_count=len(request.holdings)
+            )
+        )
+
         return {"message": f"Account '{request.account_name}' added to {portfolio_id} successfully"}
     except HTTPException:
         raise
@@ -2570,6 +2608,14 @@ async def delete_portfolio(portfolio_id: str, user=Depends(get_current_user)) ->
             raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
         # Clear from portfolios cache
         invalidate_portfolio_cache(portfolio_id)
+
+        # Track portfolio deletion
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_PORTFOLIO_DELETED,
+            properties=build_portfolio_properties(portfolio_id=portfolio_id)
+        )
 
         return {"message": f"Portfolio {portfolio_id} deleted successfully"}
     except HTTPException:
@@ -2597,6 +2643,17 @@ async def delete_account_from_portfolio(portfolio_id: str, account_name: str, us
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+
+        # Track account deletion
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_ACCOUNT_DELETED,
+            properties=build_account_properties(
+                portfolio_id=portfolio_id,
+                account_name=account_name
+            )
+        )
 
         return {"message": f"Account '{account_name}' deleted from {portfolio_id} successfully"}
     except HTTPException:
@@ -2733,6 +2790,20 @@ async def update_account_in_portfolio(portfolio_id: str, account_name: str, requ
         await collection.replace_one({"_id": ObjectId(portfolio_id)}, doc)
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
+
+        # Track account update
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name=EVENT_ACCOUNT_UPDATED,
+            properties=build_account_properties(
+                portfolio_id=portfolio_id,
+                account_name=request.account_name,
+                account_type=request.account_type,
+                holdings_count=len(request.holdings)
+            )
+        )
+
         return {"message": f"Account '{account_name}' updated successfully"}
     except HTTPException:
         raise

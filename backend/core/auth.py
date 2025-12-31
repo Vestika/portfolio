@@ -6,6 +6,8 @@ from pymongo.asynchronous.database import AsyncDatabase
 from models.user_model import User
 from services.telegram.service import get_telegram_service
 from core.database import get_db
+from core.analytics import get_analytics_service
+from core.analytics_events import EVENT_USER_REGISTERED
 
 async def get_current_user(
     request: Request,
@@ -37,6 +39,22 @@ async def get_current_user(
         )
         result = await db.users.insert_one(new_user.dict(exclude={'id'}))
         new_user.id = str(result.inserted_id)
+
+        # Track user registration (start of onboarding funnel)
+        try:
+            analytics = get_analytics_service()
+            analytics.track_event(
+                user=new_user,
+                event_name=EVENT_USER_REGISTERED,
+                properties={
+                    "registration_method": "firebase",
+                    "has_name": bool(firebase_user.get("name"))
+                }
+            )
+            # Also identify the user in Mixpanel
+            analytics.identify_user(new_user)
+        except Exception as e:
+            print(f"⚠️ [AUTH] Failed to track user registration: {e}")
 
         # Best-effort Telegram notification for new user creation
         try:
