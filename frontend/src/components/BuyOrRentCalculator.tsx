@@ -229,7 +229,7 @@ export function BuyOrRentCalculator() {
       backgroundColor: 'rgba(0, 0, 0, 0.85)',
       style: { color: '#ffffff' },
       formatter: function() {
-        const point = this.points?.[0]
+        const point = (this as any).points?.[0]
         if (!point) return ''
         return `<b>${point.series.name}</b>: ${formatNumber(point.y as number)} ₪`
       },

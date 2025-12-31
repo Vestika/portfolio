@@ -4,6 +4,13 @@ import PieChart from '../PieChart'
 import BarChart from '../BarChart'
 import StackedBarChart from './StackedBarChart'
 import SunburstChart from './SunburstChart'
+import SankeyChart from '../SankeyChart'
+import TreeMapChart from '../TreeMapChart'
+import BubbleChart from '../BubbleChart'
+import DependencyWheelChart from '../DependencyWheelChart'
+import TimelineChart from '../TimelineChart'
+import CalendarView from '../CalendarView'
+import GaugeChart from '../GaugeChart'
 import HoldingsTable from '../HoldingsTable'
 import RSUTimelineChart from './RSUTimelineChart'
 import OptionsVestingTimeline from './OptionsVestingTimeline'
@@ -200,6 +207,103 @@ export function PortfolioView({
                   baseCurrency={displayMetadata.base_currency}
                   hideValues={!isValueVisible}
                   getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render sankey chart for HIERARCHICAL tags
+            if (chartType === 'sankey' && chart.hierarchical_data) {
+              return (
+                <SankeyChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.hierarchical_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render treemap for categorical tags
+            if (chartType === 'treemap' && chart.treemap_data) {
+              return (
+                <TreeMapChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.treemap_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render bubble chart for scalar tags
+            if (chartType === 'bubble' && chart.bubble_data) {
+              return (
+                <BubbleChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.bubble_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render dependency wheel for relationship tags
+            if (chartType === 'dependency-wheel' && chart.dependency_wheel_data) {
+              return (
+                <DependencyWheelChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.dependency_wheel_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render timeline for time-based tags
+            if (chartType === 'timeline' && chart.timeline_data) {
+              return (
+                <TimelineChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.timeline_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render calendar for time-based tags
+            if (chartType === 'calendar' && chart.timeline_data) {
+              return (
+                <CalendarView
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.timeline_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
+                  getSymbolName={getSymbolName}
+                />
+              );
+            }
+            
+            // Render gauge for boolean tags
+            if (chartType === 'gauge') {
+              return (
+                <GaugeChart
+                  key={chart.chart_title}
+                  title={chartTitle}
+                  data={chart.chart_data}
+                  baseCurrency={displayMetadata.base_currency}
+                  hideValues={!isValueVisible}
                 />
               );
             }

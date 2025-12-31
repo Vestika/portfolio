@@ -128,7 +128,7 @@ export interface PortfolioSelectorProps {
 
 export interface ChartBreakdown {
   chart_title: string;
-  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
+  chart_type?: string; // 'pie', 'bar', 'treemap', 'stacked-bar', 'sunburst', 'sankey', 'bubble', 'dependency-wheel', 'timeline', 'calendar', 'gauge'
   chart_total: number;
   chart_data: ChartDataItem[];
   // For stacked-bar charts (MAP tags)
@@ -144,6 +144,40 @@ export interface ChartBreakdown {
     name: string;
     value: number;
     path: string[];
+  }>;
+  // For treemap charts (ENUM/BOOLEAN tags)
+  treemap_data?: Array<{
+    label: string;
+    holdings: Array<{
+      symbol: string;
+      name: string;
+      value: number;
+    }>;
+  }>;
+  // For bubble charts (SCALAR tags)
+  bubble_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    scalar_value: number;
+  }>;
+  // For dependency wheel charts (RELATIONSHIP tags)
+  dependency_wheel_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    related_symbols: string[];
+  }>;
+  // For timeline/calendar charts (TIME_BASED tags)
+  timeline_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    start_date?: string;
+    end_date?: string;
+    single_date?: string;
+    frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'annually';
+    frequency_start?: string;
   }>;
 }
 

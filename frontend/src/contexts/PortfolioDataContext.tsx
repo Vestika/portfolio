@@ -135,7 +135,7 @@ export interface QuoteData {
 
 export interface AggregationData {
   chart_title: string;
-  chart_type?: string; // 'pie', 'bar', 'stacked-bar', 'sunburst'
+  chart_type?: string; // 'pie', 'bar', 'treemap', 'stacked-bar', 'sunburst', 'sankey', 'bubble', 'dependency-wheel', 'timeline', 'calendar', 'gauge'
   chart_total: number;
   chart_data: Array<{
     label: string;
@@ -157,6 +157,40 @@ export interface AggregationData {
     name: string;
     value: number;
     path: string[];
+  }>;
+  // For treemap charts (ENUM/BOOLEAN tags)
+  treemap_data?: Array<{
+    label: string;
+    holdings: Array<{
+      symbol: string;
+      name: string;
+      value: number;
+    }>;
+  }>;
+  // For bubble charts (SCALAR tags)
+  bubble_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    scalar_value: number;
+  }>;
+  // For dependency wheel charts (RELATIONSHIP tags)
+  dependency_wheel_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    related_symbols: string[];
+  }>;
+  // For timeline/calendar charts (TIME_BASED tags)
+  timeline_data?: Array<{
+    symbol: string;
+    name: string;
+    value: number;
+    start_date?: string;
+    end_date?: string;
+    single_date?: string;
+    frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'annually';
+    frequency_start?: string;
   }>;
 }
 
@@ -717,6 +751,10 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       chart_data: Array<{ label: string; value: number; percentage: number }>;
       map_data?: Array<{ symbol: string; name: string; value: number; weights: Record<string, number> }>;
       hierarchical_data?: Array<{ symbol: string; name: string; value: number; path: string[] }>;
+      treemap_data?: Array<{ label: string; holdings: Array<{ symbol: string; name: string; value: number }> }>;
+      bubble_data?: Array<{ symbol: string; name: string; value: number; scalar_value: number }>;
+      dependency_wheel_data?: Array<{ symbol: string; name: string; value: number; related_symbols: string[] }>;
+      timeline_data?: Array<{ symbol: string; name: string; value: number; start_date?: string; end_date?: string; single_date?: string; frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'annually'; frequency_start?: string }>;
     }> = [
       {
         chart_title: "Account Size Overview",
@@ -811,8 +849,48 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
       const chartType = customChart.chart_type || 'pie';
 
-      // Handle MAP tags (stacked-bar charts)
-      if (chartType === 'stacked-bar' || tagDefinition.tag_type === 'map') {
+      // Handle MAP tags (stacked-bar or sunburst charts)
+      if (chartType === 'stacked-bar' || (chartType === 'sunburst' && tagDefinition.tag_type === 'map') || tagDefinition.tag_type === 'map') {
+        // For sunburst visualization of MAP tags
+        if (chartType === 'sunburst' && tagDefinition.tag_type === 'map') {
+          const hierarchicalData: Array<{ symbol: string; name: string; value: number; path: string[] }> = [];
+          let chartTotal = 0;
+          
+          allHoldings.forEach(holding => {
+            const tagValue = holding.tags?.[tagName] as any;
+            if (tagValue?.map_value && typeof tagValue.map_value === 'object') {
+              // Create hierarchical entries for each category in the map
+              // Each weight creates a path: [category, symbol]
+              Object.entries(tagValue.map_value).forEach(([category, weight]) => {
+                const weightDecimal = (weight as number) / 100; // Convert percentage to decimal
+                const weightedValue = holding.total_value * weightDecimal;
+                
+                if (weightedValue > 0) {
+                  hierarchicalData.push({
+                    symbol: holding.symbol,
+                    name: holding.name || holding.symbol,
+                    value: weightedValue,
+                    path: [category, holding.symbol] // 2-level hierarchy: category -> holding
+                  });
+                  chartTotal += weightedValue;
+                }
+              });
+            }
+          });
+          
+          if (hierarchicalData.length > 0) {
+            filteredAggregations.push({
+              chart_title: customChart.chart_title,
+              chart_type: 'sunburst',
+              chart_total: Math.round(chartTotal * 100) / 100,
+              chart_data: [], // Empty for sunburst, use hierarchical_data instead
+              hierarchical_data: hierarchicalData
+            });
+          }
+          return;
+        }
+        
+        // For stacked-bar visualization
         const mapData: Array<{ symbol: string; name: string; value: number; weights: Record<string, number> }> = [];
         let chartTotal = 0;
         
@@ -841,8 +919,8 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         return;
       }
 
-      // Handle HIERARCHICAL tags (sunburst charts)
-      if (chartType === 'sunburst' || tagDefinition.tag_type === 'hierarchical') {
+      // Handle HIERARCHICAL tags (sunburst and sankey charts)
+      if (chartType === 'sunburst' || chartType === 'sankey' || tagDefinition.tag_type === 'hierarchical') {
         const hierarchicalData: Array<{ symbol: string; name: string; value: number; path: string[] }> = [];
         let chartTotal = 0;
         
@@ -862,31 +940,308 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         if (hierarchicalData.length > 0) {
           filteredAggregations.push({
             chart_title: customChart.chart_title,
-            chart_type: 'sunburst',
+            chart_type: chartType === 'sankey' ? 'sankey' : 'sunburst',
             chart_total: Math.round(chartTotal * 100) / 100,
-            chart_data: [], // Empty for sunburst, use hierarchical_data instead
+            chart_data: [], // Empty for sunburst/sankey, use hierarchical_data instead
             hierarchical_data: hierarchicalData
           });
         }
         return;
       }
 
-      // Handle ENUM and BOOLEAN tags (pie/bar charts)
+      // Handle SCALAR tags (bubble charts)
+      if (chartType === 'bubble' || tagDefinition.tag_type === 'scalar') {
+        const bubbleData: Array<{ symbol: string; name: string; value: number; scalar_value: number }> = [];
+        let chartTotal = 0;
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          if (tagValue?.scalar_value !== undefined && tagValue.scalar_value !== null) {
+            bubbleData.push({
+              symbol: holding.symbol,
+              name: holding.name || holding.symbol,
+              value: holding.total_value,
+              scalar_value: tagValue.scalar_value
+            });
+            chartTotal += holding.total_value;
+          }
+        });
+        
+        if (bubbleData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: 'bubble',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for bubble, use bubble_data instead
+            bubble_data: bubbleData
+          });
+        }
+        return;
+      }
+
+      // Handle RELATIONSHIP tags (dependency wheel or sankey)
+      if (chartType === 'dependency-wheel' || (chartType === 'sankey' && tagDefinition.tag_type === 'relationship') || tagDefinition.tag_type === 'relationship') {
+        // For sankey with relationship tags, use hierarchical_data format
+        if (chartType === 'sankey') {
+          const sankeyData: Array<{ symbol: string; name: string; value: number; path: string[] }> = [];
+          let chartTotal = 0;
+          
+          allHoldings.forEach(holding => {
+            const tagValue = holding.tags?.[tagName] as any;
+            // Use relationship_value (correct field name from TagValue interface)
+            if (tagValue?.relationship_value && Array.isArray(tagValue.relationship_value)) {
+              // For each related symbol, create a path entry
+              tagValue.relationship_value.forEach((relatedSymbol: string) => {
+                sankeyData.push({
+                  symbol: holding.symbol,
+                  name: holding.name || holding.symbol,
+                  value: holding.total_value,
+                  path: [holding.symbol, relatedSymbol]
+                });
+              });
+              chartTotal += holding.total_value;
+            }
+          });
+          
+          if (sankeyData.length > 0) {
+            filteredAggregations.push({
+              chart_title: customChart.chart_title,
+              chart_type: 'sankey',
+              chart_total: Math.round(chartTotal * 100) / 100,
+              chart_data: [], // Empty for sankey, use hierarchical_data instead
+              hierarchical_data: sankeyData
+            });
+          }
+          return;
+        }
+        
+        // For dependency wheel
+        const wheelData: Array<{ symbol: string; name: string; value: number; related_symbols: string[] }> = [];
+        let chartTotal = 0;
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          // Use relationship_value (correct field name from TagValue interface)
+          if (tagValue?.relationship_value && Array.isArray(tagValue.relationship_value)) {
+            wheelData.push({
+              symbol: holding.symbol,
+              name: holding.name || holding.symbol,
+              value: holding.total_value,
+              related_symbols: tagValue.relationship_value
+            });
+            chartTotal += holding.total_value;
+          }
+        });
+        
+        if (wheelData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: 'dependency-wheel',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for dependency wheel, use dependency_wheel_data instead
+            dependency_wheel_data: wheelData
+          });
+        }
+        return;
+      }
+
+      // Handle BOOLEAN tags - always use gauge
+      if (tagDefinition.tag_type === 'boolean') {
+        const groups: Record<string, typeof allHoldings[0][]> = {};
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          let groupKey = 'No';
+          
+          if (tagValue && typeof tagValue === 'object' && 'boolean_value' in tagValue) {
+            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+          }
+          
+          if (!groups[groupKey]) {
+            groups[groupKey] = [];
+          }
+          groups[groupKey].push(holding);
+        });
+
+        const chartTotal = Object.values(groups).reduce((sum, holdings) => 
+          sum + holdings.reduce((groupSum, h) => groupSum + h.total_value, 0), 0
+        );
+        
+        const chartData = Object.entries(groups).map(([groupName, holdings]) => {
+          const groupValue = holdings.reduce((sum, h) => sum + h.total_value, 0);
+          const percentage = chartTotal > 0 ? (groupValue / chartTotal) * 100 : 0;
+          
+          return {
+            label: groupName,
+            value: Math.round(groupValue * 100) / 100,
+            percentage: Math.round(percentage * 100) / 100
+          };
+        }).sort((a, b) => b.value - a.value);
+
+        filteredAggregations.push({
+          chart_title: customChart.chart_title,
+          chart_type: 'gauge',
+          chart_total: Math.round(chartTotal * 100) / 100,
+          chart_data: chartData
+        });
+        return;
+      }
+
+      // Handle ENUM tags - TREEMAP charts
+      if (chartType === 'treemap' && tagDefinition.tag_type === 'enum') {
+        const groups: Record<string, typeof allHoldings[0][]> = {};
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          let groupKey = 'Uncategorized';
+          
+          if (tagValue && typeof tagValue === 'object') {
+            if ('enum_value' in tagValue && tagValue.enum_value) {
+              groupKey = tagValue.enum_value as string;
+            } else if ('boolean_value' in tagValue) {
+              groupKey = tagValue.boolean_value ? 'Yes' : 'No';
+            }
+          }
+          
+          if (!groups[groupKey]) {
+            groups[groupKey] = [];
+          }
+          groups[groupKey].push(holding);
+        });
+
+        let chartTotal = 0;
+        const treeMapData = Object.entries(groups).map(([groupName, holdings]) => {
+          const categoryHoldings = holdings.map(h => {
+            chartTotal += h.total_value;
+            return {
+              symbol: h.symbol,
+              name: h.name || h.symbol,
+              value: Math.round(h.total_value * 100) / 100
+            };
+          }).filter(h => h.value > 0);
+
+          return {
+            label: groupName,
+            holdings: categoryHoldings
+          };
+        }).filter(category => category.holdings.length > 0);
+
+        if (treeMapData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: 'treemap',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for treemap, use treemap_data instead
+            treemap_data: treeMapData
+          });
+        }
+        return;
+      }
+
+      // Handle TIME_BASED tags (timeline and calendar)
+      if (chartType === 'timeline' || chartType === 'calendar' || tagDefinition.tag_type === 'time_based') {
+        const timelineData: Array<{
+          symbol: string;
+          name: string;
+          value: number;
+          start_date?: string;
+          end_date?: string;
+          single_date?: string;
+          frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+          frequency_start?: string;
+        }> = [];
+        let chartTotal = 0;
+        
+        allHoldings.forEach(holding => {
+          const tagValue = holding.tags?.[tagName] as any;
+          if (tagValue?.time_value) {
+            // For frequency-based tags on timeline, generate individual occurrences
+            if (tagValue.time_value.frequency && chartType === 'timeline') {
+              const startDate = tagValue.time_value.frequency_start || tagValue.time_value.date || new Date().toISOString().split('T')[0];
+              const start = new Date(startDate);
+              const threeMonthsLater = new Date(start);
+              threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+              
+              const current = new Date(start);
+              let occurrenceIndex = 0;
+              
+              // Generate individual occurrences
+              while (current <= threeMonthsLater && occurrenceIndex < 50) { // Safety limit
+                timelineData.push({
+                  symbol: `${holding.symbol}_${occurrenceIndex}`, // Unique key for each occurrence
+                  name: `${holding.name || holding.symbol} (${tagValue.time_value.frequency})`,
+                  value: holding.total_value,
+                  single_date: current.toISOString().split('T')[0],
+                  frequency: tagValue.time_value.frequency,
+                  frequency_start: tagValue.time_value.frequency_start || tagValue.time_value.date
+                });
+                
+                // Increment based on frequency
+                switch (tagValue.time_value.frequency) {
+                  case 'daily':
+                    current.setDate(current.getDate() + 1);
+                    break;
+                  case 'weekly':
+                    current.setDate(current.getDate() + 7);
+                    break;
+                  case 'monthly':
+                    current.setMonth(current.getMonth() + 1);
+                    break;
+                  case 'quarterly':
+                    current.setMonth(current.getMonth() + 3);
+                    break;
+                  case 'yearly':
+                  case 'annually':
+                    current.setFullYear(current.getFullYear() + 1);
+                    break;
+                  default:
+                    current.setDate(current.getDate() + 1);
+                }
+                occurrenceIndex++;
+              }
+            } else {
+              // Regular single date or date range (or frequency for calendar view)
+              timelineData.push({
+                symbol: holding.symbol,
+                name: holding.name || holding.symbol,
+                value: holding.total_value,
+                start_date: tagValue.time_value.start_date,
+                end_date: tagValue.time_value.end_date,
+                single_date: tagValue.time_value.date, // Use 'date' not 'single_date'
+                frequency: tagValue.time_value.frequency,
+                frequency_start: tagValue.time_value.frequency_start || tagValue.time_value.date
+              });
+            }
+            chartTotal += holding.total_value;
+          }
+        });
+        
+        if (timelineData.length > 0) {
+          filteredAggregations.push({
+            chart_title: customChart.chart_title,
+            chart_type: chartType === 'calendar' ? 'calendar' : 'timeline',
+            chart_total: Math.round(chartTotal * 100) / 100,
+            chart_data: [], // Empty for timeline/calendar, use timeline_data instead
+            timeline_data: timelineData
+          });
+        }
+        return;
+      }
+
+      // Handle ENUM tags (pie/bar charts)
+      // BOOLEAN tags are handled separately with gauge charts above
+      if (tagDefinition.tag_type !== 'enum') {
+        return; // Skip if not an ENUM tag
+      }
+      
       const groups: Record<string, typeof allHoldings[0][]> = {};
       
       allHoldings.forEach(holding => {
         const tagValue = holding.tags?.[tagName] as any;
         let groupKey = 'Uncategorized';
         
-        if (tagValue && typeof tagValue === 'object') {
-          // Handle ENUM tags
-          if ('enum_value' in tagValue && tagValue.enum_value) {
-            groupKey = tagValue.enum_value as string;
-          } 
-          // Handle BOOLEAN tags
-          else if ('boolean_value' in tagValue) {
-            groupKey = tagValue.boolean_value ? 'Yes' : 'No';
-          }
+        if (tagValue && typeof tagValue === 'object' && 'enum_value' in tagValue && tagValue.enum_value) {
+          groupKey = tagValue.enum_value as string;
         }
         
         if (!groups[groupKey]) {

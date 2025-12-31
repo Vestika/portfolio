@@ -1,6 +1,10 @@
 // Cash Flow Tool Type Definitions
 
-import type { Node, Edge } from 'reactflow'
+// import type { Node, Edge } from 'reactflow'
+
+// Temporary types until reactflow is properly installed
+type Node<T = any> = { id: string; type?: string; data: T; position: { x: number; y: number } };
+type Edge = { id: string; source: string; target: string; type?: string };
 
 // Flow Types
 export type FlowFrequency = 'weekly' | 'bi-weekly' | 'monthly' | 'quarterly' | 'yearly'
@@ -69,7 +73,7 @@ export interface FlowEdgeData {
 
 // Extended React Flow types
 export type CashFlowNode = Node<FlowNodeData>
-export type CashFlowEdge = Edge<FlowEdgeData>
+export type CashFlowEdge = Edge & { data?: FlowEdgeData; style?: any; animated?: boolean; label?: string }
 
 // Account Information (simplified from PortfolioDataContext)
 export interface AccountInfo {
