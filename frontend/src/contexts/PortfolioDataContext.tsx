@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 import api from '../utils/api';
+import { ChartMarker } from '../components/PortfolioValueLineChart';
 
 // Helper function to compare arrays
 const arraysEqual = (a: string[], b: string[]) => {
@@ -206,6 +207,7 @@ interface PortfolioDataContextType {
   // Raw data (ALL portfolios)
   allPortfoliosData: AllPortfoliosData | null;
   autocompleteData: AutocompleteSymbol[];
+  chartMarkers: ChartMarker[];  // Cached chart markers (user join date, milestones, etc.)
   isLoading: boolean;
   isAutocompleteLoading: boolean;
   error: string | null;
@@ -301,6 +303,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   // State for ALL portfolios data
   const [allPortfoliosData, setAllPortfoliosData] = useState<AllPortfoliosData | null>(null);
   const [autocompleteData, setAutocompleteData] = useState<AutocompleteSymbol[]>([]);
+  const [chartMarkers, setChartMarkers] = useState<ChartMarker[]>([]);  // Cached chart markers
   const [isLoading, setIsLoading] = useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -345,9 +348,10 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       // Use frontend-side calculation flow when enabled
       if (FRONTEND_CALC) {
         console.log('🧪 [PORTFOLIO CONTEXT] FRONTEND_CALC enabled - using /portfolios/raw + /prices/batch');
-        // Kick off raw and autocomplete together, but handle raw ASAP
+        // Kick off raw, autocomplete, and chart markers together, but handle raw ASAP
         const rawReq = api.get(`/portfolios/raw`);
         const autocompleteReq = api.get(`/autocomplete`).catch(() => ({ data: { autocomplete_data: [], total_symbols: 0, computation_timestamp: new Date().toISOString() } }));
+        const chartMarkersReq = api.get(`/chart-markers`).catch(() => ({ data: { markers: [] } }));
 
         const rawResp = await rawReq;
         const raw = rawResp.data as any;
@@ -443,13 +447,15 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
         // Set base data first
         setAllPortfoliosData(portfolioData);
-        // Await autocomplete now and set when ready (doesn't block pricing)
+        // Await autocomplete and chart markers now (doesn't block pricing)
         try {
-          const autocompleteResponse = await autocompleteReq;
+          const [autocompleteResponse, chartMarkersResponse] = await Promise.all([autocompleteReq, chartMarkersReq]);
           const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
           setAutocompleteData(autocompleteDataResponse.autocomplete_data);
+          setChartMarkers(chartMarkersResponse.data?.markers || []);
         } catch {
           setAutocompleteData([]);
+          setChartMarkers([]);
         }
 
         // Auto-select portfolio and accounts
@@ -490,15 +496,17 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       } else {
         // Existing backend aggregation path (default)
         // Fetch endpoints in parallel for maximum performance
-        const [portfolioResponse, autocompleteResponse, customChartsResponse] = await Promise.all([
+        const [portfolioResponse, autocompleteResponse, customChartsResponse, chartMarkersResponse] = await Promise.all([
           api.get(`/portfolios/complete-data`),
           api.get(`/autocomplete`),
-          api.get(`/user/custom-charts`).catch(() => ({ data: [] })) // Gracefully handle if endpoint fails
+          api.get(`/user/custom-charts`).catch(() => ({ data: [] })), // Gracefully handle if endpoint fails
+          api.get(`/chart-markers`).catch(() => ({ data: { markers: [] } })) // Gracefully handle if endpoint fails
         ]);
 
         const portfolioData: AllPortfoliosData = portfolioResponse.data;
         const autocompleteDataResponse: AutocompleteDataResponse = autocompleteResponse.data;
         const customCharts = customChartsResponse.data || [];
+        const fetchedChartMarkers = chartMarkersResponse.data?.markers || [];
         
         // Add custom charts to portfolio data
         portfolioData.custom_charts = customCharts;
@@ -551,9 +559,10 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           });
         }
 
-        // Set both portfolio data and autocomplete data
+        // Set both portfolio data, autocomplete data, and chart markers
         setAllPortfoliosData(portfolioData);
         setAutocompleteData(autocompleteDataResponse.autocomplete_data);
+        setChartMarkers(fetchedChartMarkers);
         
         // Auto-select portfolio and accounts after data loads
         if (portfolioData.portfolios && Object.keys(portfolioData.portfolios).length > 0) {
@@ -1483,6 +1492,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     console.log('🧹 [PORTFOLIO CONTEXT] Clearing all portfolio data');
     setAllPortfoliosData(null);
     setAutocompleteData([]);
+    setChartMarkers([]);
     setSelectedPortfolioId(null);
     setSelectedAccountNames([]);
     setError(null);
@@ -1492,6 +1502,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   const value: PortfolioDataContextType = {
     allPortfoliosData,
     autocompleteData,
+    chartMarkers,
     isLoading,
     isAutocompleteLoading,
     error,
