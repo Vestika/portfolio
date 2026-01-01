@@ -274,9 +274,15 @@ class PriceManager:
             if not price_data:
                 return None
             
-            # Store in MongoDB
+            # Store in MongoDB (upsert: one document per symbol, not accumulating)
             stock_price = StockPrice(**price_data)
-            await db.database.stock_prices.insert_one(stock_price.dict(by_alias=True))
+            price_doc = stock_price.dict(by_alias=True)
+            price_doc.pop("_id", None)  # Remove _id for upsert
+            await db.database.stock_prices.replace_one(
+                {"symbol": symbol},
+                price_doc,
+                upsert=True
+            )
             
             # Cache in Redis
             await self._cache_price(stock_price)

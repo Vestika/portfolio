@@ -787,141 +787,6 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     return global_current_prices, global_historical_prices
 
 
-async def collect_global_prices(all_symbols: set, portfolio_docs: list) -> tuple:
-    """
-    Collect global current and historical prices for all symbols.
-    Returns: (global_current_prices, global_historical_prices)
-    """
-    start_time = time.time()
-    global_current_prices = {}
-    global_historical_prices = {}
-    
-    print(f"📈 [COLLECT PRICES] Collecting global prices for {len(all_symbols)} unique symbols")
-    
-    # Date range for 7-day historical data
-    today = date.today()
-    seven_days_ago = today - timedelta(days=7)
-    
-    # Get the first available portfolio to use its calculator and securities
-    first_portfolio = None
-    first_calculator = None
-    for doc in portfolio_docs:
-        try:
-            portfolio = Portfolio.from_dict(doc)
-            calculator = get_or_create_calculator(str(doc["_id"]), portfolio)
-            first_portfolio = portfolio
-            first_calculator = calculator
-            break
-        except:
-            continue
-    
-    if first_portfolio and first_calculator:
-        # Step 1: Calculate current prices quickly (fast operation)
-        current_prices_start = time.time()
-        historical_tasks = []
-        symbol_securities = {}
-        
-        for symbol in all_symbols:
-            # Find the security from any portfolio that has it
-            security = None
-            for doc in portfolio_docs:
-                try:
-                    portfolio = Portfolio.from_dict(doc)
-                    if symbol in portfolio.securities:
-                        security = portfolio.securities[symbol]
-                        break
-                except:
-                    continue
-            
-            if security:
-                # Calculate current price (fast)
-                price_info = first_calculator.calc_holding_value(security, 1)
-                
-                global_current_prices[symbol] = {
-                    "price": price_info["value"],  # Price in base currency (converted)
-                    "original_price": price_info["unit_price"],  # Price in original currency
-                    "currency": security.currency.value,
-                    "last_updated": datetime.utcnow().isoformat(),
-                    "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
-                }
-                
-                # Skip historical price fetching for custom holdings (they don't have market history)
-                if security.is_custom if hasattr(security, 'is_custom') else False:
-                    print(f"✨ [CUSTOM HOLDING] Skipping historical price fetch for custom holding: {symbol}")
-                    # Add empty historical prices for custom holdings
-                    global_historical_prices[symbol] = []
-                else:
-                    # Prepare historical price task (don't await yet!)
-                    # Pass the portfolio's base currency for forex lookups
-                    portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
-                    historical_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
-                    symbol_securities[symbol] = security
-        
-        current_prices_time = time.time() - current_prices_start
-        print(f"⚡ [COLLECT PRICES] Current prices calculated in {current_prices_time:.3f}s for {len(global_current_prices)} symbols")
-        
-        # Step 2: Fetch historical prices with batched yfinance + parallel execution
-        historical_start = time.time()
-        print(f"🚀 [COLLECT PRICES] Starting BATCHED historical price fetching for {len(symbol_securities)} symbols")
-        
-        # Separate symbols by data source for batch optimization
-        yfinance_symbols = []
-        tase_symbols = []
-        currency_symbols = []
-        symbol_lookup = {}
-        
-        for symbol, security in symbol_securities.items():
-            symbol_lookup[symbol] = security
-            
-            # Import SecurityType for proper type checking
-            from models.security_type import SecurityType
-            
-            if symbol == 'USD':
-                currency_symbols.append(symbol)
-            elif symbol.startswith('FX:'):
-                # FX: symbols are forex currencies - handle separately for proper yfinance lookup
-                currency_symbols.append(symbol)
-            elif hasattr(security, 'security_type') and security.security_type == SecurityType.CASH:
-                currency_symbols.append(symbol)
-            elif symbol.isdigit():
-                tase_symbols.append(symbol)
-            else:
-                yfinance_symbols.append(symbol)
-        
-        print(f"📊 [COLLECT PRICES] Symbol distribution: {len(yfinance_symbols)} yfinance, {len(tase_symbols)} TASE, {len(currency_symbols)} currency")
-        
-        # Batch fetch yfinance symbols (MASSIVE TIME SAVER!)
-        if yfinance_symbols:
-            yf_start = time.time()
-            global_historical_prices.update(await fetch_yfinance_batch(yfinance_symbols, seven_days_ago, today, global_current_prices))
-            yf_time = time.time() - yf_start
-            print(f"🚀 [COLLECT PRICES] BATCHED yfinance completed in {yf_time:.3f}s for {len(yfinance_symbols)} symbols")
-        
-        # Process TASE and currency symbols in parallel (still individual calls needed)
-        remaining_tasks = []
-        remaining_symbols = []
-        
-        portfolio_base_currency = first_portfolio.base_currency.value if first_portfolio else 'ILS'
-        for symbol in tase_symbols + currency_symbols:
-            security = symbol_lookup[symbol]
-            price_info = first_calculator.calc_holding_value(security, 1)
-            remaining_tasks.append(fetch_historical_prices(symbol, security, price_info["unit_price"], seven_days_ago, today, portfolio_base_currency))
-            remaining_symbols.append(symbol)
-        
-        if remaining_tasks:
-            remaining_start = time.time()
-            remaining_results = await asyncio.gather(*remaining_tasks)
-            for symbol, historical_data in zip(remaining_symbols, remaining_results):
-                global_historical_prices[symbol] = historical_data
-            remaining_time = time.time() - remaining_start
-            print(f"⚡ [COLLECT PRICES] TASE/Currency parallel fetching completed in {remaining_time:.3f}s for {len(remaining_tasks)} symbols")
-        
-        historical_time = time.time() - historical_start
-        print(f"🚀 [COLLECT PRICES] ALL historical fetching completed in {historical_time:.3f}s")
-    
-    duration = time.time() - start_time
-    print(f"⏱️ [COLLECT PRICES] Completed in {duration:.3f}s - Generated price data for {len(global_current_prices)} symbols with {len(global_historical_prices)} historical series")
-    return global_current_prices, global_historical_prices
 
 
 async def collect_global_logos(all_symbols: set) -> dict:
@@ -1438,258 +1303,6 @@ async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, 
     return historical_data
 
 
-async def fetch_historical_prices(symbol: str, security, original_price: float, seven_days_ago: date, today: date, base_currency: str = 'ILS') -> list:
-    """
-    Fetch real 7-day historical prices for any symbol using the original logic.
-    Handles currencies, TASE symbols, and regular stocks with proper fallbacks.
-    
-    Args:
-        base_currency: The portfolio's base currency (e.g., 'USD', 'ILS') for forex rate lookups
-    """
-    historical_prices = []
-    
-    try:
-        from models.security_type import SecurityType
-        
-        if symbol == 'USD':
-            # Handle USD currency holdings - fetch actual USD/ILS exchange rate history
-            # This shows how USD strength changes relative to ILS over time
-            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d USD/ILS exchange rate trend for {symbol}")
-            
-            # Use thread-safe yfinance wrapper
-            data = await _safe_yfinance_download(
-                "ILS=X", 
-                start=seven_days_ago, 
-                end=today + timedelta(days=1),
-                timeout=5.0
-            )
-            
-            if not data.empty:
-                prices = data["Close"].dropna().round(4)  # More precision for exchange rates
-                # Handle yfinance DataFrame properly for FX data
-                for dt in prices.index:
-                    price = prices.loc[dt]
-                    price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
-                    historical_prices.append({
-                        "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                        "price": price_value
-                    })
-                logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} USD/ILS exchange rate points for {symbol}")
-            else:
-                logger.warning(f"⚠️ [FETCH HISTORICAL] No USD/ILS FX data available - using fallback")
-                # Fallback to static rate if no historical data
-                for i in range(7, 0, -1):
-                    day = today - timedelta(days=i)
-                    historical_prices.append({
-                        "date": day.strftime("%Y-%m-%d"),
-                        "price": original_price  # Use the current exchange rate as fallback
-                    })
-            
-        elif symbol.startswith('FX:'):
-            # Handle new FX: currency symbols with dynamic yfinance symbol lookup
-            currency_code = symbol[3:]  # Remove FX: prefix
-            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for currency symbol: {symbol} ({currency_code})")
-            
-            # Special case: if currency matches base currency, return 1.0 (no conversion)
-            if currency_code == base_currency:
-                logger.info(f"📊 [FETCH HISTORICAL] Currency {currency_code} matches base currency, returning 1.0 for all dates")
-                for i in range(7, 0, -1):
-                    day = today - timedelta(days=i)
-                    historical_prices.append({
-                        "date": day.strftime("%Y-%m-%d"),
-                        "price": 1.0
-                    })
-            else:
-                # Determine the correct yfinance symbol based on portfolio's base currency
-                try:
-                    # For USD-based portfolios: directly fetch XXXUSD=X (e.g., GBPUSD=X)
-                    if base_currency == 'USD':
-                        yfinance_symbol = f"{currency_code}USD=X"
-                        logger.info(f"📊 [FETCH HISTORICAL] USD-based portfolio: using {yfinance_symbol}")
-                    
-                    # For ILS-based portfolios: convert through USD (yfinance doesn't have XXXILS pairs)
-                    elif base_currency == 'ILS':
-                        # Special case for USD → ILS: direct pair exists
-                        if currency_code == 'USD':
-                            yfinance_symbol = "ILS=X"
-                            logger.info(f"📊 [FETCH HISTORICAL] ILS-based portfolio: fetching direct pair {yfinance_symbol}")
-                        else:
-                            # For other currencies: fetch XXX→USD, then multiply by USD→ILS
-                            logger.info(f"📊 [FETCH HISTORICAL] ILS-based portfolio: converting {currency_code} through USD")
-                            yfinance_symbol = f"{currency_code}USD=X"  # Will need USD→ILS separately
-                    
-                    # For other base currencies: try direct pair
-                    else:
-                        yfinance_symbol = f"{currency_code}{base_currency}=X"
-                        logger.info(f"📊 [FETCH HISTORICAL] {base_currency}-based portfolio: using {yfinance_symbol}")
-                    
-                    # Use thread-safe yfinance wrapper
-                    data = await _safe_yfinance_download(
-                        yfinance_symbol, 
-                        start=seven_days_ago, 
-                        end=today + timedelta(days=1),
-                        timeout=5.0
-                    )
-                        
-                    if not data.empty:
-                        prices = data["Close"].dropna().round(6)  # High precision for exchange rates
-                        logger.info(f"📈 [FETCH HISTORICAL] Raw yfinance data shape: {data.shape}, Close prices: {len(prices)}")
-                        
-                        # For ILS-based portfolios with non-USD currencies, multiply by USD→ILS rate
-                        if base_currency == 'ILS' and currency_code != 'USD':
-                            logger.info(f"🔄 [FETCH HISTORICAL] Fetching ILS=X to convert {currency_code}USD to {currency_code}ILS")
-                            
-                            try:
-                                # Use thread-safe yfinance wrapper
-                                usdils_data = await _safe_yfinance_download(
-                                    "ILS=X", 
-                                    start=seven_days_ago, 
-                                    end=today + timedelta(days=1),
-                                    timeout=5.0
-                                )
-                                
-                                if not usdils_data.empty:
-                                    usdils_prices = usdils_data["Close"].dropna().round(6)
-                                    logger.info(f"✅ [FETCH HISTORICAL] Got USDILS rates: {len(usdils_prices)} points")
-                                    
-                                    # Multiply XXX→USD by USD→ILS to get XXX→ILS
-                                    for dt in prices.index:
-                                        if dt in usdils_prices.index:
-                                            xxxusd_price = prices.loc[dt]
-                                            usdils_price = usdils_prices.loc[dt]
-                                            xxxusd_rate = float(xxxusd_price.iloc[0]) if hasattr(xxxusd_price, 'iloc') else float(xxxusd_price)
-                                            usdils_rate = float(usdils_price.iloc[0]) if hasattr(usdils_price, 'iloc') else float(usdils_price)
-                                            xxxils_rate = xxxusd_rate * usdils_rate
-                                            historical_prices.append({
-                                                "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                                                "price": round(xxxils_rate, 4)
-                                            })
-                                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} {currency_code}→ILS price points (via USD)")
-                                else:
-                                    logger.error(f"❌ [FETCH HISTORICAL] Could not fetch ILS=X for conversion")
-                            except Exception as usdils_error:
-                                logger.error(f"❌ [FETCH HISTORICAL] Error fetching ILS=X: {usdils_error}")
-                        else:
-                            # Direct rate (USD-based portfolio or USD→ILS direct)
-                            for dt in prices.index:
-                                price = prices.loc[dt]
-                                price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
-                                historical_prices.append({
-                                    "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                                    "price": price_value
-                                })
-                            logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} FX price points for {yfinance_symbol}")
-                    else:
-                        logger.error(f"❌ [FETCH HISTORICAL] No yfinance FX data for ticker: {yfinance_symbol}")
-                        logger.error(f"   This usually means yfinance doesn't have this currency pair available")
-                        
-                except Exception as e:
-                    logger.error(f"❌ [FETCH HISTORICAL] Error fetching FX data for {symbol}: {e}")
-                
-        elif security.security_type == SecurityType.CASH:
-            # Handle other currency holdings using exchange rates
-            from_currency = symbol
-            to_currency = "USD"  # Convert to USD for base currency
-            
-            if from_currency == to_currency:
-                # Same currency, no conversion needed
-                for i in range(7, 0, -1):
-                    day = today - timedelta(days=i)
-                    historical_prices.append({
-                        "date": day.strftime("%Y-%m-%d"),
-                        "price": 1.0
-                    })
-            else:
-                # Fetch FX data using yfinance - thread-safe wrapper
-                ticker = f"{from_currency}{to_currency}=X"
-                logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d FX trend for {from_currency} to {to_currency} using yfinance ticker {ticker}")
-                
-                # Use thread-safe yfinance wrapper
-                data = await _safe_yfinance_download(
-                    ticker, 
-                    start=seven_days_ago, 
-                    end=today + timedelta(days=1),
-                    timeout=5.0
-                )
-                
-                if not data.empty:
-                    prices = data["Close"].dropna().round(6)
-                    # Handle yfinance DataFrame properly
-                    for dt in prices.index:
-                        price = prices.loc[dt]
-                        price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
-                        historical_prices.append({
-                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                            "price": price_value
-                        })
-                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} FX price points for {ticker}")
-                else:
-                    logger.warning(f"⚠️ [FETCH HISTORICAL] No yfinance FX data for ticker: {ticker}")
-                    
-        elif symbol.isdigit():
-            # Handle TASE symbols (numeric) using pymaya
-            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for TASE symbol (numeric): {symbol} using pymaya")
-            try:
-                tase_id = getattr(security, 'tase_id', None) or symbol
-                price_history = list(maya.get_price_history(security_id=str(tase_id), from_date=seven_days_ago))
-                
-                for entry in reversed(price_history):
-                    if entry.get('TradeDate') and entry.get('SellPrice'):
-                        historical_prices.append({
-                            "date": entry.get('TradeDate'),
-                            "price": float(entry.get('SellPrice')) / 100
-                        })
-                        
-                if historical_prices:
-                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} TASE price points for {symbol}")
-                else:
-                    logger.warning(f"⚠️ [FETCH HISTORICAL] No pymaya data for TASE symbol: {symbol}")
-            except Exception as e:
-                logger.warning(f"⚠️ [FETCH HISTORICAL] Error fetching TASE data for {symbol}: {e}")
-                
-        else:
-            # Handle regular stock symbols using yfinance
-            logger.info(f"📈 [FETCH HISTORICAL] Fetching 7d trend for stock symbol: {symbol} using yfinance")
-            try:
-                # Use thread-safe yfinance wrapper
-                data = await _safe_yfinance_download(
-                    symbol, 
-                    start=seven_days_ago, 
-                    end=today + timedelta(days=1),
-                    timeout=10.0
-                )
-                
-                if not data.empty:
-                    prices = data["Close"].dropna().round(2)
-                    # Handle yfinance DataFrame properly for stock data
-                    for dt in prices.index:
-                        price = prices.loc[dt]
-                        price_value = float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
-                        historical_prices.append({
-                            "date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt),
-                            "price": price_value
-                        })
-                    logger.info(f"✅ [FETCH HISTORICAL] Retrieved {len(historical_prices)} stock price points for {symbol}")
-                else:
-                    logger.warning(f"⚠️ [FETCH HISTORICAL] No yfinance data for symbol: {symbol}")
-            except Exception as e:
-                logger.warning(f"⚠️ [FETCH HISTORICAL] Error fetching stock data for {symbol}: {e}")
-                
-    except Exception as e:
-        logger.warning(f"❌ [FETCH HISTORICAL] Failed to fetch real historical prices for {symbol}: {e}")
-    
-    # Add fallback mock data only if no historical prices were fetched
-    if not historical_prices:
-        logger.info(f"📊 [FETCH HISTORICAL] Using fallback mock data for {symbol}")
-        for i in range(7, 0, -1):
-            day = today - timedelta(days=i)
-            historical_prices.append({
-                "date": day.strftime("%Y-%m-%d"),
-                "price": original_price
-            })
-    
-    logger.info(f"✅ [FETCH HISTORICAL] Returning {len(historical_prices)} historical price points for {symbol}")
-    return historical_prices
 
 
 # ============== Generic prices by dates ==============
@@ -2140,53 +1753,63 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
         if req.include_historical:
             try:
                 from datetime import date, timedelta
+                days = max(1, int(req.days or 7))
                 today = date.today()
-                start = today - timedelta(days=max(1, int(req.days or 7)))
+                start = today - timedelta(days=days)
 
-                # Fetch historical for US-like symbols via yfinance in batches where possible
-                y_symbols = [s for s in stock_symbols if s.isalpha()]
-                tase_symbols = [s for s in stock_symbols if s.isdigit()]
-
-                # yfinance batch fetch for alpha symbols
-                if y_symbols:
-                    try:
-                        # Reuse existing helper to benefit from batching logic
-                        yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
-                        for sym, series in yf_hist.items():
+                # Step 1: Try MongoDB cache first (FAST!)
+                try:
+                    from services.closing_price.price_manager import PriceManager
+                    manager = PriceManager()
+                    cached_data = await manager.get_historical_prices(stock_symbols, days=days)
+                    
+                    for sym, series in cached_data.items():
+                        if series:  # Only use if we got data
                             historical[sym] = series
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
+                
+                # Step 2: Fallback to yfinance for cache misses
+                missing_symbols = [s for s in stock_symbols if s not in historical]
+                if missing_symbols:
+                    y_symbols = [s for s in missing_symbols if s.isalpha()]
+                    tase_symbols = [s for s in missing_symbols if s.isdigit()]
 
-                # TASE historical via pymaya
-                if tase_symbols:
-                    for sym in tase_symbols:
+                    if y_symbols:
                         try:
-                            price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
-                            series: list[dict[str, Any]] = []
-                            for entry in reversed(price_history):
-                                if entry.get('TradeDate') and entry.get('SellPrice'):
-                                    series.append({
-                                        "date": entry.get('TradeDate'),
-                                        "price": float(entry.get('SellPrice')) / 100
-                                    })
-                            if series:
+                            yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
+                            for sym, series in yf_hist.items():
                                 historical[sym] = series
                         except Exception:
-                            continue
+                            pass
 
-                # FX historical using yfinance pair ticker CURBASE=X
+                    if tase_symbols:
+                        for sym in tase_symbols:
+                            try:
+                                price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
+                                series: list[dict[str, Any]] = []
+                                for entry in reversed(price_history):
+                                    if entry.get('TradeDate') and entry.get('SellPrice'):
+                                        series.append({
+                                            "date": entry.get('TradeDate'),
+                                            "price": float(entry.get('SellPrice')) / 100
+                                        })
+                                if series:
+                                    historical[sym] = series
+                            except Exception:
+                                continue
+
+                # Step 3: FX historical using yfinance pair ticker CURBASE=X
                 for cur in currency_symbols:
                     try:
                         if cur == base_currency:
-                            # Flat 1.0 series
                             series = []
-                            for i in range(int(req.days or 7), 0, -1):
+                            for i in range(days, 0, -1):
                                 day = today - timedelta(days=i)
                                 series.append({"date": day.strftime("%Y-%m-%d"), "price": 1.0})
                             historical[cur] = series
                         else:
                             pair = f"{cur}{base_currency}=X"
-                            # Use thread-safe yfinance wrapper
                             data = await _safe_yfinance_download(
                                 pair, 
                                 start=start, 
@@ -2242,18 +1865,18 @@ class HistoricalPricesRequest(BaseModel):
 @router.post("/prices/historical")
 async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
-    Return 7-day historical series and 1-day change percent for symbols.
-    Splits by type: stocks via yfinance/pymaya, currencies via yfinance pairs.
+    Return historical series and 1-day change percent for symbols.
+    
+    Uses MongoDB cache first (FAST), with fallback to yfinance/pymaya for cache misses.
+    This avoids expensive yfinance calls on every request.
     """
     try:
         symbols = [s.upper() for s in (req.symbols or []) if isinstance(s, str) and s]
-        from datetime import date, timedelta
-        today = date.today()
-        start = today - timedelta(days=max(1, int(req.days or 7)))
+        days = max(1, int(req.days or 7))
         
-        logger.info(f"[HISTORICAL ENDPOINT] Requesting {req.days or 7} days for {len(symbols)} symbols: {start} to {today}")
+        logger.info(f"[HISTORICAL ENDPOINT] Requesting {days} days for {len(symbols)} symbols")
 
-        # Define supported ISO currency codes. Extend as needed.
+        # Define supported ISO currency codes
         supported_currencies = {
             'USD','ILS','EUR','GBP','JPY','AUD','CAD','CHF','CNY','HKD','SEK','NOK','DKK','ZAR','NZD','INR','BRL','MXN','SGD'
         }
@@ -2264,50 +1887,69 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
 
         historical: dict[str, list[dict[str, Any]]] = {}
         change_percent: dict[str, float] = {}
-
-        # Stocks via yfinance batch (alpha) and pymaya (numeric/TASE)
-        y_symbols = [s for s in stock_symbols if s.isalpha()]
-        tase_symbols = [s for s in stock_symbols if s.isdigit()]
-
-        if y_symbols:
-            try:
-                yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
-                for sym, series in yf_hist.items():
+        
+        # Step 1: Try MongoDB cache first (FAST!)
+        try:
+            from services.closing_price.price_manager import PriceManager
+            manager = PriceManager()
+            cached_data = await manager.get_historical_prices(stock_symbols, days=days)
+            
+            for sym, series in cached_data.items():
+                if series:  # Only use if we got data
                     historical[sym] = series
-                    logger.info(f"[HISTORICAL] {sym}: returned {len(series)} data points from {series[0]['date'] if series else 'N/A'} to {series[-1]['date'] if series else 'N/A'}")
-            except Exception as e:
-                logger.warning(f"[HISTORICAL] Error fetching yfinance batch: {e}")
-                pass
-
-        if tase_symbols:
-            for sym in tase_symbols:
+                    logger.info(f"[HISTORICAL] {sym}: {len(series)} points from cache")
+            
+            logger.info(f"[HISTORICAL ENDPOINT] Cache hit for {len(historical)}/{len(stock_symbols)} symbols")
+        except Exception as e:
+            logger.warning(f"[HISTORICAL ENDPOINT] Cache lookup failed: {e}")
+        
+        # Step 2: Fallback to yfinance for cache misses
+        from datetime import date, timedelta
+        today = date.today()
+        start = today - timedelta(days=days)
+        
+        missing_symbols = [s for s in stock_symbols if s not in historical]
+        if missing_symbols:
+            y_symbols = [s for s in missing_symbols if s.isalpha()]
+            tase_symbols = [s for s in missing_symbols if s.isdigit()]
+            
+            logger.info(f"[HISTORICAL ENDPOINT] Cache miss for {len(missing_symbols)} symbols, fetching from source")
+            
+            if y_symbols:
                 try:
-                    price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
-                    series: list[dict[str, Any]] = []
-                    for entry in reversed(price_history):
-                        if entry.get('TradeDate') and entry.get('SellPrice'):
-                            series.append({
-                                "date": entry.get('TradeDate'),
-                                "price": float(entry.get('SellPrice')) / 100
-                            })
-                    if series:
+                    yf_hist = await fetch_yfinance_batch(y_symbols, start, today, {})
+                    for sym, series in yf_hist.items():
                         historical[sym] = series
-                except Exception:
-                    continue
+                except Exception as e:
+                    logger.warning(f"[HISTORICAL] Error fetching yfinance batch: {e}")
 
-        # FX series using yfinance pair CURBASE=X; treat base as flat 1.0
-        # Use "FX:" prefix to avoid collision with stock tickers (e.g., NYSE:USD)
+            if tase_symbols:
+                for sym in tase_symbols:
+                    try:
+                        price_history = list(maya.get_price_history(security_id=str(sym), from_date=start))
+                        series: list[dict[str, Any]] = []
+                        for entry in reversed(price_history):
+                            if entry.get('TradeDate') and entry.get('SellPrice'):
+                                series.append({
+                                    "date": entry.get('TradeDate'),
+                                    "price": float(entry.get('SellPrice')) / 100
+                                })
+                        if series:
+                            historical[sym] = series
+                    except Exception:
+                        continue
+
+        # Step 3: Handle currency symbols (FX rates)
         for cur in currency_symbols:
             try:
                 if cur == base_currency:
                     seq = []
-                    for i in range(int(req.days or 7), 0, -1):
+                    for i in range(days, 0, -1):
                         day = today - timedelta(days=i)
                         seq.append({"date": day.strftime("%Y-%m-%d"), "price": 1.0})
-                    historical[f"FX:{cur}"] = seq  # Prefix with FX:
+                    historical[f"FX:{cur}"] = seq
                 else:
                     pair = f"{cur}{base_currency}=X"
-                    # Use thread-safe yfinance wrapper
                     data = await _safe_yfinance_download(
                         pair, 
                         start=start, 
@@ -2324,7 +1966,7 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
                                 "price": float(price_val)
                             })
                         if seq:
-                            historical[f"FX:{cur}"] = seq  # Prefix with FX:
+                            historical[f"FX:{cur}"] = seq
             except Exception:
                 continue
 
