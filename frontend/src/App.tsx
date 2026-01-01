@@ -15,7 +15,7 @@ import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
 import { TopBar, NavigationView } from './components/TopBar';
 import { PortfolioView } from './components/PortfolioView';
-import { NewsView } from './components/NewsView';
+import { NewsView } from './components/news';
 import { CashFlowView } from './components/CashFlowView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';

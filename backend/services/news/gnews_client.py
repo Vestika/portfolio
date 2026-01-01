@@ -28,13 +28,17 @@ class GNewsClient:
 
     def fetch_by_keywords(self, keywords: Iterable[str]) -> list[dict[str, Any]]:
         articles: list[dict[str, Any]] = []
-        for keyword in keywords:
+        for i, keyword in enumerate(keywords):
             if not keyword:
                 continue
             try:
-                articles.extend(self.client.get_news(keyword))
-            except Exception:
+                print(f"  📡 [GNEWS] Fetching news for keyword {i+1}: {keyword}")
+                result = self.client.get_news(keyword)
+                articles.extend(result)
+                print(f"  ✅ [GNEWS] Got {len(result)} articles for {keyword}")
+            except Exception as e:
                 # best-effort; continue on single-keyword failure
+                print(f"  ⚠️ [GNEWS] Failed to fetch for {keyword}: {e}")
                 continue
         return articles
 
