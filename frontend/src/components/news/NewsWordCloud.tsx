@@ -102,9 +102,8 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
     },
     tooltip: {
       enabled: true,
-      formatter: function () {
-        const point = this.point as any;
-        return `<b>${point.name}</b>: ${point.weight} occurrence${point.weight > 1 ? 's' : ''}`;
+      formatter: function (this: any) {
+        return `<b>${this.point.name}</b>: ${this.point.weight} occurrence${this.point.weight > 1 ? 's' : ''}`;
       },
       backgroundColor: 'rgba(17, 24, 39, 0.95)',
       borderColor: 'rgba(99, 102, 241, 0.3)',
