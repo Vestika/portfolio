@@ -11,6 +11,7 @@ import PortfolioAPI from '../utils/portfolio-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
 import { useMixpanel } from '../contexts/MixpanelContext';
 import PortfolioSelector from '../PortfolioSelector';
+import { SubtitleBar, MetricChip } from './common/SubtitleBar';
 import PieChart from '../PieChart';
 import BarChart from '../BarChart';
 import StackedBarChart from './StackedBarChart';
@@ -1136,25 +1137,29 @@ export function ManageTagsView() {
       </div>
 
       {/* Metrics Bar */}
-      <div className="sticky z-20 bg-gray-800 border-t border-b border-gray-700" style={{ top: '114px' }}>
-        <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-blue-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Tags:</span>
-            <span className="text-xs text-blue-400">{userDefinedTags.length}</span>
-          </div>
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-green-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Tagged:</span>
-            <span className="text-xs text-green-400">{allTaggedSymbols.size}</span>
-          </div>
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-gray-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Untagged:</span>
-            <span className="text-xs text-gray-400">{holdingsWithoutTags.length}</span>
-          </div>
-        </div>
-      </div>
+      <SubtitleBar topOffset="114px">
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-blue-400"
+          label="Tags:"
+          value={userDefinedTags.length}
+          valueColor="text-blue-400"
+        />
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-green-400"
+          label="Tagged:"
+          value={allTaggedSymbols.size}
+          valueColor="text-green-400"
+        />
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-gray-400"
+          label="Untagged:"
+          value={holdingsWithoutTags.length}
+          valueColor="text-gray-400"
+        />
+      </SubtitleBar>
 
       {/* Main Content */}
       <div className="container mx-auto py-4 px-2 sm:px-4">
