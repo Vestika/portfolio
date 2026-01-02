@@ -87,6 +87,14 @@ async def startup_event():
                 logger.info("Created TTL index for extraction_sessions")
             except Exception as index_err:
                 logger.warning(f"Failed to create extraction_sessions index: {index_err}")
+
+            # Create unique index on users.email (prevents race condition in user creation)
+            try:
+                db = await db_manager.get_database("vestika")
+                await db.users.create_index("email", unique=True)
+                logger.info("Created unique index on users.email")
+            except Exception as index_err:
+                logger.warning(f"Failed to create users.email index: {index_err}")
             
             # Start the background scheduler for historical price caching
             # Scheduler now runs initial sync at T+0 automatically!
