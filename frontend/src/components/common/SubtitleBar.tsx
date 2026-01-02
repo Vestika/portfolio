@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import { ReactNode } from 'react';
 
 interface SubtitleBarProps {
   /** Offset from top in pixels for sticky positioning (e.g., "77px", "114px") */
