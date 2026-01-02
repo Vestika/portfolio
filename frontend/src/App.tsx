@@ -31,6 +31,8 @@ import { UserProfileProvider } from './contexts/UserProfileContext';
 import { PopupManager } from './components/PopupManager';
 // Removed floating feedback widget in favor of top bar modal
 import { signOutUser } from './firebase';
+import { useMixpanel } from './contexts/MixpanelContext';
+import { trackPageView, trackSessionStart, trackSessionEnd } from './lib/mixpanel-events';
 import {
   PortfolioMetadata,
   PortfolioData,
@@ -100,6 +102,10 @@ const App: React.FC = () => {
     getOptionsVestingByAccount,
     allPortfoliosData
   } = usePortfolioData();
+
+  // Mixpanel tracking
+  const { track, sessionId } = useMixpanel();
+  const [sessionStartTime] = useState(() => Date.now());
 
   // Local state for UI
   const [isValueVisible, setIsValueVisible] = useState(true);
@@ -200,6 +206,25 @@ const App: React.FC = () => {
         }
     }, [authLoading, user, isInitialized, initializeApp]);
 
+  // Mixpanel: Track session start and end
+  useEffect(() => {
+    if (!user) return; // Only track for authenticated users
+
+    trackSessionStart(sessionId);
+
+    return () => {
+      const sessionDuration = Date.now() - sessionStartTime;
+      trackSessionEnd(sessionId, sessionDuration);
+    };
+  }, [user, sessionId, sessionStartTime]);
+
+  // Mixpanel: Track page views
+  useEffect(() => {
+    if (!user) return; // Only track for authenticated users
+
+    trackPageView(activeView, location.pathname);
+  }, [location.pathname, activeView, user]);
+
   // No more individual portfolio loading! All data is loaded upfront
 
 
@@ -273,6 +298,13 @@ const App: React.FC = () => {
       previousSelection: selectedAccountNames,
       timestamp: new Date().toISOString()
     });
+
+    // Mixpanel: Track account filtering
+    track('account_filtered', {
+      selected_accounts_count: accountNames.length,
+      total_accounts_count: currentPortfolioData?.accounts.length || 0,
+    });
+
     setSelectedAccountNames(accountNames);
     // No API call needed! Data is filtered locally in the context
   };
@@ -281,21 +313,54 @@ const App: React.FC = () => {
     setIsValueVisible(!isValueVisible);
   };
 
+  const handlePortfolioChange = (portfolioId: string) => {
+    console.log('🔄 [APP] Portfolio switched - instant update (no API call)');
+
+    // Mixpanel: Track portfolio switch
+    // Get full portfolio data from allPortfoliosData
+    const fullPortfolio = allPortfoliosData?.portfolios?.[portfolioId];
+    if (fullPortfolio) {
+      const totalHoldings = fullPortfolio.accounts.reduce(
+        (sum: number, account: any) => sum + (account.holdings?.length || 0),
+        0
+      );
+      track('portfolio_switched', {
+        holdings_count: totalHoldings,
+        accounts_count: fullPortfolio.accounts.length,
+      });
+    }
+
+    setSelectedPortfolioId(portfolioId);
+  };
+
   const handlePortfolioCreated = async (newPortfolioId: string) => {
     try {
       console.log('🏗️ [APP] Portfolio created - refreshing ALL portfolios data');
-      
+
+      const isFirstPortfolio = availablePortfolios.length === 0;
+
       // Refresh ALL portfolios data to include the new portfolio
       await refreshAllPortfoliosData();
-      
+
+      // Mixpanel: Track portfolio creation
+      track('portfolio_created', {
+        portfolio_count: availablePortfolios.length + 1,
+        is_first_portfolio: isFirstPortfolio,
+      });
+
+      // Mixpanel: Track onboarding milestone if first portfolio
+      if (isFirstPortfolio) {
+        track('onboarding_first_portfolio_created');
+      }
+
       // If this was the first portfolio, the context will auto-initialize
       if (!isInitialized) {
         setIsInitialized(true);
       }
-      
+
       // Switch to the new portfolio (instant, no API call)
       setSelectedPortfolioId(newPortfolioId);
-      
+
     } catch (err) {
       console.error('❌ [APP] Failed to handle portfolio creation:', err);
     }
@@ -306,6 +371,11 @@ const App: React.FC = () => {
     console.log('🏦 [APP] Account added - refreshing ALL portfolios data');
     try {
       await refreshAllPortfoliosData();
+
+      // Mixpanel: Track account creation
+      track('account_created', {
+        portfolio_accounts_count: (currentPortfolioData?.accounts.length || 0) + 1,
+      });
     } catch (err) {
       console.error('❌ [APP] Error refreshing after account addition:', err);
     }
@@ -315,8 +385,13 @@ const App: React.FC = () => {
     // Refresh ALL portfolios data since portfolio was deleted
     console.log('🗑️ [APP] Portfolio deleted - refreshing ALL portfolios data');
     try {
+      // Mixpanel: Track portfolio deletion
+      track('portfolio_deleted', {
+        remaining_portfolios: availablePortfolios.length - 1,
+      });
+
       await refreshAllPortfoliosData();
-      
+
       // If the deleted portfolio was the selected one, context will auto-select another
       if (deletedPortfolioId === selectedPortfolioId) {
         console.log('📌 [APP] Deleted portfolio was selected - context will auto-select new one');
@@ -331,6 +406,11 @@ const App: React.FC = () => {
     // Refresh ALL portfolios data since account was deleted
     console.log('🗑️ [APP] Account deleted - refreshing ALL portfolios data');
     try {
+      // Mixpanel: Track account deletion
+      track('account_deleted', {
+        remaining_accounts: (currentPortfolioData?.accounts.length || 1) - 1,
+      });
+
       await refreshAllPortfoliosData();
     } catch (err) {
       console.error('❌ [APP] Error refreshing after account deletion:', err);
@@ -348,12 +428,16 @@ const App: React.FC = () => {
 
   const handleSignOut = async () => {
     try {
+      // Mixpanel: Track sign out
+      track('auth_sign_out');
+
       // Clear all portfolio data before signing out to prevent data leakage
       console.log('🚪 [APP] Signing out - clearing portfolio data');
       clearAllPortfoliosData();
       setIsInitialized(false);
       setHasCheckedPortfolios(false);
       await signOutUser();
+      // Note: Mixpanel.reset() is called in AuthContext when user becomes null
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -501,7 +585,7 @@ const App: React.FC = () => {
                 isValueVisible={isValueVisible}
                 availableFiles={availablePortfolios}
                 selectedFile={selectedPortfolioId || ""}
-                onPortfolioChange={setSelectedPortfolioId}  // Now instant, no API call!
+                onPortfolioChange={handlePortfolioChange}  // Tracks portfolio switch
                 onPortfolioCreated={handlePortfolioCreated}
                 onAccountAdded={handleAccountAdded}
                 onPortfolioDeleted={handlePortfolioDeleted}

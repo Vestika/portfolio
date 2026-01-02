@@ -2,21 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import TaggingInput from './TaggingInput';
 import TaggedMessage from './TaggedMessage';
-import { 
-  chatWithAnalyst, 
-  getChatSessions, 
+import {
+  chatWithAnalyst,
+  getChatSessions,
   getChatSessionMessages,
   ChatSession,
   ChatMessage,
   AutocompleteSuggestion
 } from '../utils/ai-api';
+import { useMixpanel } from '../contexts/MixpanelContext';
 
 interface AIChatProps {
   isOpen?: boolean;
   onClose?: () => void;
 }
 
-const AIChat: React.FC<AIChatProps> = ({ 
+const AIChat: React.FC<AIChatProps> = ({
   isOpen = true,
   onClose
 }) => {
@@ -28,7 +29,8 @@ const AIChat: React.FC<AIChatProps> = ({
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [selectedTags, setSelectedTags] = useState<AutocompleteSuggestion[]>([]);
-  
+  const { track } = useMixpanel();
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Example questions to show when chat is empty
@@ -51,9 +53,11 @@ const AIChat: React.FC<AIChatProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      // Mixpanel: Track AI chat opened
+      track('feature_ai_chat_opened');
       loadChatSessions();
     }
-  }, [isOpen]);
+  }, [isOpen, track]);
 
   const loadChatSessions = async () => {
     try {
@@ -68,6 +72,16 @@ const AIChat: React.FC<AIChatProps> = ({
     if (!inputMessage.trim() || isLoading) return;
 
     const userMessage = inputMessage.trim();
+    const hasTaggedEntities = selectedTags.length > 0;
+
+    // Mixpanel: Track AI chat message sent
+    track('feature_ai_chat_message_sent', {
+      message_length_chars: userMessage.length,
+      has_tagged_entities: hasTaggedEntities,
+      tagged_entities_count: selectedTags.length,
+      conversation_length: messages.length,
+    });
+
     setInputMessage('');
     setIsLoading(true);
     setError(null);

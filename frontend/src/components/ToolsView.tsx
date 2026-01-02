@@ -9,6 +9,7 @@ import FIRECalculator from './FIRECalculator'
 import { MortgageVsInvestCalculator } from './MortgageVsInvestCalculator'
 import { BuyOrRentCalculator } from './BuyOrRentCalculator'
 import { CashFlowCalculator } from './CashFlowCalculator'
+import { useMixpanel } from '../contexts/MixpanelContext'
 
 export type ToolKey = 'tax-planner' | 'compound' | 'scenario' | 'fire' | 'mortgage-invest' | 'buy-or-rent' | 'cash-flow'
 
@@ -29,6 +30,7 @@ const tools: Array<{ key: ToolKey; name: string; description: string; icon: Luci
 export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { track } = useMixpanel()
   const [collapsed, setCollapsed] = useState<boolean>(true)
 
   // Derive active tool from URL or prop
@@ -48,6 +50,12 @@ export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
   const activeTool = getActiveToolFromPath()
 
   const handleToolClick = (tool: typeof tools[0]) => {
+    // Mixpanel: Track tool usage
+    track('feature_tools_calculator_used', {
+      tool_type: tool.key,
+      previous_tool: activeTool,
+    })
+
     navigate(tool.path)
   }
 

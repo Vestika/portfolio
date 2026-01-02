@@ -9,6 +9,7 @@ import TagEditor from './TagEditor';
 import TagAPI from '../utils/tag-api';
 import PortfolioAPI from '../utils/portfolio-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
+import { useMixpanel } from '../contexts/MixpanelContext';
 import PortfolioSelector from '../PortfolioSelector';
 import PieChart from '../PieChart';
 import BarChart from '../BarChart';
@@ -68,10 +69,10 @@ const TAG_TYPE_INFO = {
 };
 
 export function ManageTagsView() {
-  const { 
-    refreshTagsOnly, 
-    updateCustomCharts, 
-    allPortfoliosData, 
+  const {
+    refreshTagsOnly,
+    updateCustomCharts,
+    allPortfoliosData,
     currentPortfolioData,
     selectedPortfolioId,
     setSelectedPortfolioId,
@@ -79,7 +80,8 @@ export function ManageTagsView() {
     refreshAllPortfoliosData,
     getAutocompleteData
   } = usePortfolioData();
-  
+  const { track } = useMixpanel();
+
   const autocompleteData = getAutocompleteData();
   
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
@@ -191,6 +193,13 @@ export function ManageTagsView() {
   const handleCreateTagDefinition = async (tagDefinition: TagDefinition) => {
     try {
       await TagAPI.createTagDefinition(tagDefinition);
+
+      // Mixpanel: Track tag definition created
+      track('feature_tags_definition_created', {
+        tag_type: tagDefinition.tag_type,
+        is_custom: true,
+      });
+
       await loadData();
       // Update global context so tags are immediately available everywhere
       await refreshTagsOnly();
@@ -207,6 +216,11 @@ export function ManageTagsView() {
     }
 
     try {
+      // Mixpanel: Track tag definition deleted
+      track('feature_tags_definition_deleted', {
+        tag_name_provided: false, // Privacy: don't send actual tag name
+      });
+
       await TagAPI.deleteTagDefinition(tagName);
       await loadData();
       // Update global context so deleted tags are removed everywhere
@@ -240,6 +254,14 @@ export function ManageTagsView() {
     if (!tagEditor.symbol) return;
     try {
       await TagAPI.setHoldingTag(tagEditor.symbol, tagValue.tag_name, tagValue, selectedPortfolioId || undefined);
+
+      // Mixpanel: Track tags applied to holding
+      const tagDef = tagLibrary?.tag_definitions[tagValue.tag_name];
+      track('feature_tags_applied_to_holding', {
+        tag_type: tagDef?.tag_type || 'unknown',
+        holdings_tagged_count: 1,
+      });
+
       await loadData();
       await refreshTagsOnly();
       setTagEditor({ isOpen: false });

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { streamNewsFeed, NewsItem } from '../../utils/news-api';
 import NewsWordCloud from './NewsWordCloud';
 import { X } from 'lucide-react';
+import { useMixpanel } from '../../contexts/MixpanelContext';
 
 export default function NewsFeedView() {
   const [items, setItems] = useState<NewsItem[]>([]);
@@ -10,18 +11,29 @@ export default function NewsFeedView() {
   const [error, setError] = useState<string | null>(null);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
-  
+  const { track } = useMixpanel();
+
   // Memoize callback to prevent re-creating on every render
   const handleWordClick = useMemo(() => (word: string) => {
+    // Mixpanel: Track word cloud interaction
+    track('feature_news_word_cloud_clicked', {
+      has_filter: true, // Don't send actual word for privacy
+    });
+
     setSelectedWord(prevWord => prevWord === word ? null : word);
-  }, []);
+  }, [track]);
 
   useEffect(() => {
+    // Mixpanel: Track news feed opened
+    track('feature_news_feed_opened', {
+      holdings_count: items.length, // This will be 0 initially, but still tracks the open
+    });
+
     // Only load once - cache results
     if (!hasLoaded) {
       loadNews();
     }
-  }, [hasLoaded]);
+  }, [hasLoaded, track]);
 
   async function loadNews() {
     setLoading(true);
