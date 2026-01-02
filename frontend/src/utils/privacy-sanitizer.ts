@@ -75,7 +75,8 @@ export const BLACKLISTED_PROPERTIES: readonly string[] = [
 export const USER_IDENTITY_WHITELIST: readonly string[] = [
   'user_id',
   'user_email_hash',
-  'user_name', // Display name from Firebase Auth - allowed for user identification
+  '$name', // Mixpanel standard property for display name (matches backend)
+  '$email', // Mixpanel standard property for email
   'account_creation_date',
 ] as const;
 

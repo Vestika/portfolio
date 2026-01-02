@@ -35,7 +35,7 @@ export interface EventProperties {
 export interface UserProperties {
   user_id: string;
   user_email_hash: string;
-  user_name?: string; // Display name from Firebase Auth
+  $name?: string; // Display name from Firebase Auth (Mixpanel standard property)
   account_creation_date: string;
   total_portfolios: number;
   total_accounts: number;
