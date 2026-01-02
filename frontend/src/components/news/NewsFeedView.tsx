@@ -3,6 +3,7 @@ import { streamNewsFeed, NewsItem } from '../../utils/news-api';
 import NewsWordCloud from './NewsWordCloud';
 import { X } from 'lucide-react';
 import { useMixpanel } from '../../contexts/MixpanelContext';
+import { SubtitleBar, MetricChip } from '../common/SubtitleBar';
 
 export default function NewsFeedView() {
   const [items, setItems] = useState<NewsItem[]>([]);
@@ -121,25 +122,34 @@ export default function NewsFeedView() {
       </div>
 
       {/* Metrics Bar */}
-      <div className="sticky z-20 bg-gray-800 border-t border-b border-gray-700" style={{ top: '114px' }}>
-        <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <svg className="w-3.5 h-3.5 text-blue-400 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <SubtitleBar topOffset="114px">
+        <MetricChip
+          icon={
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
             </svg>
-            <span className="text-xs font-medium mr-1">Articles:</span>
-            <span className="text-xs text-blue-400">{items.length}</span>
-          </div>
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <svg className="w-3.5 h-3.5 text-purple-400 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          }
+          iconColor="text-blue-400"
+          label="Articles:"
+          value={items.length}
+          valueColor="text-blue-400"
+        />
+        <MetricChip
+          icon={
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             </svg>
-            <span className="text-xs font-medium mr-1">Keywords:</span>
-            <span className="text-xs text-purple-400">{keywords.length}</span>
-          </div>
-          {selectedWord && (
-            <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-              <span className="text-xs font-medium text-amber-300 mr-1">"{selectedWord}"</span>
+          }
+          iconColor="text-purple-400"
+          label="Keywords:"
+          value={keywords.length}
+          valueColor="text-purple-400"
+        />
+        {selectedWord && (
+          <MetricChip
+            label={`"${selectedWord}"`}
+            valueColor="text-amber-300"
+            action={
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -150,10 +160,10 @@ export default function NewsFeedView() {
               >
                 <X size={12} strokeWidth={2} />
               </button>
-            </div>
-          )}
-        </div>
-      </div>
+            }
+          />
+        )}
+      </SubtitleBar>
       
       {/* Main Content */}
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black">
