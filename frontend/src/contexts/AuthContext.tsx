@@ -45,7 +45,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         mixpanel.setUserProperties({
           user_id: user.uid,
           user_email_hash: hashEmail(user.email || ''),
-          user_name: user.displayName || undefined,
+          $name: user.displayName || undefined, // Mixpanel standard property (matches backend)
           account_creation_date: user.metadata.creationTime || new Date().toISOString(),
         } as any);
         mixpanel.track('auth_sign_in_success');
