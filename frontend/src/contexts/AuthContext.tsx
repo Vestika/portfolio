@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { onAuthStateChange } from '../firebase';
+import { mixpanel } from '../lib/mixpanel';
+import { hashEmail } from '../utils/privacy-sanitizer';
 
 interface AuthContextType {
   user: User | null;
@@ -35,6 +37,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const unsubscribe = onAuthStateChange((user) => {
       setUser(user);
       setLoading(false);
+
+      // Track authentication events in Mixpanel
+      if (user) {
+        // User signed in - identify and track
+        mixpanel.identify(user.uid);
+        mixpanel.setUserProperties({
+          user_id: user.uid,
+          user_email_hash: hashEmail(user.email || ''),
+          account_creation_date: user.metadata.creationTime || new Date().toISOString(),
+        } as any);
+        mixpanel.track('auth_sign_in_success');
+      } else {
+        // User signed out - reset Mixpanel
+        mixpanel.reset();
+      }
     });
 
     return () => unsubscribe();

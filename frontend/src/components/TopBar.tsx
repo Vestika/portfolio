@@ -16,6 +16,7 @@ import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
 import GoogleProfilePicture from './GoogleProfilePicture'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useMixpanel } from '../contexts/MixpanelContext'
 
 export type NavigationView = 'portfolios' | 'cashflow' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
@@ -54,6 +55,7 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const { googleProfileData } = useUserProfile()
+  const { track } = useMixpanel()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -99,6 +101,13 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   ]
 
   const handleNavClick = (view: NavigationView) => {
+    // Mixpanel: Track navigation view change
+    track('navigation_view_changed', {
+      from_view: activeView,
+      to_view: view,
+      is_mobile: isMobileMenuOpen,
+    })
+
     navigate(viewToPath[view])
     onViewChange?.(view) // Call callback if provided (for backwards compatibility)
     setIsMobileMenuOpen(false)
