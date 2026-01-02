@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { streamNewsFeed, NewsItem } from '../../utils/news-api';
 import NewsWordCloud from './NewsWordCloud';
+import { X } from 'lucide-react';
 import { useMixpanel } from '../../contexts/MixpanelContext';
 
 export default function NewsFeedView() {
@@ -72,6 +73,11 @@ export default function NewsFeedView() {
     }
   }
 
+  // Track which keywords have articles
+  const keywordsWithArticles = useMemo(() => {
+    return new Set(items.flatMap(item => item.keywords || []));
+  }, [items]);
+
   // Filter and sort articles by selected word and date
   const filteredItems = useMemo(() => {
     let filtered = selectedWord
@@ -132,17 +138,17 @@ export default function NewsFeedView() {
             <span className="text-xs text-purple-400">{keywords.length}</span>
           </div>
           {selectedWord && (
-            <div className="flex items-center bg-amber-500/20 rounded-full pl-3 pr-2 py-1 border border-amber-500/30">
-              <span className="text-xs font-medium text-amber-300">"{selectedWord}"</span>
+            <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
+              <span className="text-xs font-medium text-amber-300 mr-1">"{selectedWord}"</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectedWord(null);
                 }}
-                className="ml-1.5 text-amber-400 hover:text-amber-300 flex items-center justify-center w-3 h-3"
+                className="text-amber-400 hover:text-amber-200 transition-colors p-0 bg-transparent border-none flex items-center"
                 title="Clear filter"
               >
-                <span className="text-[10px] font-bold">✕</span>
+                <X size={12} strokeWidth={2} />
               </button>
             </div>
           )}
@@ -167,22 +173,34 @@ export default function NewsFeedView() {
           {keywords.length > 0 && (
             <div className="mb-8">
               <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">
-                Tracking Symbols ({keywords.length})
+                Tracking Symbols ({keywords.length}) • {keywordsWithArticles.size} with articles
               </h2>
               <div className="flex flex-wrap gap-2">
-                {keywords.sort().map((keyword, index) => (
-                  <button
-                    key={`${keyword}-${index}`}
-                    onClick={() => handleWordClick(keyword)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors ${
-                      selectedWord === keyword
-                        ? 'text-amber-300 bg-amber-500/20 border-amber-500/40'
-                        : 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20'
-                    }`}
-                  >
-                    {keyword}
-                  </button>
-                ))}
+                {keywords.sort().map((keyword) => {
+                  const hasArticles = keywordsWithArticles.has(keyword);
+                  return (
+                    <button
+                      key={keyword}
+                      onClick={() => hasArticles && handleWordClick(keyword)}
+                      disabled={!hasArticles}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${
+                        !hasArticles
+                          ? 'text-gray-600 bg-gray-800/30 border-gray-700/30 cursor-not-allowed opacity-50'
+                          : selectedWord === keyword
+                            ? 'text-amber-300 bg-amber-500/20 border-amber-500/40 cursor-pointer'
+                            : 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20 cursor-pointer'
+                      }`}
+                      title={hasArticles ? `Click to filter by ${keyword}` : `Loading ${keyword}...`}
+                    >
+                      {keyword}
+                      {hasArticles && (
+                        <span className="ml-1.5 text-xs opacity-70">
+                          ({items.filter(item => item.keywords?.includes(keyword)).length})
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
