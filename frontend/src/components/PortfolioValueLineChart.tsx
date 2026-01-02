@@ -10,6 +10,40 @@ import {
   SelectValue,
 } from './ui/select'
 
+// Hook to detect mobile screen size
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768) // 768px is typical md breakpoint
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  return isMobile
+}
+
+// Helper function to format large numbers to short form (6M, 55K, etc.)
+function formatNumberShort(value: number): string {
+  const abs = Math.abs(value)
+  
+  if (abs >= 1_000_000_000) {
+    return (value / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B'
+  }
+  if (abs >= 1_000_000) {
+    return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  }
+  if (abs >= 1_000) {
+    return (value / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  }
+  return value.toFixed(0)
+}
+
 // Chart marker interface for reusable event markers
 export interface ChartMarker {
   id: string
@@ -45,6 +79,7 @@ export function PortfolioValueLineChart({
   const chartInstanceRef = useRef<Highcharts.Chart | null>(null)
   const [viewMode, setViewMode] = useState<'aggregated' | 'separate'>('aggregated')
   const [selectedZoom, setSelectedZoom] = useState<'all' | 'year' | 'month' | 'week'>('all')
+  const isMobile = useIsMobile()
 
   // Filter to selected accounts only
   const selectedAccounts = useMemo(() => {
@@ -537,6 +572,9 @@ export function PortfolioValueLineChart({
         style: {
           fontFamily: 'inherit'
         },
+        // Reduce margins on mobile to maximize chart area
+        marginLeft: isMobile ? 10 : undefined,
+        marginRight: isMobile ? 10 : undefined,
         // Enable zooming on the x-axis (time axis)
         zooming: {
           type: 'x',
@@ -634,22 +672,31 @@ export function PortfolioValueLineChart({
       },
       yAxis: {
         title: {
-          text: viewMode === 'separate' ? `Change (${baseCurrency})` : `Value (${baseCurrency})`,
+          text: isMobile ? undefined : (viewMode === 'separate' ? `Change (${baseCurrency})` : `Value (${baseCurrency})`),
           style: {
             color: '#9ca3af'
           }
         },
         labels: {
           enabled: isValueVisible,  // Hide labels when values are hidden
+          align: isMobile ? 'left' : 'right',  // Align left on mobile to position inside chart
+          x: isMobile ? 10 : 0,  // Offset from left edge on mobile
+          y: 4,  // Vertical centering
           style: {
-            color: '#9ca3af'
+            color: '#e5e7eb',
+            fontSize: isMobile ? '10px' : '11px',
+            fontWeight: '500'
           },
+          // Add background for better readability when labels are inside chart (mobile)
+          ...(isMobile ? {
+            backgroundColor: 'rgba(31, 41, 55, 0.7)',
+            borderRadius: 3,
+            padding: 4
+          } as any : {}),
           formatter: function() {
             const val = this.value as number
             const sign = viewMode === 'separate' && val > 0 ? '+' : ''
-            return sign + new Intl.NumberFormat('en-US', {
-              maximumFractionDigits: 0
-            }).format(val)
+            return sign + formatNumberShort(val)
           }
         },
         gridLineColor: 'rgba(55, 65, 81, 0.3)', // Softer, more subtle grid lines
@@ -701,9 +748,13 @@ export function PortfolioValueLineChart({
                 </div>`
               } else {
                 const yValue = point.y as number
-                const value = new Intl.NumberFormat('en-US', {
-                  maximumFractionDigits: 0
-                }).format(Math.abs(yValue))
+                const absValue = Math.abs(yValue)
+                // Use detailed format for tooltips (with commas), but short format on mobile for space
+                const value = isMobile 
+                  ? formatNumberShort(absValue)
+                  : new Intl.NumberFormat('en-US', {
+                      maximumFractionDigits: 0
+                    }).format(absValue)
                 
                 if (viewMode === 'separate') {
                   const sign = yValue >= 0 ? '+' : '-'
@@ -729,9 +780,13 @@ export function PortfolioValueLineChart({
                 <div style="color: #e5e7eb; margin-top: 6px; display: block;">${seriesName}</div>`
             }
             const yValue = this.y as number
-            const value = new Intl.NumberFormat('en-US', {
-              maximumFractionDigits: 0
-            }).format(Math.abs(yValue))
+            const absValue = Math.abs(yValue)
+            // Use detailed format for tooltips (with commas), but short format on mobile for space
+            const value = isMobile 
+              ? formatNumberShort(absValue)
+              : new Intl.NumberFormat('en-US', {
+                  maximumFractionDigits: 0
+                }).format(absValue)
             
             if (viewMode === 'separate') {
               const sign = yValue >= 0 ? '+' : '-'
@@ -748,9 +803,9 @@ export function PortfolioValueLineChart({
       },
       legend: {
         enabled: seriesData.length > 1, // Show legend when we have multiple series (accounts or benchmark)
-        align: 'right',
-        verticalAlign: 'top',
-        layout: 'vertical',
+        align: isMobile ? 'center' : 'right',
+        verticalAlign: isMobile ? 'bottom' : 'top',
+        layout: isMobile ? 'horizontal' : 'vertical',
         itemStyle: {
           color: '#9ca3af',
           fontSize: '12px'
@@ -940,7 +995,7 @@ export function PortfolioValueLineChart({
         chartInstanceRef.current = null
       }
     }
-  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode, markers, selectedZoom])
+  }, [seriesData, baseCurrency, isValueVisible, minValue, maxValue, viewMode, markers, selectedZoom, isMobile])
 
   // Calculate date range from series data
   const dateRange = useMemo(() => {
@@ -1006,9 +1061,7 @@ export function PortfolioValueLineChart({
   if (seriesData.length === 0 || seriesData[0].data.length === 0) {
     return (
       <div className="w-full rounded-lg mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-white">Portfolio Value - Last Year</h3>
-        </div>
+        <h3 className="text-lg font-bold text-white mb-2">Portfolio Value - Last Year</h3>
         <div className="flex items-center justify-center h-96 text-muted-foreground">
           <p className="text-sm">No historical data available</p>
         </div>
@@ -1019,68 +1072,136 @@ export function PortfolioValueLineChart({
   return (
     <div className="w-full rounded-lg mb-6">
       {/* Header with title, zoom buttons, and toggle */}
-      <div className="flex items-center justify-between mb-2 gap-4">
-        <h3 className="text-lg font-bold text-white">
-          {viewMode === 'separate' 
-            ? 'Estimated Portfolio Performance (Normalized)' 
-            : 'Estimated Portfolio Value'}
-        </h3>
-        
-        <div className="flex items-center gap-3">
-          {/* Zoom Dropdown */}
-          <Select value={selectedZoom} onValueChange={(value) => zoomToPeriod(value as 'all' | 'year' | 'month' | 'week')}>
-            <SelectTrigger className="w-[120px] h-9 bg-gray-700/20 backdrop-blur-sm border-blue-400/30 text-gray-300 hover:text-white focus:ring-blue-500/50">
-              <SelectValue placeholder="Time Range" />
-            </SelectTrigger>
-            <SelectContent className="bg-gray-800 border-gray-700">
-              <SelectItem value="week" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
-                Week
-              </SelectItem>
-              <SelectItem value="month" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
-                Month
-              </SelectItem>
-              <SelectItem value="year" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
-                Year
-              </SelectItem>
-              <SelectItem value="all" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
-                All
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          
-          {/* View Mode Toggle */}
-          <div
-            className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
-          >
-            <div 
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
-                viewMode === 'aggregated'
-                  ? 'bg-blue-500/20 text-blue-200 shadow-sm'
-                  : 'text-gray-400'
-              }`}
-              onClick={() => setViewMode('aggregated')}
+      {isMobile ? (
+        // Mobile layout: title on its own row
+        <>
+          <h3 className="text-lg font-bold text-white mb-2">
+            {viewMode === 'separate' 
+              ? 'Estimated Accounts Performance' 
+              : 'Estimated Portfolio Value'}
+          </h3>
+          <div className="flex items-center justify-between mb-2 gap-3">
+            {/* Zoom Dropdown */}
+            <Select value={selectedZoom} onValueChange={(value) => zoomToPeriod(value as 'all' | 'year' | 'month' | 'week')}>
+              <SelectTrigger className="w-[100px] h-9 bg-gray-700/20 backdrop-blur-sm border-blue-400/30 text-gray-300 hover:text-white focus:ring-blue-500/50 text-xs">
+                <SelectValue placeholder="Time Range" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="week" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Week
+                </SelectItem>
+                <SelectItem value="month" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Month
+                </SelectItem>
+                <SelectItem value="year" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Year
+                </SelectItem>
+                <SelectItem value="all" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  All
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* View Mode Toggle */}
+            <div
+              className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none flex-1"
             >
-              <Layers size={16} />
-              Aggregated
+              <div 
+                className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-xs font-medium transition-all duration-200 flex-1 ${
+                  viewMode === 'aggregated'
+                    ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                    : 'text-gray-400'
+                }`}
+                onClick={() => setViewMode('aggregated')}
+              >
+                <Layers size={14} />
+                <span className="hidden xs:inline">Aggregated</span>
+                <span className="xs:hidden">Aggregated</span>
+              </div>
+              <div 
+                className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-xs font-medium transition-all duration-200 flex-1 ${
+                  viewMode === 'separate'
+                    ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                    : selectedAccounts.length <= 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'
+                }`}
+                onClick={() => {
+                  if (selectedAccounts.length > 1) {
+                    setViewMode('separate')
+                  }
+                }}
+              >
+                <User size={14} />
+                <span className="hidden xs:inline">By Account</span>
+                <span className="xs:hidden">Accounts</span>
+              </div>
             </div>
-            <div 
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
-                viewMode === 'separate'
-                  ? 'bg-blue-500/20 text-blue-200 shadow-sm'
-                  : selectedAccounts.length <= 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'
-              }`}
-              onClick={() => {
-                if (selectedAccounts.length > 1) {
-                  setViewMode('separate')
-                }
-              }}
+          </div>
+        </>
+      ) : (
+        // Desktop layout: all in one row
+        <div className="flex items-center justify-between mb-2 gap-4">
+          <h3 className="text-lg font-bold text-white">
+            {viewMode === 'separate' 
+              ? 'Estimated Portfolio Performance (Normalized)' 
+              : 'Estimated Portfolio Value'}
+          </h3>
+          
+          <div className="flex items-center gap-3">
+            {/* Zoom Dropdown */}
+            <Select value={selectedZoom} onValueChange={(value) => zoomToPeriod(value as 'all' | 'year' | 'month' | 'week')}>
+              <SelectTrigger className="w-[120px] h-9 bg-gray-700/20 backdrop-blur-sm border-blue-400/30 text-gray-300 hover:text-white focus:ring-blue-500/50">
+                <SelectValue placeholder="Time Range" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="week" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Week
+                </SelectItem>
+                <SelectItem value="month" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Month
+                </SelectItem>
+                <SelectItem value="year" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  Year
+                </SelectItem>
+                <SelectItem value="all" className="text-gray-300 hover:bg-gray-700 focus:bg-gray-700">
+                  All
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* View Mode Toggle */}
+            <div
+              className="flex items-center bg-gray-700/20 backdrop-blur-sm rounded-md border border-blue-400/30 p-1 cursor-pointer select-none"
             >
-              <User size={16} />
-              By Account
+              <div 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+                  viewMode === 'aggregated'
+                    ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                    : 'text-gray-400'
+                }`}
+                onClick={() => setViewMode('aggregated')}
+              >
+                <Layers size={16} />
+                Aggregated
+              </div>
+              <div 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium transition-all duration-200 ${
+                  viewMode === 'separate'
+                    ? 'bg-blue-500/20 text-blue-200 shadow-sm'
+                    : selectedAccounts.length <= 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400'
+                }`}
+                onClick={() => {
+                  if (selectedAccounts.length > 1) {
+                    setViewMode('separate')
+                  }
+                }}
+              >
+                <User size={16} />
+                By Account
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
       
       <div ref={chartRef} />
     </div>
