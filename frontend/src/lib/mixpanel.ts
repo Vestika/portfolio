@@ -9,8 +9,6 @@ import type { MixpanelConfig, UserProperties } from '../types/mixpanel';
 import {
   validateEventProperties,
   isDoNotTrackEnabled,
-  getViewportDimensions,
-  hashEmail,
 } from '../utils/privacy-sanitizer';
 
 // Environment variables

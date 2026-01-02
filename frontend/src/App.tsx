@@ -316,18 +316,17 @@ const App: React.FC = () => {
   const handlePortfolioChange = (portfolioId: string) => {
     console.log('🔄 [APP] Portfolio switched - instant update (no API call)');
 
-    // Find the portfolio being switched to
-    const portfolio = availablePortfolios.find(p => p.portfolio_id === portfolioId);
-
     // Mixpanel: Track portfolio switch
-    if (portfolio) {
-      const totalHoldings = portfolio.accounts.reduce(
+    // Get full portfolio data from allPortfoliosData
+    const fullPortfolio = allPortfoliosData?.portfolios?.[portfolioId];
+    if (fullPortfolio) {
+      const totalHoldings = fullPortfolio.accounts.reduce(
         (sum: number, account: any) => sum + (account.holdings?.length || 0),
         0
       );
       track('portfolio_switched', {
         holdings_count: totalHoldings,
-        accounts_count: portfolio.accounts.length,
+        accounts_count: fullPortfolio.accounts.length,
       });
     }
 

@@ -256,7 +256,7 @@ export function ManageTagsView() {
       await TagAPI.setHoldingTag(tagEditor.symbol, tagValue.tag_name, tagValue, selectedPortfolioId || undefined);
 
       // Mixpanel: Track tags applied to holding
-      const tagDef = tagLibrary?.tag_definitions.find(td => td.name === tagValue.tag_name);
+      const tagDef = tagLibrary?.tag_definitions[tagValue.tag_name];
       track('feature_tags_applied_to_holding', {
         tag_type: tagDef?.tag_type || 'unknown',
         holdings_tagged_count: 1,
