@@ -1,8 +1,25 @@
-import { useEffect, useRef, useMemo, memo } from 'react';
+import { useEffect, useRef, useMemo, memo, useState } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 // @ts-ignore - Module may not have types
 import 'highcharts/modules/wordcloud';
+
+// Debounce helper
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 interface NewsWordCloudProps {
   titles: string[];
@@ -27,6 +44,22 @@ const STOP_WORDS = new Set([
   'i\'ll', 'you\'ll', 'he\'ll', 'she\'ll', 'we\'ll', 'they\'ll'
 ]);
 
+// Deterministic color assignment based on word
+function getWordColor(word: string): string {
+  const colors = [
+    '#818cf8', '#a78bfa', '#c084fc', '#e879f9',
+    '#f472b6', '#fb7185', '#f97316', '#facc15',
+    '#4ade80', '#2dd4bf', '#22d3ee', '#60a5fa',
+  ];
+  
+  // Hash the word to get consistent color
+  let hash = 0;
+  for (let i = 0; i < word.length; i++) {
+    hash = word.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
 function getWordFrequencies(titles: string[]): Array<{ name: string; weight: number }> {
   const wordCounts = new Map<string, number>();
 
@@ -36,7 +69,13 @@ function getWordFrequencies(titles: string[]): Array<{ name: string; weight: num
       .toLowerCase()
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
-      .filter(word => word.length > 2 && !STOP_WORDS.has(word));
+      .filter(word => {
+        // Filter out: short words, stop words, and numeric-only words
+        if (word.length <= 2) return false;
+        if (STOP_WORDS.has(word)) return false;
+        if (/^\d+$/.test(word)) return false; // Skip numeric-only words (2026, 100, etc.)
+        return true;
+      });
 
     words.forEach(word => {
       wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
@@ -59,16 +98,27 @@ function getWordFrequencies(titles: string[]): Array<{ name: string; weight: num
 function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloudProps) {
   const chartRef = useRef<HighchartsReact.RefObject>(null);
   const onWordClickRef = useRef(onWordClick);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Update the ref when callback changes (but don't trigger re-render)
   useEffect(() => {
     onWordClickRef.current = onWordClick;
   }, [onWordClick]);
 
+  // Debounce titles to prevent rapid re-renders (1 second delay)
+  const debouncedTitles = useDebounce(titles, 1000);
+
   const wordData = useMemo(() => {
-    if (titles.length === 0) return [];
-    return getWordFrequencies(titles);
-  }, [titles]);
+    if (debouncedTitles.length === 0) return [];
+    return getWordFrequencies(debouncedTitles);
+  }, [debouncedTitles]);
+  
+  // Mark as loaded after first render
+  useEffect(() => {
+    if (wordData.length > 0 && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [wordData, isInitialLoad]);
   
   // Update selected word colors without re-rendering the entire chart
   useEffect(() => {
@@ -79,7 +129,7 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
         series.points.forEach((point: any) => {
           const isSelected = selectedWord === point.name;
           point.update({
-            color: isSelected ? '#fbbf24' : undefined,
+            color: isSelected ? '#fbbf24' : getWordColor(point.name),
           }, false); // false = don't redraw yet
         });
         chart.redraw(); // Redraw once after all updates
@@ -93,6 +143,7 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
       backgroundColor: 'transparent',
       height: 320,
       margin: [10, 10, 10, 10],
+      animation: false,
     },
     title: {
       text: '',
@@ -113,18 +164,15 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
     },
     series: [{
       type: 'wordcloud',
-      data: wordData.map((word, index) => ({
-        ...word,
-        // Assign colors in a cycling pattern
-        color: [
-          '#818cf8', '#a78bfa', '#c084fc', '#e879f9',
-          '#f472b6', '#fb7185', '#f97316', '#facc15',
-          '#4ade80', '#2dd4bf', '#22d3ee', '#60a5fa',
-        ][index % 12],
+      data: wordData.map((word) => ({
+        name: word.name,
+        weight: word.weight,
+        // Assign consistent color based on word hash (deterministic)
+        color: getWordColor(word.name),
       })),
       name: 'Occurrences',
       minFontSize: 14,
-      maxFontSize: 80, // Much larger max size for bigger contrast
+      maxFontSize: 80,
       style: {
         fontFamily: 'Inter, system-ui, sans-serif',
         fontWeight: 'bold',
@@ -132,9 +180,9 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
       rotation: {
         from: 0,
         to: 0,
-        orientations: 1, // All horizontal for better space utilization
+        orientations: 1,
       },
-      spiral: 'rectangular', // Rectangular spiral spreads better
+      spiral: 'rectangular',
       cursor: 'pointer',
       point: {
         events: {
@@ -158,7 +206,8 @@ function NewsWordCloudInner({ titles, onWordClick, selectedWord }: NewsWordCloud
         highcharts={Highcharts}
         options={options}
         ref={chartRef}
-        immutable={false} // Allow updates without full re-render
+        immutable={false}
+        updateArgs={[true, true, false]} // No animation on updates
       />
     </div>
   );

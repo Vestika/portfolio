@@ -53,10 +53,13 @@ async def stream_news_feed(user=Depends(get_current_user)):
             for holding in holdings_ctx:
                 symbol = holding.get("symbol", "")
                 
-                # Skip only currencies and FX pairs (keep crypto like BTC-USD, ETH-USD)
+                # Skip currencies, FX pairs, and numeric-only symbols
                 if not symbol or symbol in ["USD", "ILS", "EUR", "GBP"]:
                     continue
                 if symbol.startswith("FX:"):
+                    continue
+                # Skip numeric-only symbols (like TASE symbols: 1185164, 629014, etc.)
+                if symbol.isdigit():
                     continue
                 
                 # Deduplicate
