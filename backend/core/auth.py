@@ -29,42 +29,59 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="No email found in Firebase user")
 
     user = await db.users.find_one({"email": firebase_email})
-    
+
     if not user:
-        # Create new user if doesn't exist
-        new_user = User(
-            name=firebase_user.get("name", "Unknown"),
-            email=firebase_email,
-            firebase_uid=firebase_user.get("uid"),
+        # Use update_one with upsert to atomically create user (prevents race condition)
+        new_user_data = {
+            "name": firebase_user.get("name", "Unknown"),
+            "email": firebase_email,
+            "firebase_uid": firebase_user.get("uid"),
+        }
+
+        result = await db.users.update_one(
+            {"email": firebase_email},  # Filter
+            {"$setOnInsert": new_user_data},  # Only set these fields if inserting
+            upsert=True  # Create if doesn't exist
         )
-        result = await db.users.insert_one(new_user.dict(exclude={'id'}))
-        new_user.id = str(result.inserted_id)
 
-        # Track user registration (start of onboarding funnel)
-        try:
-            analytics = get_analytics_service()
-            analytics.track_event(
-                user=new_user,
-                event_name=EVENT_USER_REGISTERED,
-                properties={
-                    "registration_method": "firebase",
-                    "has_name": bool(firebase_user.get("name"))
-                }
-            )
-            # Also identify the user in Mixpanel
-            analytics.identify_user(new_user)
-        except Exception as e:
-            print(f"⚠️ [AUTH] Failed to track user registration: {e}")
+        # Only send notifications if we actually inserted a new user (not if another request beat us)
+        is_new_user = result.upserted_id is not None
 
-        # Best-effort Telegram notification for new user creation
-        try:
-            telegram_service = get_telegram_service()
-            await telegram_service.send_text(
-                f"👤 New user created\nName: {new_user.name}\nEmail: {new_user.email}\nUID: {new_user.firebase_uid}"
-            )
-        except Exception as e:
-            print(f"⚠️ [AUTH] Failed to send Telegram new-user notification: {e}")
-        return new_user
+        if is_new_user:
+            # Fetch the newly created user
+            user = await db.users.find_one({"email": firebase_email})
+            if user:
+                user["id"] = str(user.pop("_id"))
+                new_user = User(**user)
+
+                # Track user registration (start of onboarding funnel)
+                try:
+                    analytics = get_analytics_service()
+                    analytics.track_event(
+                        user=new_user,
+                        event_name=EVENT_USER_REGISTERED,
+                        properties={
+                            "registration_method": "firebase",
+                            "has_name": bool(firebase_user.get("name"))
+                        }
+                    )
+                    # Also identify the user in Mixpanel
+                    analytics.identify_user(new_user)
+                except Exception as e:
+                    print(f"⚠️ [AUTH] Failed to track user registration: {e}")
+
+                # Best-effort Telegram notification for new user creation
+                try:
+                    telegram_service = get_telegram_service()
+                    await telegram_service.send_text(
+                        f"👤 New user created\nName: {new_user.name}\nEmail: {new_user.email}\nUID: {new_user.firebase_uid}"
+                    )
+                except Exception as e:
+                    print(f"⚠️ [AUTH] Failed to send Telegram new-user notification: {e}")
+                return new_user
+        else:
+            # Another request created the user, just fetch and return it
+            user = await db.users.find_one({"email": firebase_email})
 
     # Convert MongoDB document to User model
     user["id"] = str(user.pop("_id"))
