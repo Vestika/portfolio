@@ -50,7 +50,6 @@ export const BLACKLISTED_PROPERTIES: readonly string[] = [
   'account_name',
   'tag_name',
   'custom_name',
-  'user_name',
 
   // Location
   'street',
@@ -70,10 +69,28 @@ export const BLACKLISTED_PROPERTIES: readonly string[] = [
 ] as const;
 
 /**
+ * Whitelisted user identity properties that are allowed for user identification
+ * These are exempt from blacklist checks when setting user properties
+ */
+export const USER_IDENTITY_WHITELIST: readonly string[] = [
+  'user_id',
+  'user_email_hash',
+  'user_name', // Display name from Firebase Auth - allowed for user identification
+  'account_creation_date',
+] as const;
+
+/**
  * Check if a property key is safe to send to Mixpanel
  */
 export function isPropertySafe(key: string, value: any): boolean {
   const lowerKey = key.toLowerCase();
+
+  // Check whitelist first - user identity properties are always allowed
+  for (const whitelisted of USER_IDENTITY_WHITELIST) {
+    if (lowerKey === whitelisted.toLowerCase()) {
+      return true;
+    }
+  }
 
   // Check against blacklist
   for (const blacklisted of BLACKLISTED_PROPERTIES) {
