@@ -3,6 +3,22 @@ import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
+// Helper function to format large numbers to short form (6M, 55K, etc.)
+function formatNumberShort(value: number): string {
+  const abs = Math.abs(value)
+  
+  if (abs >= 1_000_000_000) {
+    return (value / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B'
+  }
+  if (abs >= 1_000_000) {
+    return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  }
+  if (abs >= 1_000) {
+    return (value / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  }
+  return value.toFixed(0)
+}
+
 interface StackedBarChartProps {
   title: string;
   data: Array<{
@@ -54,6 +70,9 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
     color: chartColors[idx % chartColors.length]
   }));
 
+  // Store isMobile in a variable that can be accessed in formatters
+  const mobile = isMobile;
+  
   const chartOptions: Highcharts.Options = {
     chart: {
       type: 'bar',
@@ -61,7 +80,10 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
       style: {
         fontFamily: 'Arial, sans-serif'
       },
-      height: Math.max(300, data.length * 40 + 100)
+      height: Math.max(300, data.length * 40 + 100),
+      // On mobile, minimize margins and put labels inside chart
+      marginLeft: mobile ? 10 : undefined,
+      marginRight: mobile ? 10 : undefined
     },
     credits: {
       enabled: false
@@ -71,16 +93,34 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
       align: 'left',
       style: {
         color: 'white',
-        fontSize: '18px',
+        fontSize: mobile ? '16px' : '18px',
         fontWeight: 'normal'
       }
     },
     xAxis: {
       categories: data.map(item => getSymbolName ? getSymbolName(item.symbol) : item.name),
       labels: {
+        enabled: true,
+        align: mobile ? 'left' : 'right',
+        x: mobile ? 10 : -5,  // Position inside chart on mobile, slight offset on desktop
         style: {
-          color: 'white',
-          fontSize: isMobile ? '11px' : '13px'
+          color: '#e5e7eb',
+          fontSize: mobile ? '10px' : '13px',
+          fontWeight: '500'
+        },
+        // Add background for better readability when labels are inside chart (mobile)
+        ...(mobile ? {
+          useHTML: true
+        } as any : {}),
+        formatter: function() {
+          const value = this.value as string;
+          
+          // On mobile, wrap in a span with background for better visibility inside chart
+          if (mobile) {
+            return `<span style="background-color: rgba(31, 41, 55, 0.8); padding: 3px 6px; border-radius: 3px; display: inline-block; white-space: nowrap;">${value}</span>`;
+          }
+          
+          return value;
         }
       },
       gridLineColor: '#374151',
@@ -89,22 +129,26 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
     yAxis: {
       min: 0,
       title: {
-        text: hideValues ? 'Percentage (%)' : `Value (${baseCurrency})`,
+        text: mobile ? undefined : (hideValues ? 'Percentage (%)' : `Value (${baseCurrency})`),
         style: {
           color: 'white'
         }
       },
       labels: {
+        enabled: true,  // Always show y-axis labels
+        align: mobile ? 'left' : 'right',
+        x: mobile ? 10 : 0,
+        y: 4,
         style: {
-          color: 'white'
+          color: '#e5e7eb',
+          fontSize: mobile ? '10px' : '11px',
+          fontWeight: '500'
         },
         formatter: function() {
           if (hideValues) {
             return this.value + '%';
           }
-          return new Intl.NumberFormat('en-US', {
-            maximumFractionDigits: 0
-          }).format(this.value as number);
+          return formatNumberShort(this.value as number);
         }
       },
       gridLineColor: '#374151',
@@ -112,9 +156,13 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
     },
     legend: {
       enabled: true,
+      align: mobile ? 'center' : 'center',
+      verticalAlign: mobile ? 'bottom' : 'bottom',
+      layout: mobile ? 'horizontal' : 'horizontal',
       itemStyle: {
         color: 'white',
-        fontWeight: 'normal'
+        fontWeight: 'normal',
+        fontSize: mobile ? '11px' : '12px'
       },
       itemHoverStyle: {
         color: 'yellow'
@@ -133,10 +181,15 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
         const pointIndex = this.point?.index ?? this.x;
         const holding = data[pointIndex];
         
+        // Use short format on mobile, detailed format on desktop
+        const formatValue = (val: number) => mobile 
+          ? formatNumberShort(val)
+          : new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
+        
         let tooltipHtml = `<div style="padding: 8px;"><b>${getSymbolName ? getSymbolName(holding.symbol) : holding.name}</b><br/>`;
         
         if (!hideValues) {
-          tooltipHtml += `Total Value: <b>${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(holding.value)} ${baseCurrency}</b><br/><br/>`;
+          tooltipHtml += `Total Value: <b>${formatValue(holding.value)} ${baseCurrency}</b><br/><br/>`;
         }
         
         tooltipHtml += '<table>';
@@ -150,7 +203,7 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
             tooltipHtml += `<td style="padding-right: 8px;"><span style="color: ${color}">●</span> ${category}:</td>`;
             tooltipHtml += `<td style="text-align: right;"><b>${(weight * 100).toFixed(1)}%</b></td>`;
             if (!hideValues) {
-              tooltipHtml += `<td style="text-align: right; padding-left: 8px;">(${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(weightedValue)} ${baseCurrency})</td>`;
+              tooltipHtml += `<td style="text-align: right; padding-left: 8px;">(${formatValue(weightedValue)} ${baseCurrency})</td>`;
             }
             tooltipHtml += `</tr>`;
           }
@@ -165,7 +218,10 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
         stacking: 'normal',
         dataLabels: {
           enabled: false
-        }
+        },
+        borderWidth: 0,  // Remove white border around bars
+        groupPadding: 0.1,
+        pointPadding: 0.05
       }
     },
     series: series as any
