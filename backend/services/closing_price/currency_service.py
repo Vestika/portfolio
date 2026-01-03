@@ -230,6 +230,120 @@ class CurrencyService:
             logger.error(f"Error getting currency info for {from_currency}/{to_currency}: {e}")
             return None
 
+    async def get_batch_exchange_rates(
+        self, 
+        currency_pairs: list[tuple[str, str]]
+    ) -> Dict[str, float]:
+        """
+        Get exchange rates for multiple currency pairs in a batch.
+        
+        Optimized to minimize API calls by:
+        1. First checking all rates in the live cache
+        2. Grouping missing rates by from_currency to minimize API calls
+        3. Fetching from API only once per unique from_currency
+        
+        Args:
+            currency_pairs: List of (from_currency, to_currency) tuples
+            Example: [("USD", "ILS"), ("GBP", "ILS"), ("EUR", "ILS")]
+            
+        Returns:
+            Dictionary mapping "FROM/TO" to exchange rate
+            Example: {"USD/ILS": 3.5, "GBP/ILS": 4.2, "EUR/ILS": 3.8}
+        """
+        try:
+            if not currency_pairs:
+                return {}
+            
+            result: Dict[str, float] = {}
+            missing_pairs: list[tuple[str, str]] = []
+            
+            # Step 1: Check live cache for all pairs (fast path)
+            for from_curr, to_curr in currency_pairs:
+                # Same currency = 1.0
+                if from_curr.upper() == to_curr.upper():
+                    result[f"{from_curr.upper()}/{to_curr.upper()}"] = 1.0
+                    continue
+                
+                fx_symbol = self._get_fx_symbol(from_curr, to_curr)
+                cached_rate = self._get_from_live_cache(fx_symbol)
+                
+                if cached_rate is not None:
+                    result[f"{from_curr.upper()}/{to_curr.upper()}"] = cached_rate
+                else:
+                    missing_pairs.append((from_curr.upper(), to_curr.upper()))
+            
+            if not missing_pairs:
+                logger.info(f"[BATCH FX] All {len(result)} rates found in cache")
+                return result
+            
+            logger.info(f"[BATCH FX] {len(result)} cached, {len(missing_pairs)} need API fetch")
+            
+            # Step 2: Group by from_currency to minimize API calls
+            # Each API call returns all rates for a given base currency
+            from_currencies_needed = set(pair[0] for pair in missing_pairs)
+            
+            for from_curr in from_currencies_needed:
+                try:
+                    # Fetch all rates for this from_currency
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(
+                            f"{self.base_url}/{from_curr}",
+                            timeout=self.timeout
+                        )
+                        response.raise_for_status()
+                        
+                        data = response.json()
+                        rates = data.get("rates", {})
+                        
+                        # Fill in all needed pairs with this from_currency
+                        for frm, to in missing_pairs:
+                            if frm == from_curr and to in rates:
+                                rate = float(rates[to])
+                                result[f"{frm}/{to}"] = rate
+                                
+                                # Cache the result
+                                fx_symbol = self._get_fx_symbol(frm, to)
+                                self._update_live_cache(fx_symbol, rate, to)
+                                
+                except Exception as e:
+                    logger.warning(f"[BATCH FX] Failed to fetch rates for {from_curr}: {e}")
+            
+            logger.info(f"[BATCH FX] Retrieved {len(result)} exchange rates total")
+            return result
+            
+        except Exception as e:
+            logger.error(f"[BATCH FX] Error: {e}")
+            return {}
+
+    def get_batch_rates_from_cache(self, currencies: list[str], to_currency: str) -> Dict[str, float]:
+        """
+        Get exchange rates from cache only (synchronous, no API calls).
+        
+        Useful for the fast path when you know rates should be cached.
+        
+        Args:
+            currencies: List of source currencies (e.g., ["USD", "GBP", "EUR"])
+            to_currency: Target currency (e.g., "ILS")
+            
+        Returns:
+            Dictionary mapping currency to exchange rate
+            Example: {"USD": 3.5, "GBP": 4.2, "EUR": 3.8}
+        """
+        result: Dict[str, float] = {}
+        
+        for from_curr in currencies:
+            if from_curr.upper() == to_currency.upper():
+                result[from_curr.upper()] = 1.0
+                continue
+            
+            fx_symbol = self._get_fx_symbol(from_curr, to_currency)
+            cached_rate = self._get_from_live_cache(fx_symbol)
+            
+            if cached_rate is not None:
+                result[from_curr.upper()] = cached_rate
+        
+        return result
+
 
 # Global instance
 currency_service = CurrencyService() 

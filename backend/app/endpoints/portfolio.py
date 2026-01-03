@@ -24,6 +24,7 @@ from core.analytics_events import (
     build_account_properties
 )
 from models.portfolio import Portfolio
+from models.currency import Currency
 from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
@@ -32,6 +33,7 @@ from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
 from services.closing_price.price_manager import PriceManager
 from services.real_estate.pricing import get_real_estate_service
+from services.closing_price.batch_calculator import BatchCalculator
 
 # Create router for this module
 router = APIRouter()
@@ -475,72 +477,103 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         logger.warning("[COLLECT PRICES CACHED] No valid portfolio found")
         return global_current_prices, global_historical_prices
     
-    # Step 1: Calculate current prices (fast - no API calls)
+    # Step 1: Calculate current prices using BATCH approach (fast - single DB query)
     current_prices_start = time.time()
     symbol_securities = {}
     
     # Define benchmark symbols
     benchmark_symbols_list = ['SPY']
     
+    # First, collect all securities and their currencies
     for symbol in all_symbols:
-        # Find the security from any portfolio first
-        security = None
         for doc in portfolio_docs:
             try:
                 portfolio = Portfolio.from_dict(doc)
                 if symbol in portfolio.securities:
-                    security = portfolio.securities[symbol]
+                    symbol_securities[symbol] = portfolio.securities[symbol]
                     break
             except:
                 continue
+    
+    # Use batch calculator for efficient price/currency calculation
+    if symbol_securities:
+        base_currency = first_portfolio.base_currency.value if hasattr(first_portfolio.base_currency, 'value') else str(first_portfolio.base_currency)
         
-        if security:
-            # Calculate current price using the normal security processing
-            price_info = first_calculator.calc_holding_value(security, 1)
+        # Extract currency info for batch calculator
+        symbol_currencies = {
+            symbol: (sec.currency.value if hasattr(sec.currency, 'value') else str(sec.currency))
+            for symbol, sec in symbol_securities.items()
+        }
+        
+        # Get fallback prices from portfolio config
+        fallback_prices = first_portfolio.unit_prices if first_portfolio.unit_prices else {}
+        
+        # Initialize batch calculator with all symbols at once
+        batch_calc = BatchCalculator(base_currency=base_currency)
+        await batch_calc.initialize(
+            symbols=list(symbol_securities.keys()),
+            symbol_currencies=symbol_currencies,
+            fallback_prices=fallback_prices
+        )
+        
+        # Build holdings list for batch calculation (1 unit each for price lookup)
+        holdings_for_calc = [
+            {"symbol": symbol, "units": 1.0, "currency": symbol_currencies.get(symbol, "USD")}
+            for symbol in symbol_securities.keys()
+        ]
+        
+        # Calculate all values in one vectorized operation
+        batch_results = batch_calc.calculate_holding_values(holdings_for_calc)
+        
+        # Convert batch results to global_current_prices format
+        for result in batch_results:
+            symbol = result["symbol"]
+            security = symbol_securities.get(symbol)
             
             global_current_prices[symbol] = {
-                "price": price_info["value"],
-                "original_price": price_info["unit_price"],
-                "currency": security.currency.value,
+                "price": result["value"],  # Price in base currency
+                "original_price": result["unit_price"],  # Price in original currency
+                "currency": result["currency"],
                 "last_updated": datetime.utcnow().isoformat(),
                 "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
             }
             
-            # Skip historical for custom holdings
-            if security.is_custom if hasattr(security, 'is_custom') else False:
+            # Mark custom holdings for historical skip
+            if security and (security.is_custom if hasattr(security, 'is_custom') else False):
                 global_historical_prices[symbol] = []
-            else:
-                symbol_securities[symbol] = security
-        else:
-            # Handle benchmark symbols that are NOT in portfolios (e.g., SPY as benchmark only)
-            if symbol in benchmark_symbols_list:
-                try:
-                    from services.closing_price.service import get_global_service
-                    service = get_global_service()
-                    price_response = await service.get_price(symbol)
-                    if price_response:
-                        # Convert benchmark from USD to base currency
-                        benchmark_price_usd = price_response.price
-                        usd_to_base = 1.0
-                        
-                        # Get USD exchange rate if base currency is not USD
-                        if first_calculator:
-                            try:
-                                usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
-                            except:
-                                pass
-                        
-                        global_current_prices[symbol] = {
-                            "price": benchmark_price_usd * usd_to_base,
-                            "original_price": benchmark_price_usd,
-                            "currency": "USD",
-                            "last_updated": datetime.utcnow().isoformat()
-                        }
-                except Exception as e:
-                    logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
+        
+        logger.info(f"🚀 [BATCH CALC] Calculated {len(batch_results)} prices using batch algorithm")
+    
+    # Handle benchmark symbols that are NOT in portfolios (e.g., SPY as benchmark only)
+    for symbol in benchmark_symbols_list:
+        if symbol not in global_current_prices:
+            try:
+                from services.closing_price.service import get_global_service
+                service = get_global_service()
+                price_response = await service.get_price(symbol)
+                if price_response:
+                    # Convert benchmark from USD to base currency
+                    benchmark_price_usd = price_response.price
+                    usd_to_base = 1.0
+                    
+                    # Get USD exchange rate if base currency is not USD
+                    if first_calculator:
+                        try:
+                            usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
+                        except:
+                            pass
+                    
+                    global_current_prices[symbol] = {
+                        "price": benchmark_price_usd * usd_to_base,
+                        "original_price": benchmark_price_usd,
+                        "currency": "USD",
+                        "last_updated": datetime.utcnow().isoformat()
+                    }
+            except Exception as e:
+                logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
     
     current_prices_time = time.time() - current_prices_start
-    logger.info(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s")
+    logger.info(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s (batch mode)")
 
     # Step 1b: Update real estate prices based on location (fetch fresh estimates)
     try:

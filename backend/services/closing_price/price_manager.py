@@ -2,7 +2,7 @@ import json
 import httpx
 from datetime import datetime, timedelta
 from loguru import logger
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
@@ -64,6 +64,137 @@ class PriceManager:
             if price:
                 results.append(price)
         return results
+
+    async def get_batch_prices(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get prices for multiple symbols in a single batch query (FAST!).
+        
+        This method fetches all prices in one MongoDB query and one Redis multi-get,
+        avoiding the N+1 query problem of fetching one symbol at a time.
+        
+        Args:
+            symbols: List of symbols to fetch
+            
+        Returns:
+            Dictionary mapping symbol to price data:
+            {
+                "AAPL": {"price": 150.0, "currency": "USD", "fetched_at": datetime, ...},
+                "MSFT": {"price": 425.0, "currency": "USD", "fetched_at": datetime, ...},
+            }
+        """
+        try:
+            await ensure_connections()
+            start_time = datetime.utcnow()
+            
+            if not symbols:
+                return {}
+            
+            result: Dict[str, Dict[str, Any]] = {}
+            symbols_to_fetch_from_db: List[str] = []
+            
+            # Step 1: Try Redis cache first (batch mget)
+            if cache.redis_client:
+                try:
+                    cache_keys = [f"price:{symbol}" for symbol in symbols]
+                    cached_values = await cache.redis_client.mget(cache_keys)
+                    
+                    for symbol, cached_data in zip(symbols, cached_values):
+                        if cached_data:
+                            try:
+                                data = json.loads(cached_data)
+                                result[symbol] = data
+                            except json.JSONDecodeError:
+                                symbols_to_fetch_from_db.append(symbol)
+                        else:
+                            symbols_to_fetch_from_db.append(symbol)
+                except Exception as e:
+                    logger.warning(f"[BATCH PRICES] Redis mget failed: {e}")
+                    symbols_to_fetch_from_db = list(symbols)
+            else:
+                symbols_to_fetch_from_db = list(symbols)
+            
+            # Step 2: Fetch remaining from MongoDB (single query for all)
+            if symbols_to_fetch_from_db:
+                try:
+                    cursor = db.database.stock_prices.find(
+                        {"symbol": {"$in": symbols_to_fetch_from_db}}
+                    )
+                    db_prices = await cursor.to_list(length=None)
+                    
+                    for doc in db_prices:
+                        symbol = doc["symbol"]
+                        if self._is_price_fresh(doc.get("fetched_at", datetime.utcnow())):
+                            result[symbol] = {
+                                "symbol": symbol,
+                                "price": doc.get("price"),
+                                "currency": doc.get("currency", "USD"),
+                                "market": doc.get("market", "US"),
+                                "date": doc.get("date"),
+                                "fetched_at": doc.get("fetched_at"),
+                                "change_percent": doc.get("change_percent", 0.0)
+                            }
+                except Exception as e:
+                    logger.error(f"[BATCH PRICES] MongoDB query failed: {e}")
+            
+            elapsed = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"[BATCH PRICES] Retrieved {len(result)}/{len(symbols)} prices in {elapsed:.3f}s")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"[BATCH PRICES] Error: {e}")
+            return {}
+
+    async def get_batch_prices_with_fallback(
+        self, 
+        symbols: List[str],
+        fallback_prices: Dict[str, float] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Get batch prices with fallback for missing symbols.
+        
+        First tries the fast batch query, then falls back to individual
+        fetches for any missing symbols.
+        
+        Args:
+            symbols: List of symbols to fetch
+            fallback_prices: Optional static fallback prices
+            
+        Returns:
+            Dictionary mapping symbol to price data
+        """
+        # Get batch prices first (fast path)
+        result = await self.get_batch_prices(symbols)
+        
+        # Find missing symbols
+        missing_symbols = [s for s in symbols if s not in result]
+        
+        if missing_symbols:
+            logger.info(f"[BATCH PRICES] Fetching {len(missing_symbols)} missing symbols individually")
+            
+            # Fetch missing symbols individually (slow path, but necessary for API fetches)
+            for symbol in missing_symbols[:10]:  # Limit to avoid too many API calls
+                try:
+                    price = await self.get_price(symbol)
+                    if price:
+                        result[symbol] = price.dict()
+                except Exception as e:
+                    logger.warning(f"[BATCH PRICES] Failed to fetch {symbol}: {e}")
+                    
+                    # Use fallback if provided
+                    if fallback_prices and symbol in fallback_prices:
+                        result[symbol] = {
+                            "symbol": symbol,
+                            "price": fallback_prices[symbol],
+                            "currency": "USD",
+                            "market": "US",
+                            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                            "fetched_at": datetime.utcnow(),
+                            "change_percent": 0.0,
+                            "is_fallback": True
+                        }
+        
+        return result
 
     async def get_logo(self, symbol: str) -> str | None:
         """Get company logo URL using the logo cache service"""
