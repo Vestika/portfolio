@@ -11,7 +11,8 @@ import PortfolioAPI from '../utils/portfolio-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
 import { useMixpanel } from '../contexts/MixpanelContext';
 import PortfolioSelector from '../PortfolioSelector';
-import { SubtitleBar, MetricChip } from './common/SubtitleBar';
+import { SubtitleBar, MetricChip } from './subtitle-bar/SubtitleBar';
+import { TitleBar } from './title-bar';
 import PieChart from '../PieChart';
 import BarChart from '../BarChart';
 import StackedBarChart from './StackedBarChart';
@@ -1099,25 +1100,22 @@ export function ManageTagsView() {
   return (
     <>
       {/* Header Section */}
-      <div className="sticky z-30 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700" style={{ top: '37px' }}>
-        <div className="container mx-auto flex justify-between items-start">
-          <div className="flex-1">
-            <PortfolioSelector
-              portfolios={availablePortfolios}
-              selectedPortfolioId={selectedPortfolioId}
-              onPortfolioChange={setSelectedPortfolioId}
-              userName={portfolioMetadata.user_name}
-              onPortfolioCreated={handlePortfolioCreated}
-              onPortfolioDeleted={handlePortfolioDeleted}
-              onDefaultPortfolioSet={handleDefaultPortfolioSet}
-              titleSuffix="Tags"
-            />
-            <p className="text-sm text-gray-400 mt-0">
-              Manage custom tags for your holdings
-            </p>
-          </div>
-          
-          <div className="hidden md:flex items-center space-x-4">
+      <TitleBar
+        leftContent={
+          <PortfolioSelector
+            portfolios={availablePortfolios}
+            selectedPortfolioId={selectedPortfolioId}
+            onPortfolioChange={setSelectedPortfolioId}
+            userName={portfolioMetadata.user_name}
+            onPortfolioCreated={handlePortfolioCreated}
+            onPortfolioDeleted={handlePortfolioDeleted}
+            onDefaultPortfolioSet={handleDefaultPortfolioSet}
+            titleSuffix="Tags"
+          />
+        }
+        subtitle="Manage custom tags for your holdings"
+        rightContent={
+          <>
             <button 
               className="flex items-center space-x-2 pl-3 pr-4 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group h-[44px]"
               onClick={() => setDefinitionManager({ isOpen: true })}
@@ -1132,9 +1130,9 @@ export function ManageTagsView() {
             >
               <HelpCircle size={20} />
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Metrics Bar */}
       <SubtitleBar topOffset="114px">

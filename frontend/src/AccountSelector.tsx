@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { cn } from "@/lib/utils";
+import { TitleBar } from '@/components/title-bar';
 import {
   Dialog,
   DialogContent,
@@ -1137,9 +1138,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const selectedAccountsCount = accounts.filter(account => account.isSelected).length;
 
   return (
-    <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
-      <div className="container mx-auto flex justify-between items-start">
-        <div className="flex-1">
+    <>
+      <TitleBar
+        leftContent={
           <PortfolioSelector
             portfolios={availableFiles}
             selectedPortfolioId={selectedFile}
@@ -1149,24 +1150,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             onPortfolioDeleted={onPortfolioDeleted}
             onDefaultPortfolioSet={onDefaultPortfolioSet}
           />
-          <p className="text-sm text-gray-400 mt-0">
-            Showing {selectedAccountsCount} of {accounts.length} accounts
-          </p>
-        </div>
-
-        {/* Hamburger Menu for Mobile */}
-        <div className="md:hidden">
-          <HamburgerMenu
-            accounts={accounts}
-            toggleAccountSelection={toggleAccountSelection}
-            isValueVisible={isValueVisible}
-            toggleValueVisibility={toggleValueVisibility}
-            setShowAddAccountModal={setShowAddAccountModal}
-          />
-        </div>
-
-        {/* Full Header for Desktop */}
-        <div className="hidden md:flex items-center space-x-4">
+        }
+        subtitle={`Showing ${selectedAccountsCount} of ${accounts.length} accounts`}
+        rightContent={
+          <>
           <div className="flex space-x-2">
             {accounts.map(account => {
               const syncStatus = autoSyncStatuses[account.account_name];
@@ -1298,8 +1285,19 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           >
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
-
-        </div>
+          </>
+        }
+      />
+      
+      {/* Hamburger Menu for Mobile - positioned absolutely over title bar */}
+      <div className="md:hidden fixed right-4 z-40" style={{ top: '48px' }}>
+        <HamburgerMenu
+          accounts={accounts}
+          toggleAccountSelection={toggleAccountSelection}
+          isValueVisible={isValueVisible}
+          toggleValueVisibility={toggleValueVisibility}
+          setShowAddAccountModal={setShowAddAccountModal}
+        />
       </div>
       
       {/* Add Account Modal */}
@@ -2492,7 +2490,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         initialUnits={customHoldingContext?.initialUnits}
         initialName={customHoldingContext?.initialName}
       />
-    </div>
+    </>
   );
 };
 

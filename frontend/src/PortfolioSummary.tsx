@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
 import api from './utils/api';
-import { SubtitleBar, MetricChip, SubtitleBarSpacer } from './components/common/SubtitleBar';
+import { SubtitleBar, MetricChip, SubtitleBarSpacer } from './components/subtitle-bar/SubtitleBar.tsx';
 interface CashHoldings {
   [currency: string]: number;
 }
