@@ -7,10 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from '../contexts/AuthContext';
-import api from '../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
+import api from '../../utils/api';
 import GoogleProfilePicture from './GoogleProfilePicture';
-import { useUserProfile } from '../contexts/UserProfileContext';
+import { useUserProfile } from '../../contexts/UserProfileContext';
 
 interface ProfileSidebarProps {
   isOpen: boolean;

@@ -9,7 +9,7 @@ const DefaultProfileIcon: React.FC<{ size: number }> = ({ size }) => {
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-gray-400"
+      className="text-white"
     >
       <path
         d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z"
@@ -47,7 +47,7 @@ const GoogleProfilePicture: React.FC<GoogleProfilePictureProps> = ({
   };
 
   const config = sizeConfig[size];
-  const containerClasses = `${config.container} rounded-full overflow-hidden relative ${className}`;
+  const containerClasses = `${config.container} rounded-full overflow-hidden relative flex items-center justify-center ${className}`;
 
   // Helper function to get fallback URLs if the enhanced URL fails
   const getFallbackURLs = (url: string, targetSize: number): string[] => {
@@ -94,6 +94,8 @@ const GoogleProfilePicture: React.FC<GoogleProfilePictureProps> = ({
             key={currentUrlIndex} // Force re-render when URL changes
             src={fallbackURLs[currentUrlIndex]}
             alt={displayName || 'Profile'}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
             className="absolute inset-0 w-full h-full object-cover object-center"
             style={{ 
               objectFit: 'cover',
@@ -103,10 +105,8 @@ const GoogleProfilePicture: React.FC<GoogleProfilePictureProps> = ({
             onLoad={handleImageLoad}
           />
         )}
-        {showFallback && (
-          <div className={`absolute inset-0 flex items-center justify-center ${imageError ? '' : 'hidden'}`}>
-            <DefaultProfileIcon size={config.icon} />
-          </div>
+        {showFallback && imageError && (
+          <DefaultProfileIcon size={config.icon} />
         )}
       </div>
     );
@@ -116,9 +116,7 @@ const GoogleProfilePicture: React.FC<GoogleProfilePictureProps> = ({
   if (showFallback) {
     return (
       <div className={containerClasses}>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <DefaultProfileIcon size={config.icon} />
-        </div>
+        <DefaultProfileIcon size={config.icon} />
       </div>
     );
   }
