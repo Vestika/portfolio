@@ -3,6 +3,7 @@ Authentication functionality using Firebase and MongoDB
 """
 from fastapi import Depends, HTTPException, Request
 from pymongo.asynchronous.database import AsyncDatabase
+from loguru import logger
 from models.user_model import User
 from services.telegram.service import get_telegram_service
 from core.database import get_db
@@ -68,7 +69,7 @@ async def get_current_user(
                     # Also identify the user in Mixpanel
                     analytics.identify_user(new_user)
                 except Exception as e:
-                    print(f"⚠️ [AUTH] Failed to track user registration: {e}")
+                    logger.warning(f"⚠️ [AUTH] Failed to track user registration: {e}")
 
                 # Best-effort Telegram notification for new user creation
                 try:
@@ -77,7 +78,7 @@ async def get_current_user(
                         f"👤 New user created\nName: {new_user.name}\nEmail: {new_user.email}\nUID: {new_user.firebase_uid}"
                     )
                 except Exception as e:
-                    print(f"⚠️ [AUTH] Failed to send Telegram new-user notification: {e}")
+                    logger.warning(f"⚠️ [AUTH] Failed to send Telegram new-user notification: {e}")
                 return new_user
         else:
             # Another request created the user, just fetch and return it

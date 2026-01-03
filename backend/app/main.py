@@ -3,7 +3,34 @@ Main FastAPI application with endpoints organized in separate modules
 """
 import logging
 from fastapi import FastAPI
+from loguru import logger
 from fastapi.middleware.cors import CORSMiddleware
+
+# Intercept handler to redirect standard logging to loguru
+class InterceptHandler(logging.Handler):
+    def emit(self, record):
+        # Get corresponding Loguru level if it exists
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Find caller from where originated the logged message
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+# Setup intercept handler for uvicorn logs
+logging.root.handlers = [InterceptHandler()]
+logging.root.setLevel(logging.INFO)
+
+for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+    logging_logger = logging.getLogger(logger_name)
+    logging_logger.handlers = [InterceptHandler()]
+    logging_logger.setLevel(logging.INFO)
 from fastapi.staticfiles import StaticFiles
 
 from core.database import db_manager
@@ -28,8 +55,6 @@ from .endpoints.feedback import router as feedback_router
 from .endpoints.extension import router as extension_router
 from .endpoints.tax_planner import router as tax_planner_router
 from .endpoints.cash_flow import router as cash_flow_router
-
-logger = logging.Logger(__name__)
 
 # Get the global closing price service
 closing_price_service = get_global_service()

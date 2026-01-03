@@ -1,11 +1,9 @@
-import logging
+from loguru import logger
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from bson import ObjectId
 
 from core.database import db_manager
-
-logger = logging.getLogger(__name__)
 
 class ChatManager:
     """Manages chat sessions and conversation history using MongoDB"""

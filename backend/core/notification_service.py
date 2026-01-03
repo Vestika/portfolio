@@ -12,9 +12,7 @@ from models.notification_model import (
     substitute_variables, extract_variables
 )
 from core.database import db_manager
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class NotificationService:

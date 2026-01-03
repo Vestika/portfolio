@@ -1,5 +1,5 @@
 """Market data endpoints"""
-import logging
+from loguru import logger
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,8 +13,6 @@ from services.closing_price.live_price_cache import get_live_price_cache
 
 # Create router for this module
 router = APIRouter()
-
-logger = logging.Logger(__name__)
 
 
 # Request models

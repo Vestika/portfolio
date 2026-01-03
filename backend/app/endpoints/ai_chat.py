@@ -1,5 +1,5 @@
 """AI and chat endpoints"""
-import logging
+from loguru import logger
 import time
 from typing import Any, Optional
 from datetime import datetime
@@ -19,8 +19,6 @@ from .portfolio import get_or_create_calculator
 
 # Create router for this module
 router = APIRouter()
-
-logger = logging.Logger(__name__)
 
 # Request/Response models
 class ChatMessageRequest(BaseModel):
