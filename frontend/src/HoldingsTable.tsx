@@ -326,6 +326,7 @@ const MiniChart: React.FC<{
   return (
     <div 
       data-chart-area
+      onClick={(e) => e.stopPropagation()}
       onMouseMove={(e) => {
         if (!data || data.length === 0) return;
         
@@ -1121,7 +1122,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           
           return (
             <Select key={dropdownKey} onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
-              <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
+              <SelectTrigger 
+                className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Plus size={14} className="text-gray-400 hover:text-blue-400" />
               </SelectTrigger>
             <SelectContent className="bg-gray-800 border-gray-600/30 backdrop-blur-sm shadow-lg">
