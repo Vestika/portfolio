@@ -485,36 +485,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     benchmark_symbols_list = ['SPY']
     
     for symbol in all_symbols:
-        # Handle benchmark symbols specially (they're not in portfolios)
-        if symbol in benchmark_symbols_list:
-            # Fetch current price for benchmark
-            try:
-                from services.closing_price.service import get_global_service
-                service = get_global_service()
-                price_response = await service.get_price(symbol)
-                if price_response:
-                    # Convert SPY from USD to base currency
-                    spy_price_usd = price_response.price
-                    usd_to_base = 1.0
-                    
-                    # Get USD exchange rate if base currency is not USD
-                    if first_calculator:
-                        try:
-                            usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
-                        except:
-                            pass
-                    
-                    global_current_prices[symbol] = {
-                        "price": spy_price_usd * usd_to_base,
-                        "original_price": spy_price_usd,
-                        "currency": "USD",
-                        "last_updated": datetime.utcnow().isoformat()
-                    }
-            except Exception as e:
-                logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
-            continue
-        
-        # Find the security from any portfolio
+        # Find the security from any portfolio first
         security = None
         for doc in portfolio_docs:
             try:
@@ -526,7 +497,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                 continue
         
         if security:
-            # Calculate current price
+            # Calculate current price using the normal security processing
             price_info = first_calculator.calc_holding_value(security, 1)
             
             global_current_prices[symbol] = {
@@ -542,6 +513,33 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                 global_historical_prices[symbol] = []
             else:
                 symbol_securities[symbol] = security
+        else:
+            # Handle benchmark symbols that are NOT in portfolios (e.g., SPY as benchmark only)
+            if symbol in benchmark_symbols_list:
+                try:
+                    from services.closing_price.service import get_global_service
+                    service = get_global_service()
+                    price_response = await service.get_price(symbol)
+                    if price_response:
+                        # Convert benchmark from USD to base currency
+                        benchmark_price_usd = price_response.price
+                        usd_to_base = 1.0
+                        
+                        # Get USD exchange rate if base currency is not USD
+                        if first_calculator:
+                            try:
+                                usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
+                            except:
+                                pass
+                        
+                        global_current_prices[symbol] = {
+                            "price": benchmark_price_usd * usd_to_base,
+                            "original_price": benchmark_price_usd,
+                            "currency": "USD",
+                            "last_updated": datetime.utcnow().isoformat()
+                        }
+                except Exception as e:
+                    logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
     
     current_prices_time = time.time() - current_prices_start
     print(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s")
