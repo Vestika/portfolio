@@ -205,11 +205,11 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
-              <h1 className="text-2xl font-bold flex items-center">
-                {userName}'s {titleSuffix}
+              <h1 className="text-2xl font-bold flex items-center truncate md:max-w-none max-w-[calc(100vw-140px)]">
+                <span className="truncate">{userName}'s {titleSuffix}</span>
                 <ChevronDown
                   size={16}
-                  className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"
+                  className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80 flex-shrink-0"
                 />
               </h1>
             </Button>
@@ -302,11 +302,11 @@ const PortfolioSelector: React.FC<PortfolioSelectorProps> = ({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-800 hover:text-blue-400 cursor-pointer">
-            <h1 className="text-2xl font-bold flex items-center">
-              {userName}'s {titleSuffix}
+            <h1 className="text-2xl font-bold flex items-center truncate md:max-w-none max-w-[calc(100vw-140px)]">
+              <span className="truncate">{userName}'s {titleSuffix}</span>
               <ChevronDown
                 size={16}
-                className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80"
+                className="ml-1 mb-1 opacity-40 transition-all duration-200 hover:opacity-80 flex-shrink-0"
               />
             </h1>
           </Button>
