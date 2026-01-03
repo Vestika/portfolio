@@ -2,13 +2,11 @@
 Earnings calendar service using Finnhub API
 """
 import finnhub
-import logging
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional
+from loguru import logger
 
 from config import settings
-
-logger = logging.getLogger(__name__)
 
 class EarningsService:
     def __init__(self):

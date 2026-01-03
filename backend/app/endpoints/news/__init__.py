@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from loguru import logger
 
 from core.auth import get_current_user
 from core.database import db_manager
@@ -68,8 +69,8 @@ async def stream_news_feed(user=Depends(get_current_user)):
                 seen.add(symbol.lower())
                 keywords.append(symbol)
             
-            print(f"📰 [NEWS STREAM] Total holdings: {len(holdings_ctx)}")
-            print(f"📰 [NEWS STREAM] Using all {len(keywords)} symbol keywords")
+            logger.info(f"📰 [NEWS STREAM] Total holdings: {len(holdings_ctx)}")
+            logger.info(f"📰 [NEWS STREAM] Using all {len(keywords)} symbol keywords")
             
             # Send keywords immediately at the start
             yield f"data: {json.dumps({'keywords': keywords})}\n\n"
@@ -86,7 +87,7 @@ async def stream_news_feed(user=Depends(get_current_user)):
             
             for keyword in keywords:
                 try:
-                    print(f"  📡 [NEWS STREAM] Fetching for keyword: {keyword}")
+                    logger.info(f"  📡 [NEWS STREAM] Fetching for keyword: {keyword}")
                     articles = client.fetch_by_keywords([keyword])
                     
                     # Limit to first 3 articles per keyword and sort by date
@@ -125,25 +126,25 @@ async def stream_news_feed(user=Depends(get_current_user)):
                         
                         # Send article to client
                         yield f"data: {json.dumps(item)}\n\n"
-                        print(f"  ✅ [NEWS STREAM] Sent article: {item['title'][:50]}")
+                        logger.info(f"  ✅ [NEWS STREAM] Sent article: {item['title'][:50]}")
                         
                 except Exception as e:
-                    print(f"  ⚠️ [NEWS STREAM] Error with keyword {keyword}: {e}")
+                    logger.warning(f"  ⚠️ [NEWS STREAM] Error with keyword {keyword}: {e}")
                     continue
             
             # Send completion signal
             yield f"data: {json.dumps({'done': True})}\n\n"
-            print(f"📰 [NEWS STREAM] Stream completed. Sent {len(seen_article_ids)} unique articles")
+            logger.info(f"📰 [NEWS STREAM] Stream completed. Sent {len(seen_article_ids)} unique articles")
             
         except Exception as e:
-            print(f"❌ [NEWS STREAM] Error: {e}")
+            logger.error(f"❌ [NEWS STREAM] Error: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @router.post("/api/news/feed")
 async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
-    print(f"📰 [NEWS] Starting news feed fetch for user {user.id}")
+    logger.info(f"📰 [NEWS] Starting news feed fetch for user {user.id}")
     # Only fetch news from the last week
     end_dt = datetime.utcnow()
     start_dt = end_dt - timedelta(days=7)
@@ -187,7 +188,7 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
     if len(keywords) > 5:
         keywords = keywords[:5]
     
-    print(f"📰 [NEWS] Fetching news with {len(keywords)} keywords: {keywords}")
+    logger.info(f"📰 [NEWS] Fetching news with {len(keywords)} keywords: {keywords}")
 
     # Add timeout to prevent infinite hangs (20 seconds max)
     try:
@@ -203,11 +204,11 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
             timeout=20.0
         )
     except asyncio.TimeoutError:
-        print(f"⚠️ [NEWS] Fetch timed out after 20 seconds")
+        logger.warning(f"⚠️ [NEWS] Fetch timed out after 20 seconds")
         # Return empty result on timeout rather than failing
         items = []
     except Exception as e:
-        print(f"❌ [NEWS] Error fetching news: {e}")
+        logger.error(f"❌ [NEWS] Error fetching news: {e}")
         items = []
 
     # Limit total results to 30 most recent articles
@@ -221,7 +222,7 @@ async def get_news_feed(req: NewsFeedRequest, user=Depends(get_current_user)):
     for item in items:
         item["symbol_logos"] = []  # Initialize empty
 
-    print(f"📰 [NEWS] Returning {len(items)} news items")
+    logger.info(f"📰 [NEWS] Returning {len(items)} news items")
     
     return {
         "items": items,

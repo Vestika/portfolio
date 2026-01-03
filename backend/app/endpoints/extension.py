@@ -1,5 +1,5 @@
 """Browser extension endpoints for portfolio data import"""
-import logging
+from loguru import logger
 import json
 import re
 import time
@@ -37,8 +37,6 @@ from models.extension_models import (
     ImportHoldingsResponse,
     AutoImportOptions,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

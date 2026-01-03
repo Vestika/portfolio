@@ -251,7 +251,7 @@ class LivePriceUpdaterService:
         return {"updated": updated, "errors": errors}
     
     async def _update_currencies(self, symbols: List[str]) -> Dict[str, int]:
-        """Update currency prices using currency service"""
+        """Update currency prices using currency service (in-memory cache only)"""
         updated = 0
         errors = 0
         
@@ -266,10 +266,13 @@ class LivePriceUpdaterService:
                     else:
                         currency_code = symbol
                     
-                    # Get rate to ILS (or USD, depending on your base currency)
-                    rate = await currency_service.get_exchange_rate(currency_code, "ILS")
+                    # Fetch fresh rate from API (bypass cache to ensure we get latest)
+                    rate = await currency_service._fetch_rate_primary(currency_code, "ILS")
+                    if rate is None:
+                        rate = await currency_service._fetch_rate_backup(currency_code, "ILS")
                     
                     if rate:
+                        # Update in-memory cache only (no MongoDB for exchange rates)
                         self.live_cache.set(
                             symbol=symbol,
                             price=rate,

@@ -3,6 +3,7 @@ from typing import Any, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from loguru import logger
 
 from core.auth import get_current_user
 from core.database import db_manager
@@ -89,7 +90,7 @@ async def update_user_settings(
     Update the user's settings.
     """
     try:
-        print(f"🔍 [SETTINGS UPDATE] Updating settings for user: {user.id}, data: {request}")
+        logger.info(f"🔍 [SETTINGS UPDATE] Updating settings for user: {user.id}, data: {request}")
         collection = db_manager.get_collection("user_settings")
         
         # Prepare update data (only include non-None values)

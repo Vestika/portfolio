@@ -1,12 +1,10 @@
-import logging
+from loguru import logger
 from datetime import datetime, timedelta
 from typing import Optional
 
 from core.database import db_manager
 from services.closing_price.stock_fetcher import FinnhubFetcher
 from config import settings
-
-logger = logging.getLogger(__name__)
 
 
 class LogoCacheService:
