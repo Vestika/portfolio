@@ -460,74 +460,12 @@ const App: React.FC = () => {
   // Show login screen if user is not authenticated
   if (!user) return <Login />;
 
-  // Handle /import/upload route - show upload page without portfolio context requirements
-  if (isUploadPage) {
-    return (
-      <NotificationProvider>
-        <UserProfileProvider>
-          <PopupManager />
-          <UploadView />
-        </UserProfileProvider>
-      </NotificationProvider>
-    );
-  }
-
-  // Handle /import route - show import page without portfolio context requirements
-  if (isImportPage) {
-    return (
-      <NotificationProvider>
-        <UserProfileProvider>
-          <PopupManager />
-          <ImportView />
-        </UserProfileProvider>
-      </NotificationProvider>
-    );
-  }
-
-  // Do not block UI during portfolio loading; show skeletons instead
+  // === ALL AUTHENTICATED ROUTES BELOW USE A SINGLE NotificationProvider ===
+  // This prevents duplicate API calls when navigating between routes
   
-  if (portfolioError) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
-          <div className="text-4xl mb-4">⚠️</div>
-          <h2 className="text-xl font-bold text-white mb-4">Portfolio Loading Error</h2>
-          <p className="text-gray-300 mb-6">{portfolioError}</p>
-          
-          <button
-            onClick={() => {
-              console.log('🔄 [APP] Retrying portfolio initialization');
-              initializeApp();
-            }}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-  
-  // Show generic loading screen during initial portfolio check
-  if (isLoading && !hasCheckedPortfolios && !portfolioError) {
-    return <LoadingScreen />;
-  }
-  
-  // Handle empty state when no portfolios exist
-  // Only show onboarding if data has loaded AND confirmed no portfolios exist
+  // Compute derived state needed for rendering decisions
   const showEmptyState = !isLoading && !portfolioError && allPortfoliosData && availablePortfolios.length === 0;
   
-  // Show onboarding flow for new users with no portfolios
-  if (showEmptyState) {
-    return (
-      <OnboardingFlow 
-        user={user} 
-        onPortfolioCreated={handlePortfolioCreated}
-      />
-    );
-  }
-  
-  // Create mock metadata for empty state to keep UI working
   const mockMetadata: PortfolioMetadata = {
     base_currency: 'USD',
     user_name: user?.displayName || user?.email || 'User',
@@ -555,10 +493,58 @@ const App: React.FC = () => {
     willShowPortfolioView: !!portfolioMetadata && !!portfolioData && !isLoading
   });
 
-  return (
-    <NotificationProvider>
-      <UserProfileProvider>
-        <PopupManager />
+  // Helper to render the appropriate content based on current state
+  const renderContent = () => {
+    // Handle /import/upload route
+    if (isUploadPage) {
+      return <UploadView />;
+    }
+
+    // Handle /import route
+    if (isImportPage) {
+      return <ImportView />;
+    }
+
+    // Handle error state
+    if (portfolioError) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <h2 className="text-xl font-bold text-white mb-4">Portfolio Loading Error</h2>
+            <p className="text-gray-300 mb-6">{portfolioError}</p>
+            
+            <button
+              onClick={() => {
+                console.log('🔄 [APP] Retrying portfolio initialization');
+                initializeApp();
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Show generic loading screen during initial portfolio check
+    if (isLoading && !hasCheckedPortfolios && !portfolioError) {
+      return <LoadingScreen />;
+    }
+    
+    // Show onboarding flow for new users with no portfolios
+    if (showEmptyState) {
+      return (
+        <OnboardingFlow 
+          user={user} 
+          onPortfolioCreated={handlePortfolioCreated}
+        />
+      );
+    }
+
+    // Main app content
+    return (
         <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
         {/* Top Bar Navigation */}
         <TopBar 
@@ -757,6 +743,15 @@ const App: React.FC = () => {
         isValueVisible={isValueVisible}
       />
       </div>
+    );
+  };
+
+  // Single NotificationProvider wrapping ALL authenticated routes
+  return (
+    <NotificationProvider>
+      <UserProfileProvider>
+        <PopupManager />
+        {renderContent()}
       </UserProfileProvider>
     </NotificationProvider>
   );

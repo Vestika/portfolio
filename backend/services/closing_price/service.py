@@ -1,5 +1,5 @@
 import asyncio
-import concurrent.futures
+import threading
 from typing import Optional, Dict, Any
 from loguru import logger
 
@@ -15,8 +15,12 @@ class ClosingPriceService:
         self.price_manager: Optional[PriceManager] = None
         self._initialized = False
         self._initialization_lock = asyncio.Lock()
-        self._event_loop = None
-        self._thread_pool = None
+        
+        # Persistent background thread for sync operations
+        self._sync_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._sync_thread: Optional[threading.Thread] = None
+        self._sync_initialized = False
+        self._sync_init_lock = threading.Lock()
     
     async def initialize(self) -> None:
         """Initialize the service (connect to databases, etc.)"""
@@ -184,54 +188,104 @@ class ClosingPriceService:
             logger.warning(f"Health check failed: {e}")
             return False
     
-    def _run_async_operation(self, coro):
+    def _ensure_sync_loop(self) -> None:
         """
-        Run an async operation, handling event loop creation and cleanup properly
+        Ensure the persistent background thread and event loop are running.
+        This loop stays alive for the lifetime of the service to avoid
+        repeated connect/disconnect cycles.
         """
-        try:
-            # Check if there's already a running event loop
-            try:
-                loop = asyncio.get_running_loop()
-                # If we're already in an event loop, run in a thread pool with its own event loop
-                def run_in_new_loop():
-                    # Create a new event loop for this thread
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        # Reset initialization state for this new loop
-                        self._initialized = False
-                        result = new_loop.run_until_complete(coro)
-                        return result
-                    finally:
-                        # Clean up connections before closing loop
-                        try:
-                            new_loop.run_until_complete(self.cleanup())
-                        except Exception as e:
-                            logger.warning(f"Error during cleanup in thread: {e}")
-                        new_loop.close()
-                
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_in_new_loop)
-                    return future.result(timeout=30)
-                    
-            except RuntimeError:
-                # No running event loop, we can create our own
+        if self._sync_loop is not None and self._sync_loop.is_running():
+            return
+        
+        with self._sync_init_lock:
+            # Double-check after acquiring lock
+            if self._sync_loop is not None and self._sync_loop.is_running():
+                return
+            
+            def run_loop():
+                """Run the event loop in a background thread"""
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                self._sync_loop = loop
+                
+                # Initialize the service in this loop
                 try:
-                    result = loop.run_until_complete(coro)
-                    return result
+                    loop.run_until_complete(self.initialize())
+                    self._sync_initialized = True
+                    logger.info("[SYNC LOOP] Background event loop initialized with DB connections")
+                except Exception as e:
+                    logger.error(f"[SYNC LOOP] Failed to initialize: {e}")
+                
+                # Keep the loop running until stopped
+                try:
+                    loop.run_forever()
                 finally:
-                    # Clean up connections before closing loop
+                    # Cleanup when loop stops
                     try:
                         loop.run_until_complete(self.cleanup())
                     except Exception as e:
-                        logger.warning(f"Error during cleanup: {e}")
+                        logger.warning(f"[SYNC LOOP] Error during cleanup: {e}")
+                    loop.close()
+                    logger.info("[SYNC LOOP] Background event loop stopped")
+            
+            # Start the background thread
+            self._sync_thread = threading.Thread(target=run_loop, daemon=True, name="closing-price-sync-loop")
+            self._sync_thread.start()
+            
+            # Wait for initialization to complete (with timeout)
+            for _ in range(50):  # 5 second timeout
+                if self._sync_initialized:
+                    break
+                threading.Event().wait(0.1)
+            
+            if not self._sync_initialized:
+                logger.warning("[SYNC LOOP] Initialization timeout - continuing anyway")
+    
+    def _run_async_operation(self, coro):
+        """
+        Run an async operation using the persistent background event loop.
+        This avoids creating new threads/loops and reconnecting to DB for each call.
+        """
+        try:
+            # Check if we're already in an event loop (e.g., FastAPI)
+            try:
+                asyncio.get_running_loop()
+                # We're in an async context - use the persistent background loop
+                self._ensure_sync_loop()
+                
+                if self._sync_loop is None or not self._sync_loop.is_running():
+                    logger.error("[SYNC] Background loop not available")
+                    return None
+                
+                # Submit the coroutine to the background loop
+                future = asyncio.run_coroutine_threadsafe(coro, self._sync_loop)
+                return future.result(timeout=30)
+                
+            except RuntimeError:
+                # No running event loop - we can run directly
+                # This typically happens during startup or in non-async contexts
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # For one-off calls, initialize, run, but don't cleanup
+                    # The connections will be reused if called again
+                    loop.run_until_complete(self.initialize())
+                    result = loop.run_until_complete(coro)
+                    return result
+                finally:
                     loop.close()
                     
         except Exception as e:
             logger.error(f"Error in async operation: {e}")
             return None
+    
+    def stop_sync_loop(self) -> None:
+        """Stop the background event loop (call on shutdown)"""
+        if self._sync_loop is not None and self._sync_loop.is_running():
+            self._sync_loop.call_soon_threadsafe(self._sync_loop.stop)
+            if self._sync_thread is not None:
+                self._sync_thread.join(timeout=5)
+            logger.info("[SYNC LOOP] Stopped background event loop")
     
     # Synchronous wrapper methods
     def get_price_sync(self, symbol: str) -> Optional[Dict[str, Any]]:
