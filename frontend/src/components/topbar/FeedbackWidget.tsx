@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import api from '../utils/api';
+import api from '../../utils/api';
 
 interface FeedbackWidgetProps {
   defaultOpen?: boolean;

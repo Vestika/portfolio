@@ -13,7 +13,7 @@ import {
 } from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
-import { TopBar, NavigationView } from './components/TopBar';
+import { TopBar, NavigationView, ProfileSidebar } from './components/topbar';
 import { PortfolioView } from './components/PortfolioView';
 import { NewsView } from './components/news';
 import { CashFlowView } from './components/CashFlowView';
@@ -22,7 +22,6 @@ import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { ImportView } from './components/ImportView';
 import { UploadView } from './components/UploadView';
-import ProfileSidebar from './components/ProfileSidebar';
 import { ConfigGalleryView } from './components/ConfigGalleryView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
