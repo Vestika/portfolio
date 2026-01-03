@@ -3,7 +3,9 @@ import { streamNewsFeed, NewsItem } from '../../utils/news-api';
 import NewsWordCloud from './NewsWordCloud';
 import { X } from 'lucide-react';
 import { useMixpanel } from '../../contexts/MixpanelContext';
-import { SubtitleBar, MetricChip } from '../common/SubtitleBar';
+import { SubtitleBar, MetricChip } from '../subtitle-bar/SubtitleBar';
+import { TitleBar } from '../title-bar';
+import { Button } from '@/components/ui/button';
 
 export default function NewsFeedView() {
   const [items, setItems] = useState<NewsItem[]>([]);
@@ -98,28 +100,29 @@ export default function NewsFeedView() {
 
   return (
     <>
-      {/* Header Section - matching Portfolio/Tags style */}
-      <div className="sticky z-30 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700" style={{ top: '37px' }}>
-        <div className="container mx-auto flex justify-between items-start">
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-white">
+      {/* Header Section */}
+      <TitleBar
+        leftContent={
+          <Button 
+            variant="ghost" 
+            className="p-0 h-auto bg-gray-900 text-white hover:bg-gray-900 cursor-default disabled:opacity-100 disabled:text-white"
+            disabled
+          >
+            <h1 className="text-2xl font-bold flex items-center text-white">
               Personalized News
             </h1>
-            <p className="text-sm text-gray-400 mt-0">
-              AI-curated articles from the last week, tailored to your portfolio
-            </p>
-          </div>
-          
-          <div className="hidden md:flex items-center space-x-4">
-            {loading && (
-              <div className="flex items-center gap-2 text-xs text-green-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span>Loading...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          </Button>
+        }
+        subtitle="News articles from the last week, tailored to you"
+        rightContent={
+          loading && (
+            <div className="flex items-center gap-2 text-xs text-green-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span>Loading...</span>
+            </div>
+          )
+        }
+      />
 
       {/* Metrics Bar */}
       <SubtitleBar topOffset="114px">

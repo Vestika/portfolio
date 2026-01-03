@@ -13,7 +13,7 @@ import {
 } from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
-import { TopBar, NavigationView, ProfileSidebar } from './components/topbar';
+import { TopBar, NavigationView, ProfileSidebar } from './components/top-bar';
 import { PortfolioView } from './components/PortfolioView';
 import { NewsView } from './components/news';
 import { CashFlowView } from './components/CashFlowView';

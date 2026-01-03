@@ -75,7 +75,7 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
       onClick={handleBackgroundClick}
     >
       <div 
-        className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-lg p-6 md:p-8"
+        className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-lg p-6 md:p-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         onClick={(e) => e.stopPropagation()}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >

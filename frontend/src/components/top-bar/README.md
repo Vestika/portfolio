@@ -47,14 +47,14 @@ This directory contains all components related to the top navigation bar and its
 Import components from the index:
 
 ```typescript
-import { TopBar, ProfileSidebar, NavigationView } from '@/components/topbar'
+import { TopBar, ProfileSidebar, NavigationView } from '@/components/top-bar'
 ```
 
 Or import individual components:
 
 ```typescript
-import { TopBar } from '@/components/topbar/TopBar'
-import { AboutModal } from '@/components/topbar/AboutModal'
+import { TopBar } from '@/components/top-bar/TopBar'
+import { AboutModal } from '@/components/top-bar/AboutModal'
 ```
 
 ## Dependencies
