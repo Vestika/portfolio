@@ -3,7 +3,6 @@ from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from loguru import logger
 
 from core.auth import get_current_user
 from core.database import get_db
@@ -37,10 +36,10 @@ async def get_user_profile(
     Get the user's profile information.
     """
     try:
-        logger.info(f"🔍 [PROFILE] Getting profile for user: {user.id}")
+        print(f"🔍 [PROFILE] Getting profile for user: {user.id}")
         collection = db.user_profiles
         profile = await collection.find_one({"user_id": user.id})
-        logger.info(f"🔍 [PROFILE] Found profile: {profile}")
+        print(f"🔍 [PROFILE] Found profile: {profile}")
         
         if not profile:
             # Create a default profile if none exists
@@ -73,7 +72,7 @@ async def update_user_profile(
     Update the user's profile information.
     """
     try:
-        logger.info(f"🔍 [PROFILE UPDATE] Updating profile for user: {user.id}, data: {request}")
+        print(f"🔍 [PROFILE UPDATE] Updating profile for user: {user.id}, data: {request}")
         collection = db.user_profiles
         
         # Prepare update data (only include non-None values)

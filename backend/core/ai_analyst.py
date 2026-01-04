@@ -1,4 +1,4 @@
-from loguru import logger
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
@@ -6,6 +6,8 @@ import json
 from google import genai
 from google.genai import types
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 # Mandatory disclaimer for all AI responses
 MANDATORY_DISCLAIMER = """

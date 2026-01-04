@@ -1,7 +1,9 @@
 import re
+import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class TaggedEntity:

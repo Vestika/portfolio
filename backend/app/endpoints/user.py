@@ -4,7 +4,6 @@ from datetime import datetime
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from loguru import logger
 
 from core.auth import get_current_user
 from core.database import db_manager, get_db
@@ -141,7 +140,7 @@ async def get_chart_markers(
         return ChartMarkersResponse(markers=markers)
         
     except Exception as e:
-        logger.error(f"🔍 [CHART MARKERS] Error: {e}")
+        print(f"🔍 [CHART MARKERS] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

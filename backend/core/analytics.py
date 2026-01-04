@@ -10,7 +10,7 @@ Features:
 """
 
 import asyncio
-from loguru import logger
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
@@ -23,6 +23,8 @@ except ImportError:
 
 from config import settings
 from models.user_model import User
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyticsService:
