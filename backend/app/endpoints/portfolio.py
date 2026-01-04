@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from loguru import logger
+import logging
 import yfinance as yf
 from pymaya.maya import Maya
 import asyncio
@@ -24,7 +24,6 @@ from core.analytics_events import (
     build_account_properties
 )
 from models.portfolio import Portfolio
-from models.currency import Currency
 from portfolio_calculator import PortfolioCalculator
 from core.rsu_calculator import create_rsu_calculator
 from services.closing_price.service import get_global_service
@@ -33,7 +32,8 @@ from core.options_calculator import OptionsCalculator
 from services.earnings.service import get_earnings_service
 from services.closing_price.price_manager import PriceManager
 from services.real_estate.pricing import get_real_estate_service
-from services.closing_price.batch_calculator import BatchCalculator
+
+logger = logging.getLogger(__name__)
 
 # Create router for this module
 router = APIRouter()
@@ -208,9 +208,9 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
             calculator = get_or_create_calculator(portfolio_id, portfolio)
             rsu_calculator = create_rsu_calculator(portfolio, calculator)
             
-            logger.info(f"🏢 [PROCESS PORTFOLIOS] Processing portfolio: {portfolio.portfolio_name} ({portfolio_id})")
+            print(f"🏢 [PROCESS PORTFOLIOS] Processing portfolio: {portfolio.portfolio_name} ({portfolio_id})")
         except Exception as e:
-            logger.error(f"❌ [PROCESS PORTFOLIOS] Error initializing portfolio {portfolio_id}: {str(e)}")
+            print(f"❌ [PROCESS PORTFOLIOS] Error initializing portfolio {portfolio_id}: {str(e)}")
             continue
         
         # Build accounts data
@@ -224,11 +224,11 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                 for holding in account.holdings:
                     # Validate holding symbol
                     if not hasattr(holding, 'symbol') or not holding.symbol:
-                        logger.warning(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with missing symbol in account {account.name}")
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with missing symbol in account {account.name}")
                         continue
                         
                     if not isinstance(holding.symbol, str):
-                        logger.warning(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with non-string symbol: {holding.symbol} (type: {type(holding.symbol)})")
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping holding with non-string symbol: {holding.symbol} (type: {type(holding.symbol)})")
                         continue
                     
                     if holding.symbol not in portfolio.securities:
@@ -276,7 +276,7 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                 for virtual_holding in rsu_result["virtual_holdings"]:
                     # Validate virtual holding symbol
                     if not virtual_holding.get("symbol") or not isinstance(virtual_holding["symbol"], str):
-                        logger.warning(f"⚠️ [PROCESS PORTFOLIOS] Skipping RSU virtual holding with invalid symbol: {virtual_holding.get('symbol')}")
+                        print(f"⚠️ [PROCESS PORTFOLIOS] Skipping RSU virtual holding with invalid symbol: {virtual_holding.get('symbol')}")
                         continue
 
                     holdings_with_values.append({
@@ -308,7 +308,7 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                         complete_accounts[-1]["account_cash"][holding.symbol] = holding.units
             
             except Exception as e:
-                logger.error(f"❌ [PROCESS PORTFOLIOS] Error processing account {account.name} in portfolio {portfolio.portfolio_name}: {str(e)}")
+                print(f"❌ [PROCESS PORTFOLIOS] Error processing account {account.name} in portfolio {portfolio.portfolio_name}: {str(e)}")
                 continue
 
         # Store portfolio data (without prices - moved to global level)
@@ -331,12 +331,12 @@ async def process_portfolio_data(portfolio_docs: list, user) -> tuple:
                     user_id, all_portfolios_data[portfolio_id]
                 )
                 if notification_ids:
-                    logger.info(f"🔔 [RSU EVENTS] Created {len(notification_ids)} RSU vesting notifications for user {user_id}")
+                    print(f"🔔 [RSU EVENTS] Created {len(notification_ids)} RSU vesting notifications for user {user_id}")
         except Exception as e:
-            logger.warning(f"⚠️ [RSU EVENTS] Failed to check RSU vesting events: {e}")
+            print(f"⚠️ [RSU EVENTS] Failed to check RSU vesting events: {e}")
 
     duration = time.time() - start_time
-    logger.info(f"⏱️ [PROCESS PORTFOLIOS] Completed in {duration:.3f}s - {len(all_portfolios_data)} portfolios, {len(all_symbols)} symbols")
+    print(f"⏱️ [PROCESS PORTFOLIOS] Completed in {duration:.3f}s - {len(all_portfolios_data)} portfolios, {len(all_symbols)} symbols")
     return all_portfolios_data, global_securities, all_symbols
 
 
@@ -376,7 +376,7 @@ async def update_real_estate_prices(portfolio_docs: list, global_current_prices:
     if not real_estate_holdings:
         return
 
-    logger.info(f"🏠 [REAL ESTATE] Updating prices for {len(real_estate_holdings)} real estate holdings")
+    print(f"🏠 [REAL ESTATE] Updating prices for {len(real_estate_holdings)} real estate holdings")
 
     for holding in real_estate_holdings:
         symbol = holding['symbol']
@@ -434,13 +434,13 @@ async def update_real_estate_prices(portfolio_docs: list, global_current_prices:
                     global_current_prices[symbol]['avg_price_per_sqm'] = int(avg_price_per_sqm)
 
                 if old_price != updated_price:
-                    logger.info(f"  📍 {symbol}: {old_price:,.0f} → {updated_price:,.0f} ILS (location: {city})")
+                    print(f"  📍 {symbol}: {old_price:,.0f} → {updated_price:,.0f} ILS (location: {city})")
 
         except Exception as e:
             logger.warning(f"[REAL ESTATE] Failed to update price for {symbol}: {e}")
             continue
 
-    logger.info(f"✅ [REAL ESTATE] Price update complete")
+    print(f"✅ [REAL ESTATE] Price update complete")
 
 
 async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -> tuple:
@@ -458,7 +458,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
     global_current_prices = {}
     global_historical_prices = {}
     
-    logger.info(f"📈 [COLLECT PRICES CACHED] Collecting prices for {len(all_symbols)} symbols")
+    print(f"📈 [COLLECT PRICES CACHED] Collecting prices for {len(all_symbols)} symbols")
     
     # Get the first available portfolio and calculator
     first_portfolio = None
@@ -477,103 +477,72 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         logger.warning("[COLLECT PRICES CACHED] No valid portfolio found")
         return global_current_prices, global_historical_prices
     
-    # Step 1: Calculate current prices using BATCH approach (fast - single DB query)
+    # Step 1: Calculate current prices (fast - no API calls)
     current_prices_start = time.time()
     symbol_securities = {}
     
     # Define benchmark symbols
     benchmark_symbols_list = ['SPY']
     
-    # First, collect all securities and their currencies
     for symbol in all_symbols:
+        # Find the security from any portfolio first
+        security = None
         for doc in portfolio_docs:
             try:
                 portfolio = Portfolio.from_dict(doc)
                 if symbol in portfolio.securities:
-                    symbol_securities[symbol] = portfolio.securities[symbol]
+                    security = portfolio.securities[symbol]
                     break
             except:
                 continue
-    
-    # Use batch calculator for efficient price/currency calculation
-    if symbol_securities:
-        base_currency = first_portfolio.base_currency.value if hasattr(first_portfolio.base_currency, 'value') else str(first_portfolio.base_currency)
         
-        # Extract currency info for batch calculator
-        symbol_currencies = {
-            symbol: (sec.currency.value if hasattr(sec.currency, 'value') else str(sec.currency))
-            for symbol, sec in symbol_securities.items()
-        }
-        
-        # Get fallback prices from portfolio config
-        fallback_prices = first_portfolio.unit_prices if first_portfolio.unit_prices else {}
-        
-        # Initialize batch calculator with all symbols at once
-        batch_calc = BatchCalculator(base_currency=base_currency)
-        await batch_calc.initialize(
-            symbols=list(symbol_securities.keys()),
-            symbol_currencies=symbol_currencies,
-            fallback_prices=fallback_prices
-        )
-        
-        # Build holdings list for batch calculation (1 unit each for price lookup)
-        holdings_for_calc = [
-            {"symbol": symbol, "units": 1.0, "currency": symbol_currencies.get(symbol, "USD")}
-            for symbol in symbol_securities.keys()
-        ]
-        
-        # Calculate all values in one vectorized operation
-        batch_results = batch_calc.calculate_holding_values(holdings_for_calc)
-        
-        # Convert batch results to global_current_prices format
-        for result in batch_results:
-            symbol = result["symbol"]
-            security = symbol_securities.get(symbol)
+        if security:
+            # Calculate current price using the normal security processing
+            price_info = first_calculator.calc_holding_value(security, 1)
             
             global_current_prices[symbol] = {
-                "price": result["value"],  # Price in base currency
-                "original_price": result["unit_price"],  # Price in original currency
-                "currency": result["currency"],
+                "price": price_info["value"],
+                "original_price": price_info["unit_price"],
+                "currency": security.currency.value,
                 "last_updated": datetime.utcnow().isoformat(),
                 "is_custom": security.is_custom if hasattr(security, 'is_custom') else False
             }
             
-            # Mark custom holdings for historical skip
-            if security and (security.is_custom if hasattr(security, 'is_custom') else False):
+            # Skip historical for custom holdings
+            if security.is_custom if hasattr(security, 'is_custom') else False:
                 global_historical_prices[symbol] = []
-        
-        logger.info(f"🚀 [BATCH CALC] Calculated {len(batch_results)} prices using batch algorithm")
-    
-    # Handle benchmark symbols that are NOT in portfolios (e.g., SPY as benchmark only)
-    for symbol in benchmark_symbols_list:
-        if symbol not in global_current_prices:
-            try:
-                from services.closing_price.service import get_global_service
-                service = get_global_service()
-                price_response = await service.get_price(symbol)
-                if price_response:
-                    # Convert benchmark from USD to base currency
-                    benchmark_price_usd = price_response.price
-                    usd_to_base = 1.0
-                    
-                    # Get USD exchange rate if base currency is not USD
-                    if first_calculator:
-                        try:
-                            usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
-                        except:
-                            pass
-                    
-                    global_current_prices[symbol] = {
-                        "price": benchmark_price_usd * usd_to_base,
-                        "original_price": benchmark_price_usd,
-                        "currency": "USD",
-                        "last_updated": datetime.utcnow().isoformat()
-                    }
-            except Exception as e:
-                logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
+            else:
+                symbol_securities[symbol] = security
+        else:
+            # Handle benchmark symbols that are NOT in portfolios (e.g., SPY as benchmark only)
+            if symbol in benchmark_symbols_list:
+                try:
+                    from services.closing_price.service import get_global_service
+                    service = get_global_service()
+                    price_response = await service.get_price(symbol)
+                    if price_response:
+                        # Convert benchmark from USD to base currency
+                        benchmark_price_usd = price_response.price
+                        usd_to_base = 1.0
+                        
+                        # Get USD exchange rate if base currency is not USD
+                        if first_calculator:
+                            try:
+                                usd_to_base = first_calculator.get_exchange_rate(Currency.USD, first_portfolio.base_currency)
+                            except:
+                                pass
+                        
+                        global_current_prices[symbol] = {
+                            "price": benchmark_price_usd * usd_to_base,
+                            "original_price": benchmark_price_usd,
+                            "currency": "USD",
+                            "last_updated": datetime.utcnow().isoformat()
+                        }
+                except Exception as e:
+                    logger.warning(f"[BENCHMARK] Error fetching price for {symbol}: {e}")
     
     current_prices_time = time.time() - current_prices_start
-    logger.info(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s (batch mode)")
+    print(f"⚡ [COLLECT PRICES CACHED] Current prices calculated in {current_prices_time:.3f}s")
 
     # Step 1b: Update real estate prices based on location (fetch fresh estimates)
     try:
@@ -619,7 +588,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                 upsert=True
             )
         
-        logger.info(f"✅ [COLLECT PRICES CACHED] Ensured {len(symbol_securities)} symbols are tracked")
+        print(f"✅ [COLLECT PRICES CACHED] Ensured {len(symbol_securities)} symbols are tracked")
         
     except Exception as e:
         logger.warning(f"[COLLECT PRICES CACHED] Error ensuring symbols tracked: {e}")
@@ -648,7 +617,7 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         # Add FX symbols to the list
         if fx_symbols_needed:
             all_symbols_for_historical.extend(list(fx_symbols_needed))
-            logger.info(f"📊 [COLLECT PRICES CACHED] Added {len(fx_symbols_needed)} FX symbols for currency conversion: {fx_symbols_needed}")
+            print(f"📊 [COLLECT PRICES CACHED] Added {len(fx_symbols_needed)} FX symbols for currency conversion: {fx_symbols_needed}")
         
         manager = PriceManager()
         cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=365)  # 1 year of data
@@ -713,13 +682,13 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                     })
                 global_historical_prices[fx_symbol] = fallback_data
                 missing_symbols.append(fx_symbol)
-                logger.warning(f"⚠️ [COLLECT PRICES CACHED] FX symbol {fx_symbol} missing from cache - using fallback")
+                print(f"⚠️ [COLLECT PRICES CACHED] FX symbol {fx_symbol} missing from cache - using fallback")
         
         cache_coverage = (symbols_with_data / len(symbol_securities)) * 100 if symbol_securities else 0
-        logger.info(f"📊 [COLLECT PRICES CACHED] Cache coverage: {cache_coverage:.1f}% ({symbols_with_data}/{len(symbol_securities)} symbols)")
+        print(f"📊 [COLLECT PRICES CACHED] Cache coverage: {cache_coverage:.1f}% ({symbols_with_data}/{len(symbol_securities)} symbols)")
         
         if missing_symbols:
-            logger.warning(f"⚠️  [COLLECT PRICES CACHED] {len(missing_symbols)} symbols using fallback (flat line)")
+            print(f"⚠️  [COLLECT PRICES CACHED] {len(missing_symbols)} symbols using fallback (flat line)")
             
             # Trigger background backfill for missing symbols (async, doesn't block!)
             try:
@@ -746,13 +715,13 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
                 
                 # Start background task (doesn't block the response!)
                 asyncio.create_task(background_backfill())
-                logger.info(f"🔄 [COLLECT PRICES CACHED] Triggered background backfill for {min(len(missing_symbols), 10)} symbols")
+                print(f"🔄 [COLLECT PRICES CACHED] Triggered background backfill for {min(len(missing_symbols), 10)} symbols")
                 
             except Exception as e:
                 logger.warning(f"[COLLECT PRICES CACHED] Failed to trigger background backfill: {e}")
         
         historical_time = time.time() - historical_start
-        logger.info(f"⏱️ [COLLECT PRICES CACHED] Historical fetch completed in {historical_time:.3f}s")
+        print(f"⏱️ [COLLECT PRICES CACHED] Historical fetch completed in {historical_time:.3f}s")
         
     except Exception as e:
         logger.error(f"[COLLECT PRICES CACHED] Error fetching from cache: {e}")
@@ -770,21 +739,21 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
             global_historical_prices[symbol] = fallback_data
     
     duration = time.time() - start_time
-    logger.info(f"✅ [COLLECT PRICES CACHED] Total time: {duration:.3f}s - ALWAYS FAST, NO YFINANCE CALLS!")
+    print(f"✅ [COLLECT PRICES CACHED] Total time: {duration:.3f}s - ALWAYS FAST, NO YFINANCE CALLS!")
     
     # Debug: Comprehensive symbol key analysis
-    logger.debug(f"\n🔍 [DEBUG] Symbol Key Analysis:")
-    logger.debug(f"  Total input symbols: {len(all_symbols)}")
-    logger.debug(f"  Symbol_securities (non-custom): {len(symbol_securities)}")
-    logger.debug(f"  Historical prices keys: {len(global_historical_prices)}")
+    print(f"\n🔍 [DEBUG] Symbol Key Analysis:")
+    print(f"  Total input symbols: {len(all_symbols)}")
+    print(f"  Symbol_securities (non-custom): {len(symbol_securities)}")
+    print(f"  Historical prices keys: {len(global_historical_prices)}")
     
     # Show first 10 symbols with their data
-    logger.debug(f"\n  First 10 symbols and their historical data:")
+    print(f"\n  First 10 symbols and their historical data:")
     for i, symbol in enumerate(list(all_symbols)[:10]):
         has_data = symbol in global_historical_prices
         data_count = len(global_historical_prices.get(symbol, [])) if has_data else 0
         in_cache = symbol in cached_historical if 'cached_historical' in locals() else False
-        logger.debug(f"    {i+1}. {symbol}: {('✅ ' + str(data_count) + ' records') if has_data else '❌ NO DATA'} (in_cache: {in_cache})")
+        print(f"    {i+1}. {symbol}: {('✅ ' + str(data_count) + ' records') if has_data else '❌ NO DATA'} (in_cache: {in_cache})")
     
     # Check for exact mismatches
     symbols_set = set(all_symbols)
@@ -794,14 +763,14 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         missing_hist = symbols_set - hist_keys_set
         extra_hist = hist_keys_set - symbols_set
         if missing_hist:
-            logger.debug(f"\n  ⚠️ Symbols WITHOUT historical data: {list(missing_hist)[:10]}")
+            print(f"\n  ⚠️ Symbols WITHOUT historical data: {list(missing_hist)[:10]}")
         if extra_hist:
-            logger.debug(f"  ⚠️ Historical keys WITHOUT matching symbol: {list(extra_hist)[:10]}")
+            print(f"  ⚠️ Historical keys WITHOUT matching symbol: {list(extra_hist)[:10]}")
     else:
-        logger.debug(f"\n  ✅ Perfect match: All {len(all_symbols)} symbols have historical keys")
+        print(f"\n  ✅ Perfect match: All {len(all_symbols)} symbols have historical keys")
     
     # CRITICAL: Verify keys in response match original symbols exactly
-    logger.debug(f"\n  Response validation:")
+    print(f"\n  Response validation:")
     mismatched_keys = []
     for symbol in list(all_symbols)[:10]:
         key_in_response = symbol in global_historical_prices
@@ -809,9 +778,9 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
             mismatched_keys.append(symbol)
     
     if mismatched_keys:
-        logger.warning(f"    ⚠️ MISMATCH DETECTED: {mismatched_keys}")
+        print(f"    ⚠️ MISMATCH DETECTED: {mismatched_keys}")
     else:
-        logger.debug(f"    ✅ Keys match perfectly for sampled symbols")
+        print(f"    ✅ Keys match perfectly for sampled symbols")
     
     return global_current_prices, global_historical_prices
 
@@ -828,7 +797,7 @@ async def collect_global_logos(all_symbols: set) -> dict:
     Returns: global_logos dict
     """
     start_time = time.time()
-    logger.info(f"🖼️ [COLLECT LOGOS] Collecting logos for {len(all_symbols)} symbols from cache")
+    print(f"🖼️ [COLLECT LOGOS] Collecting logos for {len(all_symbols)} symbols from cache")
     global_logos = {}
     
     try:
@@ -875,14 +844,14 @@ async def collect_global_logos(all_symbols: set) -> dict:
                 global_logos[symbol] = None
                 
         successful_logos = sum(1 for logo in global_logos.values() if logo is not None)
-        logger.info(f"✅ [COLLECT LOGOS] Retrieved {successful_logos}/{len(all_symbols)} logos from cache (NO API CALLS!)")
+        print(f"✅ [COLLECT LOGOS] Retrieved {successful_logos}/{len(all_symbols)} logos from cache (NO API CALLS!)")
         
     except Exception as e:
-        logger.error(f"❌ [COLLECT LOGOS] Error collecting logos: {e}")
+        print(f"❌ [COLLECT LOGOS] Error collecting logos: {e}")
         global_logos = {symbol: None for symbol in all_symbols}
     
     duration = time.time() - start_time
-    logger.info(f"⏱️ [COLLECT LOGOS] Completed in {duration:.3f}s - {len(global_logos)} logo entries")
+    print(f"⏱️ [COLLECT LOGOS] Completed in {duration:.3f}s - {len(global_logos)} logo entries")
     return global_logos
 
 
@@ -896,7 +865,7 @@ async def collect_earnings_data(all_symbols: set, global_securities: dict) -> di
     Returns: global_earnings_data dict
     """
     start_time = time.time()
-    logger.info("📅 [COLLECT EARNINGS] Fetching earnings from cache (NO API CALLS)")
+    print("📅 [COLLECT EARNINGS] Fetching earnings from cache (NO API CALLS)")
     global_earnings_data = {}
     
     try:
@@ -910,23 +879,23 @@ async def collect_earnings_data(all_symbols: set, global_securities: dict) -> di
         ]
         
         if stock_etf_symbols:
-            logger.info(f"📊 [COLLECT EARNINGS] Fetching cached earnings for {len(stock_etf_symbols)} stock/ETF symbols")
+            print(f"📊 [COLLECT EARNINGS] Fetching cached earnings for {len(stock_etf_symbols)} stock/ETF symbols")
             
             # Get from cache only (no API calls!)
             cache_service = get_earnings_cache_service()
             global_earnings_data = await cache_service.get_cached_earnings(stock_etf_symbols)
             
             total_earnings_records = sum(len(earnings) for earnings in global_earnings_data.values())
-            logger.info(f"✅ [COLLECT EARNINGS] Retrieved {total_earnings_records} cached earnings for {len(global_earnings_data)}/{len(stock_etf_symbols)} symbols (NO API CALLS!)")
+            print(f"✅ [COLLECT EARNINGS] Retrieved {total_earnings_records} cached earnings for {len(global_earnings_data)}/{len(stock_etf_symbols)} symbols (NO API CALLS!)")
         else:
-            logger.info("📭 [COLLECT EARNINGS] No stock/ETF symbols found")
+            print("📭 [COLLECT EARNINGS] No stock/ETF symbols found")
             
     except Exception as e:
-        logger.error(f"❌ [COLLECT EARNINGS] Error fetching cached earnings: {e}")
+        print(f"❌ [COLLECT EARNINGS] Error fetching cached earnings: {e}")
         global_earnings_data = {}
     
     duration = time.time() - start_time
-    logger.info(f"⏱️ [COLLECT EARNINGS] Completed in {duration:.3f}s")
+    print(f"⏱️ [COLLECT EARNINGS] Completed in {duration:.3f}s")
     return global_earnings_data
 
 
@@ -937,7 +906,7 @@ async def collect_autocomplete_data() -> list[dict]:
     Returns: list of symbol dictionaries for autocomplete (deduplicated)
     """
     start_time = time.time()
-    logger.info("🔍 [COLLECT AUTOCOMPLETE] Fetching all active symbols for autocomplete")
+    print("🔍 [COLLECT AUTOCOMPLETE] Fetching all active symbols for autocomplete")
     autocomplete_data = []
     
     try:
@@ -961,7 +930,7 @@ async def collect_autocomplete_data() -> list[dict]:
         
         # Convert cursor to list
         raw_data = await cursor.to_list(None)
-        logger.info(f"📊 [COLLECT AUTOCOMPLETE] Raw data fetched: {len(raw_data)} symbols")
+        print(f"📊 [COLLECT AUTOCOMPLETE] Raw data fetched: {len(raw_data)} symbols")
         
         # Deduplicate and merge TASE symbols
         seen_keys = set()
@@ -1079,20 +1048,20 @@ async def collect_autocomplete_data() -> list[dict]:
         tase_count = len([s for s in autocomplete_data if s.get('symbol_type') == 'tase'])
         merged_tase_count = len([s for s in autocomplete_data if s.get('symbol_type') == 'tase' and s.get('display_symbol')])
         
-        logger.info(f"✅ [COLLECT AUTOCOMPLETE] Deduplicated: {len(autocomplete_data)} symbols (removed {duplicates_removed} duplicates)")
-        logger.info(f"📊 [COLLECT AUTOCOMPLETE] TASE symbols: {tase_count} total, {merged_tase_count} merged")
+        print(f"✅ [COLLECT AUTOCOMPLETE] Deduplicated: {len(autocomplete_data)} symbols (removed {duplicates_removed} duplicates)")
+        print(f"📊 [COLLECT AUTOCOMPLETE] TASE symbols: {tase_count} total, {merged_tase_count} merged")
         
         # Sample a few TASE symbols for debugging
         tase_samples = [s for s in autocomplete_data if s.get('symbol_type') == 'tase'][:3]
         for sample in tase_samples:
-            logger.debug(f"🔍 [COLLECT AUTOCOMPLETE] TASE sample: {sample.get('symbol')} -> display: {sample.get('display_symbol', 'none')} -> terms: {sample.get('search_terms', [])[:3]}")
+            print(f"🔍 [COLLECT AUTOCOMPLETE] TASE sample: {sample.get('symbol')} -> display: {sample.get('display_symbol', 'none')} -> terms: {sample.get('search_terms', [])[:3]}")
         
     except Exception as e:
-        logger.error(f"❌ [COLLECT AUTOCOMPLETE] Error collecting autocomplete data: {e}")
+        print(f"❌ [COLLECT AUTOCOMPLETE] Error collecting autocomplete data: {e}")
         autocomplete_data = []
     
     duration = time.time() - start_time
-    logger.info(f"⏱️ [COLLECT AUTOCOMPLETE] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
+    print(f"⏱️ [COLLECT AUTOCOMPLETE] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
     return autocomplete_data
 
 
@@ -1102,7 +1071,7 @@ async def collect_user_tags(user) -> tuple:
     Returns: (user_tag_library, all_holding_tags)
     """
     start_time = time.time()
-    logger.info("🏷️ [COLLECT TAGS] Fetching user tag library and holding tags")
+    print("🏷️ [COLLECT TAGS] Fetching user tag library and holding tags")
     user_tag_library = {}
     all_holding_tags = {}
     
@@ -1163,12 +1132,12 @@ async def collect_user_tags(user) -> tuple:
             }
         
     except Exception as e:
-        logger.warning(f"⚠️ [COLLECT TAGS] Error loading tags data: {e}")
+        print(f"⚠️ [COLLECT TAGS] Error loading tags data: {e}")
         user_tag_library = {"tag_definitions": {}, "template_tags": {}}
         all_holding_tags = {}
     
     duration = time.time() - start_time
-    logger.info(f"⏱️ [COLLECT TAGS] Completed in {duration:.3f}s - {len(user_tag_library.get('tag_definitions', {}))} tag definitions, {len(all_holding_tags)} holding tags")
+    print(f"⏱️ [COLLECT TAGS] Completed in {duration:.3f}s - {len(user_tag_library.get('tag_definitions', {}))} tag definitions, {len(all_holding_tags)} holding tags")
     return user_tag_library, all_holding_tags
 
 
@@ -1178,7 +1147,7 @@ async def collect_options_vesting(all_portfolios_data: dict) -> dict:
     Returns: all_options_vesting
     """
     start_time = time.time()
-    logger.info("📊 [COLLECT OPTIONS] Fetching options vesting for all company custodian accounts")
+    print("📊 [COLLECT OPTIONS] Fetching options vesting for all company custodian accounts")
     all_options_vesting = {}
     
     try:
@@ -1214,22 +1183,22 @@ async def collect_options_vesting(all_portfolios_data: dict) -> dict:
                                         **plan_vesting
                                     })
                                 except Exception as plan_error:
-                                    logger.warning(f"⚠️ [COLLECT OPTIONS] Error calculating vesting for plan {plan.get('id', 'unknown')}: {plan_error}")
+                                    print(f"⚠️ [COLLECT OPTIONS] Error calculating vesting for plan {plan.get('id', 'unknown')}: {plan_error}")
                             
                             portfolio_options[account["account_name"]] = {"plans": vesting_data}
                             
                     except Exception as acc_error:
-                        logger.warning(f"⚠️ [COLLECT OPTIONS] Error processing options for account {account['account_name']}: {acc_error}")
+                        print(f"⚠️ [COLLECT OPTIONS] Error processing options for account {account['account_name']}: {acc_error}")
                         portfolio_options[account["account_name"]] = {"plans": []}
             
             all_options_vesting[portfolio_id] = portfolio_options
             
     except Exception as e:
-        logger.error(f"❌ [COLLECT OPTIONS] Error loading options vesting: {e}")
+        print(f"❌ [COLLECT OPTIONS] Error loading options vesting: {e}")
         all_options_vesting = {}
     
     duration = time.time() - start_time
-    logger.info(f"⏱️ [COLLECT OPTIONS] Completed in {duration:.3f}s - Generated options data for {len(all_options_vesting)} portfolios")
+    print(f"⏱️ [COLLECT OPTIONS] Completed in {duration:.3f}s - Generated options data for {len(all_options_vesting)} portfolios")
     return all_options_vesting
 
 
@@ -1253,7 +1222,7 @@ async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, 
     days_requested = (end_date - start_date).days
     
     try:
-        logger.info(f"📈 [YFINANCE BATCH] Fetching {days_requested} days of history for {len(symbols)} symbols in SINGLE batch call")
+        print(f"📈 [YFINANCE BATCH] Fetching {days_requested} days of history for {len(symbols)} symbols in SINGLE batch call")
         
         # Use thread-safe yfinance wrapper
         data = await _safe_yfinance_download(
@@ -1291,7 +1260,7 @@ async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, 
                                     "price": float(price.iloc[0]) if hasattr(price, 'iloc') else float(price)
                                 })
                     else:
-                        logger.warning(f"⚠️ [YFINANCE BATCH] No data for symbol: {symbol}")
+                        print(f"⚠️ [YFINANCE BATCH] No data for symbol: {symbol}")
                         # Create fallback data using current price for the requested date range
                         fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
                         historical_data[symbol] = []
@@ -1302,10 +1271,10 @@ async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, 
                                 "price": fallback_price
                             })
         
-        logger.info(f"✅ [YFINANCE BATCH] Completed batch fetch for {len(symbols)} symbols")
+        print(f"✅ [YFINANCE BATCH] Completed batch fetch for {len(symbols)} symbols")
         
     except asyncio.TimeoutError:
-        logger.warning(f"⏰ [YFINANCE BATCH] Timeout - using fallback data for all {len(symbols)} symbols")
+        print(f"⏰ [YFINANCE BATCH] Timeout - using fallback data for all {len(symbols)} symbols")
         # Create fallback data for all symbols using current prices
         for symbol in symbols:
             fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
@@ -1317,7 +1286,7 @@ async def fetch_yfinance_batch(symbols: list, start_date: date, end_date: date, 
                     "price": fallback_price
                 })
     except Exception as e:
-        logger.error(f"❌ [YFINANCE BATCH] Error in batch fetch: {e}")
+        print(f"❌ [YFINANCE BATCH] Error in batch fetch: {e}")
         # Create fallback data for all symbols using current prices
         for symbol in symbols:
             fallback_price = current_prices.get(symbol, {}).get('original_price', 100.0) if current_prices else 100.0
@@ -1475,14 +1444,14 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
     """
     try:        
         start_time = time.time()
-        logger.info(f"🚀 [MAIN ENDPOINT] Starting complete data collection at {datetime.utcnow().isoformat()}")
+        print(f"🚀 [MAIN ENDPOINT] Starting complete data collection at {datetime.utcnow().isoformat()}")
         
         collection = db_manager.get_collection("portfolios")
         portfolio_docs = await collection.find({"user_id": user.id}).to_list(None)
         
         if not portfolio_docs:
             total_time = time.time() - start_time
-            logger.info(f"⚡ [MAIN ENDPOINT] Empty portfolios response completed in {total_time:.3f}s")
+            print(f"⚡ [MAIN ENDPOINT] Empty portfolios response completed in {total_time:.3f}s")
             return {
                 "portfolios": {},
                 "global_securities": {},
@@ -1497,7 +1466,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                 "computation_timestamp": datetime.utcnow().isoformat()
             }
 
-        logger.info(f"📁 [MAIN ENDPOINT] Found {len(portfolio_docs)} portfolios to process")
+        print(f"📁 [MAIN ENDPOINT] Found {len(portfolio_docs)} portfolios to process")
         
         # Step 1: Process portfolios (sequential - provides dependencies)
         step1_start = time.time()
@@ -1523,7 +1492,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
                                         'type': 'stock',
                                         'currency': symbol_doc.get('currency', 'USD')
                                     }
-                                    logger.info(f"🔧 [UPGRADE] Upgraded {symbol} from cash to stock: {symbol_doc.get('name')}")
+                                    print(f"🔧 [UPGRADE] Upgraded {symbol} from cash to stock: {symbol_doc.get('name')}")
                             except:
                                 pass  # Keep as cash if lookup fails
         
@@ -1534,11 +1503,11 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         all_symbols = all_symbols.union(benchmark_symbols)
         
         step1_time = time.time() - step1_start
-        logger.info(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols (including benchmarks)")
+        print(f"🌐 [MAIN ENDPOINT] Step 1 completed in {step1_time:.3f}s - Processed {len(all_portfolios_data)} portfolios with {len(all_symbols)} total unique symbols (including benchmarks)")
         
         # Step 2: Run data collection in parallel for maximum performance (includes NEW features!)
         step2_start = time.time()
-        logger.info(f"⚡ [MAIN ENDPOINT] Step 2 starting - Running parallel data collection: prices, logos, earnings, tags, and options")
+        print(f"⚡ [MAIN ENDPOINT] Step 2 starting - Running parallel data collection: prices, logos, earnings, tags, and options")
         
         (
             (global_current_prices, global_historical_prices),
@@ -1555,7 +1524,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
         )
         
         step2_time = time.time() - step2_start
-        logger.info(f"✅ [MAIN ENDPOINT] Step 2 completed in {step2_time:.3f}s - Parallel data collection finished")
+        print(f"✅ [MAIN ENDPOINT] Step 2 completed in {step2_time:.3f}s - Parallel data collection finished")
         
         # Step 3: Final response building
         step3_start = time.time()
@@ -1589,19 +1558,19 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
 
         # Final timing and summary
         total_time = time.time() - start_time
-        logger.info(f"🎯 [MAIN ENDPOINT] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
-        logger.info(f"📊 [MAIN ENDPOINT] Complete summary: {len(global_securities)} securities, {len(global_current_prices)} current prices, {len(global_historical_prices)} historical price series, {len(global_logos)} logos, {len(global_earnings_data)} earnings symbols, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options")
-        logger.info(f"⏱️ [MAIN ENDPOINT] TIMING BREAKDOWN:")
-        logger.info(f"   📁 Step 1 (Portfolio Processing): {step1_time:.3f}s")
-        logger.info(f"   ⚡ Step 2 (Parallel Collection): {step2_time:.3f}s")
-        logger.info(f"   📄 Step 3 (Response Building): {step3_time:.3f}s")
-        logger.info(f"🏁 [MAIN ENDPOINT] TOTAL COMPLETION TIME: {total_time:.3f}s (target: <2s)")
+        print(f"🎯 [MAIN ENDPOINT] Returning complete data for {len(all_portfolios_data)} portfolios: {list(all_portfolios_data.keys())}")
+        print(f"📊 [MAIN ENDPOINT] Complete summary: {len(global_securities)} securities, {len(global_current_prices)} current prices, {len(global_historical_prices)} historical price series, {len(global_logos)} logos, {len(global_earnings_data)} earnings symbols, {len(all_holding_tags)} holding tags, {len(all_options_vesting)} portfolio options")
+        print(f"⏱️ [MAIN ENDPOINT] TIMING BREAKDOWN:")
+        print(f"   📁 Step 1 (Portfolio Processing): {step1_time:.3f}s")
+        print(f"   ⚡ Step 2 (Parallel Collection): {step2_time:.3f}s")
+        print(f"   📄 Step 3 (Response Building): {step3_time:.3f}s")
+        print(f"🏁 [MAIN ENDPOINT] TOTAL COMPLETION TIME: {total_time:.3f}s (target: <2s)")
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
+        print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2026,7 +1995,7 @@ async def get_autocomplete_data(user=Depends(get_current_user)) -> dict[str, Any
     """
     try:
         start_time = time.time()
-        logger.info("🔍 [AUTOCOMPLETE ENDPOINT] Starting autocomplete data collection")
+        print("🔍 [AUTOCOMPLETE ENDPOINT] Starting autocomplete data collection")
         
         # Collect autocomplete data (already includes deduplication)
         autocomplete_data = await collect_autocomplete_data()
@@ -2038,12 +2007,12 @@ async def get_autocomplete_data(user=Depends(get_current_user)) -> dict[str, Any
         }
         
         duration = time.time() - start_time
-        logger.info(f"✅ [AUTOCOMPLETE ENDPOINT] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
+        print(f"✅ [AUTOCOMPLETE ENDPOINT] Completed in {duration:.3f}s - {len(autocomplete_data)} symbols")
         
         return result
         
     except Exception as e:
-        logger.error(f"❌ [AUTOCOMPLETE ENDPOINT] Error: {str(e)}")
+        print(f"❌ [AUTOCOMPLETE ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

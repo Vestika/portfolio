@@ -1,32 +1,12 @@
 import threading
 import webbrowser
 from pathlib import Path
-import logging
 
 import uvicorn
-from loguru import logger
 from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
 from utils import filter_security
 from app.main import app
-
-
-# Intercept uvicorn logs and redirect to loguru
-class InterceptHandler(logging.Handler):
-    def emit(self, record):
-        # Get corresponding Loguru level if it exists
-        try:
-            level = logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-
-        # Find caller from where originated the logged message
-        frame, depth = logging.currentframe(), 2
-        while frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
-            depth += 1
-
-        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 def display_aggregation(title: str, aggregation_data: dict[str, any]) -> None:
@@ -94,29 +74,12 @@ CHARTS: list[dict[str, any]] = [
 
 def run_fastapi_server(host: str = "0.0.0.0", port: int = 8000) -> None:
     """
-    Run the FastAPI server with loguru for all logs (including uvicorn access logs).
+    Run the FastAPI server.
 
     Args:
         host (str, optional): Host to bind the server. Defaults to '0.0.0.0'.
         port (int, optional): Port to run the server on. Defaults to 8000.
     """
-    # Intercept uvicorn logs and redirect to loguru
-    logging.root.handlers = [InterceptHandler()]
-    logging.root.setLevel(logging.INFO)
-    
-    # Remove default handlers and use our intercept handler for uvicorn
-    for name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
-        logging_logger = logging.getLogger(name)
-        logging_logger.handlers = [InterceptHandler()]
-        logging_logger.propagate = False
-    
-    # Configure loguru format (optional, already has good defaults)
-    logger.add(
-        lambda msg: print(msg, end=""),
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level="INFO",
-    )
-    
     uvicorn.run(app, host=host, port=port)
 
 

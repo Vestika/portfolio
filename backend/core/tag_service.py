@@ -2,12 +2,14 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pymongo.asynchronous.database import AsyncDatabase
 from bson import ObjectId
-from loguru import logger
+import logging
 
 from models.tag_models import (
     TagDefinition, TagValue, HoldingTags, TagLibrary, 
     TagType, ScalarDataType, DEFAULT_TAG_TEMPLATES
 )
+
+logger = logging.getLogger(__name__)
 
 class TagService:
     def __init__(self, db: AsyncDatabase):

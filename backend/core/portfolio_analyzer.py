@@ -1,10 +1,12 @@
-from loguru import logger
+import logging
 from typing import Dict, Any, List
 from collections import defaultdict
 
 from models.portfolio import Portfolio
 from portfolio_calculator import PortfolioCalculator
 from services.closing_price.service import get_global_service
+
+logger = logging.getLogger(__name__)
 
 class PortfolioAnalyzer:
     """Portfolio data preprocessing and analysis for AI integration"""

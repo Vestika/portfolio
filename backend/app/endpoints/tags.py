@@ -1,7 +1,6 @@
 """Tag management endpoints"""
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from loguru import logger
 
 from core.auth import get_current_user
 from core.database import db_manager
@@ -81,9 +80,9 @@ async def delete_tag_definition(
             "tag_name": tag_name
         })
         if delete_result.deleted_count > 0:
-            logger.info(f"🗑️ [TAG DELETE] Deleted {delete_result.deleted_count} custom charts for tag '{tag_name}'")
+            print(f"🗑️ [TAG DELETE] Deleted {delete_result.deleted_count} custom charts for tag '{tag_name}'")
     except Exception as e:
-        logger.warning(f"⚠️ [TAG DELETE] Failed to delete custom charts for tag '{tag_name}': {e}")
+        print(f"⚠️ [TAG DELETE] Failed to delete custom charts for tag '{tag_name}': {e}")
         # Don't fail the tag deletion if chart cleanup fails
 
     # Track tag deletion

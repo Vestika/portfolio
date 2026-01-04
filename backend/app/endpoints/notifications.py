@@ -10,7 +10,7 @@ from models.notification_model import (
     Notification, NotificationStatus, NotificationType,
     DistributionType, DisplayType, DismissalType
 )
-from loguru import logger
+import logging
 
 
 class CreateNotificationTemplateRequest(BaseModel):
@@ -50,6 +50,8 @@ ADMIN_EMAILS = [
     "palarya@gmail.com",
     "dansterenson@gmail.com"
 ]
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 

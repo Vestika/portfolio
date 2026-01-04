@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Optional, Dict, Any
-from loguru import logger
 
 from telegram import Bot
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramService:

@@ -41,7 +41,7 @@ class DatabaseManager:
     async def disconnect(self):
         """Close database connection"""
         if self._client:
-            await self._client.close()
+            self._client.close()
             self._client = None
             self._database = None
             self._loop = None
