@@ -722,14 +722,6 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/tools/cash-flow"
-                element={
-                  (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
-                    ? <ViewTransitionSkeleton />
-                    : <ToolsView />
-                }
-              />
-              <Route
                 path="/config-gallery"
                 element={
                   (!portfolioMetadata || (isLoading && hasCheckedPortfolios))
