@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ESPPPlan } from '../types';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,17 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
   onToggleCollapse 
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
+  const symbolInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus symbol field when plan is new (empty symbol) and not collapsed
+  useEffect(() => {
+    if (!plan.symbol && !isCollapsed && symbolInputRef.current) {
+      // Small delay to ensure the input is rendered
+      setTimeout(() => {
+        symbolInputRef.current?.focus();
+      }, 100);
+    }
+  }, [plan.symbol, isCollapsed]);
   
   const updatePlan = (updates: Partial<ESPPPlan>) => {
     onChange({ ...plan, ...updates });
@@ -96,6 +107,7 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
           <div className="grid gap-2">
             <Label htmlFor="symbol">Stock Symbol</Label>
             <SymbolAutocomplete
+              ref={symbolInputRef}
               placeholder="e.g., AAPL"
               value={plan.symbol}
               onSelect={handleSymbolSelect}

@@ -251,8 +251,9 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         </div>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-[400px] p-0 pointer-events-auto" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 pointer-events-auto" 
         align="start"
+        sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {
           // Prevent closing when interacting with the input
