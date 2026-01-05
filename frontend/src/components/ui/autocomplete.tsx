@@ -14,6 +14,26 @@ interface AutocompleteProps {
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
+// Hook to detect mobile devices
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      // Check if it's a mobile device (touch device with small screen)
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobile(isTouchDevice && isSmallScreen);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  return isMobile;
+};
+
 export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps>(({
   placeholder = "e.g., AAPL",
   value,
@@ -30,6 +50,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   const isSelectingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isClickingInputRef = useRef(false);
+  const isMobile = useIsMobile();
   
   const { suggestions, isLoading, fetchSuggestions, clearSuggestions } = useSymbolAutocomplete();
   
@@ -55,6 +76,29 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     setHighlightedIndex(-1);
   }, [suggestions]);
 
+  // On mobile, ensure input is scrolled into view when dropdown opens with suggestions
+  useEffect(() => {
+    if (isMobile && open && suggestions.length > 0 && inputRef.current) {
+      // Small delay to allow dropdown to render
+      setTimeout(() => {
+        if (inputRef.current) {
+          const inputRect = inputRef.current.getBoundingClientRect();
+          const viewportHeight = window.visualViewport?.height || window.innerHeight;
+          
+          // If input is too low in viewport, scroll it up
+          // We want to leave space for the dropdown above the input
+          if (inputRect.bottom > viewportHeight * 0.6) {
+            const scrollAmount = inputRect.bottom - (viewportHeight * 0.4);
+            window.scrollBy({
+              top: scrollAmount,
+              behavior: 'smooth'
+            });
+          }
+        }
+      }, 100);
+    }
+  }, [isMobile, open, suggestions.length]);
+
   const handleInputChange = (newValue: string) => {
     setInputValue(newValue);
     if (!open) setOpen(true);
@@ -62,6 +106,39 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
 
   // Handle focus - open dropdown when input is focused and has text
   const handleFocus = () => {
+    // On mobile, scroll input into view to ensure dropdown is visible above keyboard
+    if (isMobile && inputRef.current) {
+      // Use setTimeout to ensure the keyboard has time to appear
+      setTimeout(() => {
+        if (inputRef.current) {
+          // Scroll the input into view with some offset from the top
+          // This ensures the dropdown appears above the keyboard
+          const inputRect = inputRef.current.getBoundingClientRect();
+          const viewportHeight = window.visualViewport?.height || window.innerHeight;
+          
+          // Calculate if input is in the lower half of viewport (where keyboard would cover it)
+          const isInLowerHalf = inputRect.top > viewportHeight / 2;
+          
+          if (isInLowerHalf) {
+            // Scroll to position input in upper portion of visible area
+            // Leave space for dropdown above input
+            const scrollOffset = inputRect.top - (viewportHeight * 0.2);
+            window.scrollBy({
+              top: scrollOffset,
+              behavior: 'smooth'
+            });
+          } else {
+            // Just ensure it's fully visible
+            inputRef.current.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+          }
+        }
+      }, 300); // Delay to allow keyboard animation
+    }
+    
     // If there's text, open and fetch suggestions
     if (inputValue.trim()) {
       setOpen(true);
@@ -253,7 +330,8 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
       <PopoverContent 
         className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 pointer-events-auto" 
         align="start"
-        sideOffset={4}
+        side={isMobile ? "top" : "bottom"}
+        sideOffset={isMobile ? 8 : 4}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {
           // Prevent closing when interacting with the input
