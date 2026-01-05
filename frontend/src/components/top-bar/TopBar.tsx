@@ -4,7 +4,6 @@ import {
   Wrench,
   Bot,
   Newspaper,
-  Library,
   ArrowRightLeft
 } from 'lucide-react'
 import { useState } from 'react'

@@ -61,7 +61,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   };
 
   // Handle focus - open dropdown when input is focused and has text
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleFocus = () => {
     // If there's text, open and fetch suggestions
     if (inputValue.trim()) {
       setOpen(true);
@@ -231,7 +231,7 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                 }
               }, 200);
             }}
-            onClick={(e) => {
+            onClick={() => {
               // When clicking on the input, ensure it's focused and open if there's text
               if (inputValue.trim()) {
                 setOpen(true);

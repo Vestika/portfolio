@@ -8,15 +8,16 @@ interface IconButtonProps {
   ariaLabel?: string
 }
 
-export const IconButton: React.FC<IconButtonProps> = ({
+export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({
   onClick,
   disabled,
   children,
   className = '',
   ariaLabel
-}) => {
+}, ref) => {
   return (
     <button
+      ref={ref}
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
@@ -26,5 +27,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
       {children}
     </button>
   )
-}
+})
+
+IconButton.displayName = 'IconButton'
 
