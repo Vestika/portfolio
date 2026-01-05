@@ -38,7 +38,8 @@ A lightweight feedback channel for users to submit comments/suggestions. Message
 - backend/models/feedback.py — Pydantic model for feedback ✅
 - backend/app/endpoints/feedback.py — `POST /feedback` endpoint ✅
 - backend/app/main.py — Router include ✅
-- frontend/src/components/FeedbackWidget.tsx — Floating popup UI ✅
+- frontend/src/components/topbar/FeedbackWidget.tsx — Floating popup UI ✅
+- frontend/src/components/topbar/FeedbackModal.tsx — Modal UI (currently used) ✅
 - frontend/src/App.tsx — Widget integration ✅
 
 ## Notes

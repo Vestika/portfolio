@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bell, BellRing } from 'lucide-react';
-import { useNotifications } from '../contexts/NotificationContext';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { IconButton } from './IconButton';
 
 interface NotificationBellProps {
   className?: string;
@@ -71,10 +72,11 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
   return (
     <div className={`relative ${className}`}>
       {/* Bell Icon */}
-      <button
+      <IconButton
         onClick={() => setIsOpen(!isOpen)}
-        className="p-1.5 rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-colors relative w-8 h-8 flex items-center justify-center"
         disabled={isLoading}
+        ariaLabel="Notifications"
+        className="relative"
       >
         {unreadCount > 0 ? (
           <BellRing size={18} className="text-yellow-400" />
@@ -88,7 +90,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
-      </button>
+      </IconButton>
 
       {/* Dropdown */}
       {isOpen && (

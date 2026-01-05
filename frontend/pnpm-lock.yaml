@@ -69,17 +69,20 @@ dependencies:
     specifier: ^11.10.0
     version: 11.10.0
   highcharts:
-    specifier: ^12.1.0
-    version: 12.3.0
+    specifier: ^12.4.0
+    version: 12.4.0
   highcharts-react-official:
-    specifier: ^3.2.1
-    version: 3.2.2(highcharts@12.3.0)(react@18.3.1)
+    specifier: ^3.2.3
+    version: 3.2.3(highcharts@12.4.0)(react@18.3.1)
   js-yaml:
     specifier: ^4.1.0
     version: 4.1.0
   lucide-react:
     specifier: ^0.468.0
     version: 0.468.0(react@18.3.1)
+  mixpanel-browser:
+    specifier: ^2.73.0
+    version: 2.73.0(@mixpanel/rrweb-utils@2.0.0-alpha.18.2)
   postcss:
     specifier: ^8.4.49
     version: 8.5.6
@@ -1374,6 +1377,49 @@ packages:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  /@mixpanel/rrdom@2.0.0-alpha.18.2:
+    resolution: {integrity: sha512-vX/tbnS14ZzzatC7vOyvAm9tOLU8tof0BuppBlphzEx1YHTSw8DQiAmyAc0AmXidchLV0W+cUHV/WsehPLh2hQ==}
+    dependencies:
+      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.2
+    dev: false
+
+  /@mixpanel/rrweb-plugin-console-record@2.0.0-alpha.18.2(@mixpanel/rrweb-utils@2.0.0-alpha.18.2)(@mixpanel/rrweb@2.0.0-alpha.18.2):
+    resolution: {integrity: sha512-Xkwh2gSdLqHRkWSXv8CPVCPQj5L85KnWc5DZQ0CXNRFgm2hTl5/YP6zfUubVs2JVXZHGcSGU+g7JVO2WcFJyyg==}
+    peerDependencies:
+      '@mixpanel/rrweb': ^2.0.0-alpha.18
+      '@mixpanel/rrweb-utils': ^2.0.0-alpha.18
+    dependencies:
+      '@mixpanel/rrweb': 2.0.0-alpha.18.2
+      '@mixpanel/rrweb-utils': 2.0.0-alpha.18.2
+    dev: false
+
+  /@mixpanel/rrweb-snapshot@2.0.0-alpha.18.2:
+    resolution: {integrity: sha512-2kSnjZZ3QZ9zOz/isOt8s54mXUUDgXk/u0eEi/rE0xBWDeuA0NHrBcqiMc+w4F/yWWUpo5F5zcuPeYpc6ufAsw==}
+    dependencies:
+      postcss: 8.5.6
+    dev: false
+
+  /@mixpanel/rrweb-types@2.0.0-alpha.18.2:
+    resolution: {integrity: sha512-ucIYe1mfJ2UksvXW+d3bOySTB2/0yUSqQJlUydvbBz6OO2Bhq3nJHyLXV9ExkgUMZm1ZyDcvvmNUd1+5tAXlpA==}
+    dev: false
+
+  /@mixpanel/rrweb-utils@2.0.0-alpha.18.2:
+    resolution: {integrity: sha512-OomKIB6GTx5xvCLJ7iic2khT/t/tnCJUex13aEqsbSqIT/UzUUsqf+LTrgUK5ex+f6odmkCNjre2y5jvpNqn+g==}
+    dev: false
+
+  /@mixpanel/rrweb@2.0.0-alpha.18.2:
+    resolution: {integrity: sha512-J3dVTEu6Z4p8di7y9KKvUooNuBjX97DdG6XGWoPEPi07A9512h9M8MEtvlY3mK0PGfuC0Mz5Pv/Ws6gjGYfKQg==}
+    dependencies:
+      '@mixpanel/rrdom': 2.0.0-alpha.18.2
+      '@mixpanel/rrweb-snapshot': 2.0.0-alpha.18.2
+      '@mixpanel/rrweb-types': 2.0.0-alpha.18.2
+      '@mixpanel/rrweb-utils': 2.0.0-alpha.18.2
+      '@types/css-font-loading-module': 0.0.7
+      '@xstate/fsm': 1.6.5
+      base64-arraybuffer: 1.0.2
+      mitt: 3.0.1
+    dev: false
 
   /@mui/core-downloads-tracker@7.2.0:
     resolution: {integrity: sha512-d49s7kEgI5iX40xb2YPazANvo7Bx0BLg/MNRwv+7BVpZUzXj1DaVCKlQTDex3gy/0jsCb4w7AY2uH4t4AJvSog==}
@@ -2773,6 +2819,10 @@ packages:
       '@babel/types': 7.27.7
     dev: true
 
+  /@types/css-font-loading-module@0.0.7:
+    resolution: {integrity: sha512-nl09VhutdjINdWyXxHWN/w9zlNCfr60JUqJbd24YXUuCwgeL0TpFSdElCwb6cxfB6ybE19Gjj4g0jsgkXxKv1Q==}
+    dev: false
+
   /@types/d3-array@3.2.2:
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
     dev: false
@@ -3203,6 +3253,10 @@ packages:
       - supports-color
     dev: true
 
+  /@xstate/fsm@1.6.5:
+    resolution: {integrity: sha512-b5o1I6aLNeYlU/3CPlj/Z91ybk1gUsKT+5NAJI+2W4UjvS5KLG28K9v5UvNoFVjHV8PajVZ00RH3vnjyQO7ZAw==}
+    dev: false
+
   /acorn-jsx@5.3.2(acorn@8.15.0):
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -3318,6 +3372,11 @@ packages:
 
   /balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
+
+  /base64-arraybuffer@1.0.2:
+    resolution: {integrity: sha512-I3yl4r9QB5ZRY3XuJVEPfc2XhZO6YweFPI+UovAzn+8/hb3oJ6lnysaFcjVpkCPfVWFUDvoZ8kmVDP7WyRtYtQ==}
+    engines: {node: '>= 0.6.0'}
+    dev: false
 
   /binary-extensions@2.3.0:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
@@ -4240,18 +4299,18 @@ packages:
       '@types/hast': 3.0.4
     dev: false
 
-  /highcharts-react-official@3.2.2(highcharts@12.3.0)(react@18.3.1):
-    resolution: {integrity: sha512-2kkWOB6RpdR26fmAJkrtJFG9xWFUDGKWyat88tW3fa/3l/Jc7D5ZfwTng2MZsdiKIH32AFy0Pr75udUe7uN6LA==}
+  /highcharts-react-official@3.2.3(highcharts@12.4.0)(react@18.3.1):
+    resolution: {integrity: sha512-2gL8bVGe6Pf75tSe6IB5Ucd0nIOJX7ZrpttQBZVrjN2J9StdVZ12aOinXHIOFvlc6EzP8CbN13WS8NUq+9mptA==}
     peerDependencies:
       highcharts: '>=6.0.0'
       react: '>=16.8.0'
     dependencies:
-      highcharts: 12.3.0
+      highcharts: 12.4.0
       react: 18.3.1
     dev: false
 
-  /highcharts@12.3.0:
-    resolution: {integrity: sha512-QIKmaemgheRa1K2Ia9MLj1KLtBU1Tu/VQ6KAMqtMBMsAC4NzcFq6g96LF03ZO3IFFiSifmZx8ItEyRcz4w75cg==}
+  /highcharts@12.4.0:
+    resolution: {integrity: sha512-o6UxxfChSUrvrZUbWrAuqL1HO/+exhAUPcZY6nnqLsadZQlnP16d082sg7DnXKZCk1gtfkyfkp6g3qkIZ9miZg==}
     dev: false
 
   /hoist-non-react-statics@3.3.2:
@@ -4968,6 +5027,19 @@ packages:
   /minipass@7.1.2:
     resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
     engines: {node: '>=16 || 14 >=14.17'}
+    dev: false
+
+  /mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
+    dev: false
+
+  /mixpanel-browser@2.73.0(@mixpanel/rrweb-utils@2.0.0-alpha.18.2):
+    resolution: {integrity: sha512-Ny+6BVeWJozZoyrzB+5/6LTqBZ0gDY1pwcs7PQLQVGPKMTdL8qAz0yV4H8ykGQEA5KrW2Ky/KZ3uMEHGjE7oSA==}
+    dependencies:
+      '@mixpanel/rrweb': 2.0.0-alpha.18.2
+      '@mixpanel/rrweb-plugin-console-record': 2.0.0-alpha.18.2(@mixpanel/rrweb-utils@2.0.0-alpha.18.2)(@mixpanel/rrweb@2.0.0-alpha.18.2)
+    transitivePeerDependencies:
+      - '@mixpanel/rrweb-utils'
     dev: false
 
   /ms@2.1.3:

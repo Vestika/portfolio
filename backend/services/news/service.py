@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from datetime import datetime, timedelta
 from typing import Any
@@ -44,8 +45,10 @@ class NewsService:
         client = GNewsClient(language=self.language, country=self.country, max_results=max_results)
         client.set_window(start_date, end_date)
 
-        by_kw = client.fetch_by_keywords(keywords)
-        by_topic = client.fetch_by_topics(topics)
+        # Run blocking GNews calls in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        by_kw = await loop.run_in_executor(None, client.fetch_by_keywords, keywords)
+        by_topic = await loop.run_in_executor(None, client.fetch_by_topics, topics)
         raw = by_kw + by_topic
 
         # Canonicalize and dedupe
@@ -57,12 +60,15 @@ class NewsService:
             aid = article_id_from_url(url)
             if aid in items:
                 continue
+            
+            image_url = art.get("image") or art.get("thumbnail") or None
+            
             items[aid] = {
                 "id": aid,
                 "title": art.get("title"),
                 "description": art.get("description"),
                 "url": url,
-                "imageUrl": art.get("image") or art.get("thumbnail") or None,
+                "imageUrl": image_url,
                 "publishedAt": self._extract_published(art),
                 "source": str(art.get("publisher") or art.get("source") or ""),
                 "topic": art.get("topic"),

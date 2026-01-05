@@ -155,10 +155,20 @@ async def create_database_indexes() -> None:
     # Ensure time-series collection exists
     await setup_historical_prices_collection()
     
+    # stock_prices: unique index on symbol (one doc per symbol with upsert)
     await create_index_safe(
         collection=db.database.stock_prices,
-        keys=[("symbol", 1), ("date", -1)],
-        name="symbol_date_index"
+        keys=[("symbol", 1)],
+        name="symbol_unique_index",
+        unique=True
+    )
+    
+    # stock_prices: TTL index to auto-expire old prices after 7 days (safety net)
+    await create_index_safe(
+        collection=db.database.stock_prices,
+        keys=[("fetched_at", 1)],
+        name="fetched_at_ttl_index",
+        expireAfterSeconds=604800  # 7 days
     )
 
     await create_index_safe(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import AccountSelector from './AccountSelector';
 import PortfolioSummary from './PortfolioSummary';
@@ -13,17 +13,15 @@ import {
 } from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
-import { TopBar, NavigationView } from './components/TopBar';
+import { TopBar, NavigationView, ProfileSidebar } from './components/top-bar';
 import { PortfolioView } from './components/PortfolioView';
-import { NewsView } from './components/NewsView';
+import { NewsView } from './components/news';
 import { CashFlowView } from './components/CashFlowView';
 import { AIChatView } from './components/AIChatView';
 import { ManageTagsView } from './components/ManageTagsView';
 import { ToolsView } from './components/ToolsView';
 import { ImportView } from './components/ImportView';
 import { UploadView } from './components/UploadView';
-import ProfileView from './components/ProfileView';
-import SettingsView from './components/SettingsView';
 import { ConfigGalleryView } from './components/ConfigGalleryView';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
@@ -32,6 +30,8 @@ import { UserProfileProvider } from './contexts/UserProfileContext';
 import { PopupManager } from './components/PopupManager';
 // Removed floating feedback widget in favor of top bar modal
 import { signOutUser } from './firebase';
+import { useMixpanel } from './contexts/MixpanelContext';
+import { trackPageView, trackSessionStart, trackSessionEnd } from './lib/mixpanel-events';
 import {
   PortfolioMetadata,
   PortfolioData,
@@ -102,6 +102,10 @@ const App: React.FC = () => {
     allPortfoliosData
   } = usePortfolioData();
 
+  // Mixpanel tracking
+  const { track, sessionId } = useMixpanel();
+  const [sessionStartTime] = useState(() => Date.now());
+
   // Local state for UI
   const [isValueVisible, setIsValueVisible] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -109,46 +113,51 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
+  const [isProfileSidebarOpen, setIsProfileSidebarOpen] = useState(false);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();
 
   // Derive legacy data structures for compatibility with existing components
-  const portfolioMetadata: PortfolioMetadata | null = currentPortfolioData ? {
-    base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
-    user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
-    accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
-      account_name: acc.account_name,
-      account_type: acc.account_type,
-      owners: acc.owners,
-      holdings: (acc.holdings || []).map((h: any) => {
-        const holding: any = {
-          symbol: h.symbol,
-          units: h.units,
-          original_currency: h.original_currency,
-          security_type: h.security_type,
-          security_name: h.security_name
-        };
-        
-        // Include custom holding fields if present
-        if (h.is_custom) {
-          holding.is_custom = true;
-          holding.custom_price = h.custom_price;
-          holding.custom_currency = h.custom_currency;
-          holding.custom_name = h.custom_name;
-        }
-        
-        return holding;
-      }),
-      rsu_plans: acc.rsu_plans || [],
-      espp_plans: acc.espp_plans || [],
-      options_plans: acc.options_plans || [],
-      rsu_vesting_data: acc.rsu_vesting_data || [],
-      account_properties: acc.account_properties || {},
-      account_cash: acc.account_cash || {},
-      isSelected: selectedAccountNames.includes(acc.account_name)
-    }))
-  } : null;
+  // Memoize to prevent unnecessary re-renders of child components (especially charts)
+  const portfolioMetadata: PortfolioMetadata | null = useMemo(() => {
+    if (!currentPortfolioData) return null;
+    return {
+      base_currency: currentPortfolioData.portfolio_metadata?.base_currency || 'USD',
+      user_name: currentPortfolioData.portfolio_metadata?.user_name || 'User',
+      accounts: (currentPortfolioData.accounts || []).map((acc: any) => ({
+        account_name: acc.account_name,
+        account_type: acc.account_type,
+        owners: acc.owners,
+        holdings: (acc.holdings || []).map((h: any) => {
+          const holding: any = {
+            symbol: h.symbol,
+            units: h.units,
+            original_currency: h.original_currency,
+            security_type: h.security_type,
+            security_name: h.security_name
+          };
+          
+          // Include custom holding fields if present
+          if (h.is_custom) {
+            holding.is_custom = true;
+            holding.custom_price = h.custom_price;
+            holding.custom_currency = h.custom_currency;
+            holding.custom_name = h.custom_name;
+          }
+          
+          return holding;
+        }),
+        rsu_plans: acc.rsu_plans || [],
+        espp_plans: acc.espp_plans || [],
+        options_plans: acc.options_plans || [],
+        rsu_vesting_data: acc.rsu_vesting_data || [],
+        account_properties: acc.account_properties || {},
+        account_cash: acc.account_cash || {},
+        isSelected: selectedAccountNames.includes(acc.account_name)
+      }))
+    };
+  }, [currentPortfolioData, selectedAccountNames]);
 
   const portfolioData: PortfolioData | null = computedData ? computedData.filteredAggregations : null;
   const holdingsData: HoldingsTableData | null = computedData ? computedData.holdingsTable : null;
@@ -195,6 +204,25 @@ const App: React.FC = () => {
             initializeApp();
         }
     }, [authLoading, user, isInitialized, initializeApp]);
+
+  // Mixpanel: Track session start and end
+  useEffect(() => {
+    if (!user) return; // Only track for authenticated users
+
+    trackSessionStart(sessionId);
+
+    return () => {
+      const sessionDuration = Date.now() - sessionStartTime;
+      trackSessionEnd(sessionId, sessionDuration);
+    };
+  }, [user, sessionId, sessionStartTime]);
+
+  // Mixpanel: Track page views
+  useEffect(() => {
+    if (!user) return; // Only track for authenticated users
+
+    trackPageView(activeView, location.pathname);
+  }, [location.pathname, activeView, user]);
 
   // No more individual portfolio loading! All data is loaded upfront
 
@@ -269,6 +297,13 @@ const App: React.FC = () => {
       previousSelection: selectedAccountNames,
       timestamp: new Date().toISOString()
     });
+
+    // Mixpanel: Track account filtering
+    track('account_filtered', {
+      selected_accounts_count: accountNames.length,
+      total_accounts_count: currentPortfolioData?.accounts.length || 0,
+    });
+
     setSelectedAccountNames(accountNames);
     // No API call needed! Data is filtered locally in the context
   };
@@ -277,21 +312,54 @@ const App: React.FC = () => {
     setIsValueVisible(!isValueVisible);
   };
 
+  const handlePortfolioChange = (portfolioId: string) => {
+    console.log('🔄 [APP] Portfolio switched - instant update (no API call)');
+
+    // Mixpanel: Track portfolio switch
+    // Get full portfolio data from allPortfoliosData
+    const fullPortfolio = allPortfoliosData?.portfolios?.[portfolioId];
+    if (fullPortfolio) {
+      const totalHoldings = fullPortfolio.accounts.reduce(
+        (sum: number, account: any) => sum + (account.holdings?.length || 0),
+        0
+      );
+      track('portfolio_switched', {
+        holdings_count: totalHoldings,
+        accounts_count: fullPortfolio.accounts.length,
+      });
+    }
+
+    setSelectedPortfolioId(portfolioId);
+  };
+
   const handlePortfolioCreated = async (newPortfolioId: string) => {
     try {
       console.log('🏗️ [APP] Portfolio created - refreshing ALL portfolios data');
-      
+
+      const isFirstPortfolio = availablePortfolios.length === 0;
+
       // Refresh ALL portfolios data to include the new portfolio
       await refreshAllPortfoliosData();
-      
+
+      // Mixpanel: Track portfolio creation
+      track('portfolio_created', {
+        portfolio_count: availablePortfolios.length + 1,
+        is_first_portfolio: isFirstPortfolio,
+      });
+
+      // Mixpanel: Track onboarding milestone if first portfolio
+      if (isFirstPortfolio) {
+        track('onboarding_first_portfolio_created');
+      }
+
       // If this was the first portfolio, the context will auto-initialize
       if (!isInitialized) {
         setIsInitialized(true);
       }
-      
+
       // Switch to the new portfolio (instant, no API call)
       setSelectedPortfolioId(newPortfolioId);
-      
+
     } catch (err) {
       console.error('❌ [APP] Failed to handle portfolio creation:', err);
     }
@@ -302,6 +370,11 @@ const App: React.FC = () => {
     console.log('🏦 [APP] Account added - refreshing ALL portfolios data');
     try {
       await refreshAllPortfoliosData();
+
+      // Mixpanel: Track account creation
+      track('account_created', {
+        portfolio_accounts_count: (currentPortfolioData?.accounts.length || 0) + 1,
+      });
     } catch (err) {
       console.error('❌ [APP] Error refreshing after account addition:', err);
     }
@@ -311,8 +384,13 @@ const App: React.FC = () => {
     // Refresh ALL portfolios data since portfolio was deleted
     console.log('🗑️ [APP] Portfolio deleted - refreshing ALL portfolios data');
     try {
+      // Mixpanel: Track portfolio deletion
+      track('portfolio_deleted', {
+        remaining_portfolios: availablePortfolios.length - 1,
+      });
+
       await refreshAllPortfoliosData();
-      
+
       // If the deleted portfolio was the selected one, context will auto-select another
       if (deletedPortfolioId === selectedPortfolioId) {
         console.log('📌 [APP] Deleted portfolio was selected - context will auto-select new one');
@@ -327,6 +405,11 @@ const App: React.FC = () => {
     // Refresh ALL portfolios data since account was deleted
     console.log('🗑️ [APP] Account deleted - refreshing ALL portfolios data');
     try {
+      // Mixpanel: Track account deletion
+      track('account_deleted', {
+        remaining_accounts: (currentPortfolioData?.accounts.length || 1) - 1,
+      });
+
       await refreshAllPortfoliosData();
     } catch (err) {
       console.error('❌ [APP] Error refreshing after account deletion:', err);
@@ -344,35 +427,27 @@ const App: React.FC = () => {
 
   const handleSignOut = async () => {
     try {
+      // Mixpanel: Track sign out
+      track('auth_sign_out');
+
       // Clear all portfolio data before signing out to prevent data leakage
       console.log('🚪 [APP] Signing out - clearing portfolio data');
       clearAllPortfoliosData();
       setIsInitialized(false);
       setHasCheckedPortfolios(false);
       await signOutUser();
+      // Note: Mixpanel.reset() is called in AuthContext when user becomes null
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
   const handleProfileClick = () => {
-    navigate('/profile');
-  };
-
-  const handleSettingsClick = () => {
-    navigate('/settings');
+    setIsProfileSidebarOpen(true);
   };
 
   const handleViewChange = (view: NavigationView) => {
     navigate(viewToPathname(view));
-  };
-
-  const handleBackToPortfolio = () => {
-    navigate('/portfolio');
-  };
-
-  const handleSignOutClick = async () => {
-    await handleSignOut();
   };
 
 
@@ -490,8 +565,6 @@ const App: React.FC = () => {
           activeView={activeView} 
           onViewChange={handleViewChange}
           onProfileClick={handleProfileClick}
-          onSettingsClick={handleSettingsClick}
-          onSignOutClick={handleSignOutClick}
         />
       
             {/* Sticky Header Section - only show for portfolios view */}
@@ -508,9 +581,10 @@ const App: React.FC = () => {
                 portfolioMetadata={displayMetadata}
                 onAccountsChange={handleAccountsChange}
                 onToggleVisibility={handleToggleVisibility}
+                isValueVisible={isValueVisible}
                 availableFiles={availablePortfolios}
                 selectedFile={selectedPortfolioId || ""}
-                onPortfolioChange={setSelectedPortfolioId}  // Now instant, no API call!
+                onPortfolioChange={handlePortfolioChange}  // Tracks portfolio switch
                 onPortfolioCreated={handlePortfolioCreated}
                 onAccountAdded={handleAccountAdded}
                 onPortfolioDeleted={handlePortfolioDeleted}
@@ -538,22 +612,6 @@ const App: React.FC = () => {
         >
           <main className="flex-1">
             <Routes>
-              {/* Profile and Settings routes */}
-              <Route
-                path="/profile"
-                element={<ProfileView onBackToPortfolio={handleBackToPortfolio} />}
-              />
-              <Route
-                path="/settings"
-                element={
-                  <SettingsView
-                    onToggleVisibility={handleToggleVisibility}
-                    isValueVisible={isValueVisible}
-                    onBackToPortfolio={handleBackToPortfolio}
-                  />
-                }
-              />
-
               {/* Main views */}
               <Route
                 path="/portfolio"
@@ -689,6 +747,15 @@ const App: React.FC = () => {
           </main>
         </div>
       </div>
+      
+      {/* Profile Sidebar */}
+      <ProfileSidebar 
+        isOpen={isProfileSidebarOpen}
+        onClose={() => setIsProfileSidebarOpen(false)}
+        onSignOut={handleSignOut}
+        onToggleVisibility={handleToggleVisibility}
+        isValueVisible={isValueVisible}
+      />
       </div>
       </UserProfileProvider>
     </NotificationProvider>

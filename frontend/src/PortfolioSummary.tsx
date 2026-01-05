@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
 import api from './utils/api';
+import { SubtitleBar, MetricChip, SubtitleBarSpacer } from './components/subtitle-bar/SubtitleBar.tsx';
 interface CashHoldings {
   [currency: string]: number;
 }
@@ -88,93 +89,124 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
 
   // No network calls needed for IBIT→BTC; purely derived from static ratio
 
+  const hiddenValue = (
+    <span className="flex items-center space-x-1">
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current"></span>
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current"></span>
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current"></span>
+    </span>
+  );
+
   return (
-    <div className="sticky top-[77px] z-10 bg-gray-800 border-t border-b border-gray-700">
-      <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
-        {/* Total Value Chip */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-          <Wallet size={14} className="text-green-400 mr-1.5" />
-          <span className="text-xs font-medium mr-1">Total:</span>
-          {isValueVisible ? (
-            <span className="text-xs text-green-400">
-              {new Intl.NumberFormat('en-US', {
-                maximumFractionDigits: 0
-              }).format(totalValue)}{' '}
+    <SubtitleBar topOffset="77px" zIndex={10}>
+      {/* Total Value Chip */}
+      <MetricChip
+        icon={<Wallet size={14} />}
+        iconColor="text-green-400"
+        label="Total:"
+        value={
+          isValueVisible ? (
+            <>
+              {new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(totalValue)}{' '}
               {baseCurrency}
-            </span>
+            </>
           ) : (
-            <span className="flex items-center space-x-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400"></span>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400"></span>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400"></span>
-            </span>
-          )}
-        </div>
+            hiddenValue
+          )
+        }
+        valueColor={isValueVisible ? "text-green-400" : ""}
+      />
 
-        {/* Cash Holdings Chips */}
-        {Object.entries(totalCash).map(([currency, amount]: [string, number]) => (
-          <div
-            key={currency}
-            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
-          >
-            <Coins size={14} className="text-sky-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">{currency}:</span>
-            {isValueVisible ? (
-              <span className="text-xs text-sky-400">
-                {new Intl.NumberFormat('en-US', {
-                  maximumFractionDigits: 0
-                }).format(amount)}
-              </span>
+      {/* Cash Holdings Chips */}
+      {Object.entries(totalCash).map(([currency, amount]: [string, number]) => (
+        <MetricChip
+          key={currency}
+          icon={<Coins size={14} />}
+          iconColor="text-sky-400"
+          label={`${currency}:`}
+          value={
+            isValueVisible ? (
+              new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount)
             ) : (
-              <span className="flex items-center space-x-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              </span>
-            )}
-          </div>
-        ))}
+              hiddenValue
+            )
+          }
+          valueColor={isValueVisible ? "text-sky-400" : ""}
+        />
+      ))}
 
-        {/* IBIT BTC-equivalent Chip */}
-        {totalIbitUnits > 0 && (
-          <div
-            className="flex items-center bg-gray-700 rounded-full px-3 py-1"
-            title={`1 BTC ≈ ${IBIT_PER_BTC} IBIT`}
-          >
-            <Coins size={14} className="text-amber-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">BTC (IBIT):</span>
-            {isValueVisible ? (
-              <span className="text-xs text-amber-400">
-                {ibitBtcEquivalent !== null
-                  ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(ibitBtcEquivalent)
-                  : 'N/A'}
-              </span>
+      {/* IBIT BTC-equivalent Chip */}
+      {totalIbitUnits > 0 && (
+        <MetricChip
+          icon={<Coins size={14} />}
+          iconColor="text-amber-400"
+          label="BTC (IBIT):"
+          value={
+            isValueVisible ? (
+              ibitBtcEquivalent !== null
+                ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(ibitBtcEquivalent)
+                : 'N/A'
             ) : (
-              <span className="flex items-center space-x-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              </span>
-            )}
-          </div>
-        )}
-        <div className="flex-1" />
-        {/* NYSE Market Status */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1"
-             title="NYSE Market Status">
-          <span className={`w-2 h-2 rounded-full mr-2 ${usMarketStatus === 'open' ? 'bg-green-400' : usMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
-          <span className="text-xs font-medium">nyse:</span>
-          <span className={`ml-1 text-xs ${usMarketStatus === 'open' ? 'text-green-400' : usMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{usMarketStatus}</span>
-        </div>
-        {/* TASE Market Status */}
-        <div className="flex items-center bg-gray-700 rounded-full px-3 py-1 ml-2"
-             title="TASE Market Status">
-          <span className={`w-2 h-2 rounded-full mr-2 ${taseMarketStatus === 'open' ? 'bg-green-400' : taseMarketStatus === 'closed' ? 'bg-red-400' : 'bg-gray-400'}`}></span>
-          <span className="text-xs font-medium">tase:</span>
-          <span className={`ml-1 text-xs ${taseMarketStatus === 'open' ? 'text-green-400' : taseMarketStatus === 'closed' ? 'text-red-400' : 'text-gray-400'}`}>{taseMarketStatus}</span>
-        </div>
-      </div>
-    </div>
+              hiddenValue
+            )
+          }
+          valueColor={isValueVisible ? "text-amber-400" : ""}
+          title={`1 BTC ≈ ${IBIT_PER_BTC} IBIT`}
+        />
+      )}
+
+      <SubtitleBarSpacer />
+
+      {/* NYSE Market Status */}
+      <MetricChip
+        icon={
+          <span
+            className={`w-2 h-2 rounded-full ${
+              usMarketStatus === 'open'
+                ? 'bg-green-400'
+                : usMarketStatus === 'closed'
+                ? 'bg-red-400'
+                : 'bg-gray-400'
+            }`}
+          />
+        }
+        label="nyse:"
+        value={usMarketStatus}
+        valueColor={
+          usMarketStatus === 'open'
+            ? 'text-green-400'
+            : usMarketStatus === 'closed'
+            ? 'text-red-400'
+            : 'text-gray-400'
+        }
+        title="NYSE Market Status"
+      />
+
+      {/* TASE Market Status */}
+      <MetricChip
+        icon={
+          <span
+            className={`w-2 h-2 rounded-full ${
+              taseMarketStatus === 'open'
+                ? 'bg-green-400'
+                : taseMarketStatus === 'closed'
+                ? 'bg-red-400'
+                : 'bg-gray-400'
+            }`}
+          />
+        }
+        label="tase:"
+        value={taseMarketStatus}
+        valueColor={
+          taseMarketStatus === 'open'
+            ? 'text-green-400'
+            : taseMarketStatus === 'closed'
+            ? 'text-red-400'
+            : 'text-gray-400'
+        }
+        title="TASE Market Status"
+      />
+    </SubtitleBar>
   );
 };
 

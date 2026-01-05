@@ -355,7 +355,7 @@ See README.md for full documentation.
 ### Adding a New View
 
 1. Create component in `frontend/src/components/`
-2. Add to `NavigationView` type in `frontend/src/components/TopBar.tsx`
+2. Add to `NavigationView` type in `frontend/src/components/topbar/TopBar.tsx`
 3. Add view option to `TopBar` component
 4. Add route handling in `App.tsx`
 5. Add skeleton state in `frontend/src/components/PortfolioSkeleton.tsx`

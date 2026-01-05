@@ -326,6 +326,7 @@ const MiniChart: React.FC<{
   return (
     <div 
       data-chart-area
+      onClick={(e) => e.stopPropagation()}
       onMouseMove={(e) => {
         if (!data || data.length === 0) return;
         
@@ -1121,7 +1122,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
           
           return (
             <Select key={dropdownKey} onValueChange={(tagName) => handleAddTag(holding.symbol, tagName)}>
-              <SelectTrigger className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100">
+              <SelectTrigger 
+                className="w-8 h-6 border-none bg-transparent p-0 hover:bg-gray-700/30 transition-all focus:ring-1 focus:ring-blue-500/50 opacity-60 group-hover:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Plus size={14} className="text-gray-400 hover:text-blue-400" />
               </SelectTrigger>
             <SelectContent className="bg-gray-800 border-gray-600/30 backdrop-blur-sm shadow-lg">
@@ -1168,7 +1172,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
   return (
     <div className="w-full">
       {/* Title and Toggle Header */}
-      <div className="flex items-center justify-between px-0 py-3 mb-4">
+      <div className="flex items-center justify-between px-0 py-1 mb-0">
         <div className="flex items-center gap-4 min-h-[56px]">
           <h3 className="text-xl font-bold text-white">Holdings Overview</h3>
 
@@ -1306,8 +1310,25 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
       </div>
 
       {viewMode === 'table' && (
-        <div className="border border-blue-400/30 rounded-md overflow-x-auto">
-          <table className="min-w-full">
+        <div className="relative">
+          {/* Scroll indicator shadow for mobile */}
+          {isMobile && (
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none z-10 rounded-r-md"
+              style={{
+                background: 'linear-gradient(to left, rgba(31, 41, 55, 0.8), transparent)'
+              }}
+            />
+          )}
+          <div 
+            className="border border-blue-400/30 rounded-md overflow-x-auto overflow-y-visible"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              maxWidth: '100%',
+              width: '100%'
+            }}
+          >
+            <table className="border-collapse" style={{ minWidth: isMobile ? '1200px' : '100%', width: isMobile ? '1200px' : '100%' }}>
             <thead>
               <tr className="h-14 bg-blue-500/10 backdrop-blur-sm border-b border-blue-400/30">
                 <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 first:rounded-tl-md w-8"></th>
@@ -1332,8 +1353,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </div>
                   </div>
                 </th>
-                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 hidden md:table-cell">Name</th>
-                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200 hidden md:table-cell">Tags</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">Name</th>
+                <th className="px-2 md:px-4 text-left text-sm font-medium text-gray-200">Tags</th>
                 <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                   <SortableHeader
                     label={isMobile ? "Price" : "Price (Original)"}
@@ -1342,7 +1363,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     onSort={handleSort}
                   />
                 </th>
-                <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
+                <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                   <SortableHeader
                     label="1d Change"
                     sortKey="percent_change" 
@@ -1352,7 +1373,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 </th>
                 {isValueVisible && (
                   <>
-                    <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200 hidden md:table-cell">
+                    <th className="px-2 md:px-4 text-right text-sm font-medium text-gray-200">
                       <SortableHeader
                         label="Units"
                         sortKey="total_units"
@@ -1370,8 +1391,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </th>
                   </>
                 )}
-                <th className="px-4 text-center text-sm font-medium text-gray-200 hidden md:table-cell">Earnings</th>
-                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md hidden md:table-cell">
+                <th className="px-4 text-center text-sm font-medium text-gray-200">Earnings</th>
+                <th className="px-4 text-center text-sm font-medium text-gray-200 last:rounded-tr-md">
                   <div className="flex items-center justify-center gap-1">
                     <Select 
                       value={miniChartTimeframe} 
@@ -1472,8 +1493,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               )}
                             </div>
                           </td>
-                          <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{getHoldingFullName(holding)}</td>
-                          <td className="px-2 md:px-4 text-sm hidden md:table-cell">
+                          <td className="px-2 md:px-4 text-sm text-gray-300">{getHoldingFullName(holding)}</td>
+                          <td className="px-2 md:px-4 text-sm">
                             {renderTags(holding, true)}
                           </td>
                           <td className="px-2 md:px-4 text-right text-sm text-gray-200">
@@ -1482,7 +1503,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
                             </span>
                           </td>
-                          <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                          <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                             {(() => {
                               const percentChange = getPercentChange(holding.symbol);
                               const isPositive = percentChange > 0;
@@ -1500,7 +1521,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           </td>
                           {isValueVisible && (
                             <>
-                              <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                              <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                                 {formatUnits(holding.total_units, holding.security_type)}
                               </td>
                               <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
@@ -1511,7 +1532,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               </td>
                             </>
                           )}
-                          <td className="px-2 md:px-4 hidden md:table-cell">
+                          <td className="px-2 md:px-4">
                             {holding.earnings_calendar && holding.earnings_calendar.length > 0 ? (
                               <button
                                 onClick={(e) => {
@@ -1602,7 +1623,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               </div>
                             )}
                           </td>
-                          <td className="px-2 md:px-4 hidden md:table-cell">
+                          <td className="px-2 md:px-4">
                             {(() => {
                               // Only treat cash holdings as base currency (not stocks with same symbol)
                               const isBaseCurrency = holding.security_type === 'cash' && 
@@ -1838,8 +1859,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         )}
                       </div>
                     </td>
-                    <td className="px-2 md:px-4 text-sm text-gray-300 hidden md:table-cell">{getHoldingFullName(holding)}</td>
-                    <td className="px-2 md:px-4 text-sm hidden md:table-cell">
+                    <td className="px-2 md:px-4 text-sm text-gray-300">{getHoldingFullName(holding)}</td>
+                    <td className="px-2 md:px-4 text-sm">
                       {renderTags(holding, true)} {/* Show all functionality: filter on click, remove buttons, add dropdown */}
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
@@ -1848,7 +1869,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
                       </span>
                     </td>
-                    <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                    <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                       {(() => {
                         const percentChange = getPercentChange(holding.symbol);
                         const isPositive = percentChange > 0;
@@ -1866,7 +1887,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     </td>
                     {isValueVisible && (
                       <>
-                        <td className="px-2 md:px-4 text-right text-sm text-gray-200 hidden md:table-cell">
+                        <td className="px-2 md:px-4 text-right text-sm text-gray-200">
                           {formatUnits(holding.total_units, holding.security_type)}
                         </td>
                         <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
@@ -1877,7 +1898,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         </td>
                       </>
                     )}
-                    <td className="px-2 md:px-4 hidden md:table-cell">
+                    <td className="px-2 md:px-4">
                       {holding.earnings_calendar && holding.earnings_calendar.length > 0 ? (
                         <button
                           onClick={(e) => {
@@ -1970,7 +1991,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         </div>
                       )}
                     </td>
-                    <td className="px-2 md:px-4 hidden md:table-cell">
+                    <td className="px-2 md:px-4">
                       {/* Show 7-day trend for currencies, crypto, and non-base currency holdings */}
                       {(() => {
                         // Only treat cash holdings as base currency (not stocks with same symbol)
@@ -2148,6 +2169,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
               )}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

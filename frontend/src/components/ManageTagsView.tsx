@@ -9,7 +9,10 @@ import TagEditor from './TagEditor';
 import TagAPI from '../utils/tag-api';
 import PortfolioAPI from '../utils/portfolio-api';
 import { usePortfolioData } from '../contexts/PortfolioDataContext';
+import { useMixpanel } from '../contexts/MixpanelContext';
 import PortfolioSelector from '../PortfolioSelector';
+import { SubtitleBar, MetricChip } from './subtitle-bar/SubtitleBar';
+import { TitleBar } from './title-bar';
 import PieChart from '../PieChart';
 import BarChart from '../BarChart';
 import StackedBarChart from './StackedBarChart';
@@ -68,10 +71,10 @@ const TAG_TYPE_INFO = {
 };
 
 export function ManageTagsView() {
-  const { 
-    refreshTagsOnly, 
-    updateCustomCharts, 
-    allPortfoliosData, 
+  const {
+    refreshTagsOnly,
+    updateCustomCharts,
+    allPortfoliosData,
     currentPortfolioData,
     selectedPortfolioId,
     setSelectedPortfolioId,
@@ -79,7 +82,8 @@ export function ManageTagsView() {
     refreshAllPortfoliosData,
     getAutocompleteData
   } = usePortfolioData();
-  
+  const { track } = useMixpanel();
+
   const autocompleteData = getAutocompleteData();
   
   const [tagLibrary, setTagLibrary] = useState<TagLibrary | null>(null);
@@ -191,6 +195,13 @@ export function ManageTagsView() {
   const handleCreateTagDefinition = async (tagDefinition: TagDefinition) => {
     try {
       await TagAPI.createTagDefinition(tagDefinition);
+
+      // Mixpanel: Track tag definition created
+      track('feature_tags_definition_created', {
+        tag_type: tagDefinition.tag_type,
+        is_custom: true,
+      });
+
       await loadData();
       // Update global context so tags are immediately available everywhere
       await refreshTagsOnly();
@@ -207,6 +218,11 @@ export function ManageTagsView() {
     }
 
     try {
+      // Mixpanel: Track tag definition deleted
+      track('feature_tags_definition_deleted', {
+        tag_name_provided: false, // Privacy: don't send actual tag name
+      });
+
       await TagAPI.deleteTagDefinition(tagName);
       await loadData();
       // Update global context so deleted tags are removed everywhere
@@ -240,6 +256,14 @@ export function ManageTagsView() {
     if (!tagEditor.symbol) return;
     try {
       await TagAPI.setHoldingTag(tagEditor.symbol, tagValue.tag_name, tagValue, selectedPortfolioId || undefined);
+
+      // Mixpanel: Track tags applied to holding
+      const tagDef = tagLibrary?.tag_definitions[tagValue.tag_name];
+      track('feature_tags_applied_to_holding', {
+        tag_type: tagDef?.tag_type || 'unknown',
+        holdings_tagged_count: 1,
+      });
+
       await loadData();
       await refreshTagsOnly();
       setTagEditor({ isOpen: false });
@@ -1076,25 +1100,22 @@ export function ManageTagsView() {
   return (
     <>
       {/* Header Section */}
-      <div className="sticky z-30 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700" style={{ top: '37px' }}>
-        <div className="container mx-auto flex justify-between items-start">
-          <div className="flex-1">
-            <PortfolioSelector
-              portfolios={availablePortfolios}
-              selectedPortfolioId={selectedPortfolioId}
-              onPortfolioChange={setSelectedPortfolioId}
-              userName={portfolioMetadata.user_name}
-              onPortfolioCreated={handlePortfolioCreated}
-              onPortfolioDeleted={handlePortfolioDeleted}
-              onDefaultPortfolioSet={handleDefaultPortfolioSet}
-              titleSuffix="Tags"
-            />
-            <p className="text-sm text-gray-400 mt-0">
-              Manage custom tags for your holdings
-            </p>
-          </div>
-          
-          <div className="hidden md:flex items-center space-x-4">
+      <TitleBar
+        leftContent={
+          <PortfolioSelector
+            portfolios={availablePortfolios}
+            selectedPortfolioId={selectedPortfolioId}
+            onPortfolioChange={setSelectedPortfolioId}
+            userName={portfolioMetadata.user_name}
+            onPortfolioCreated={handlePortfolioCreated}
+            onPortfolioDeleted={handlePortfolioDeleted}
+            onDefaultPortfolioSet={handleDefaultPortfolioSet}
+            titleSuffix="Tags"
+          />
+        }
+        subtitle="Manage custom tags for your holdings"
+        rightContent={
+          <>
             <button 
               className="flex items-center space-x-2 pl-3 pr-4 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group h-[44px]"
               onClick={() => setDefinitionManager({ isOpen: true })}
@@ -1109,30 +1130,34 @@ export function ManageTagsView() {
             >
               <HelpCircle size={20} />
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Metrics Bar */}
-      <div className="sticky z-20 bg-gray-800 border-t border-b border-gray-700" style={{ top: '114px' }}>
-        <div className="container mx-auto flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-4 py-1.5 px-2 sm:px-4 overflow-x-auto">
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-blue-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Tags:</span>
-            <span className="text-xs text-blue-400">{userDefinedTags.length}</span>
-          </div>
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-green-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Tagged:</span>
-            <span className="text-xs text-green-400">{allTaggedSymbols.size}</span>
-          </div>
-          <div className="flex items-center bg-gray-700 rounded-full px-3 py-1">
-            <Tags size={14} className="text-gray-400 mr-1.5" />
-            <span className="text-xs font-medium mr-1">Untagged:</span>
-            <span className="text-xs text-gray-400">{holdingsWithoutTags.length}</span>
-          </div>
-        </div>
-      </div>
+      <SubtitleBar topOffset="114px">
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-blue-400"
+          label="Tags:"
+          value={userDefinedTags.length}
+          valueColor="text-blue-400"
+        />
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-green-400"
+          label="Tagged:"
+          value={allTaggedSymbols.size}
+          valueColor="text-green-400"
+        />
+        <MetricChip
+          icon={<Tags size={14} />}
+          iconColor="text-gray-400"
+          label="Untagged:"
+          value={holdingsWithoutTags.length}
+          valueColor="text-gray-400"
+        />
+      </SubtitleBar>
 
       {/* Main Content */}
       <div className="container mx-auto py-4 px-2 sm:px-4">

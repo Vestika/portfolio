@@ -18,6 +18,7 @@ import {
   Edit,
   Info,
   ChevronDown,
+  ChevronUp,
   FileUp,
   PenLine,
   Loader2
@@ -29,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { SymbolAutocomplete } from "@/components/ui/autocomplete";
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { cn } from "@/lib/utils";
+import { TitleBar } from '@/components/title-bar';
 import {
   Dialog,
   DialogContent,
@@ -51,7 +53,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SymbolSuggestion } from './hooks/useSymbolAutocomplete';
-import HamburgerMenu from "@/components/ui/HamburgerMenu";
 import { useNavigate } from 'react-router-dom';
 
 
@@ -66,6 +67,7 @@ interface AccountSelectorProps {
   portfolioMetadata: PortfolioMetadata;
   onAccountsChange: (accountNames: string[]) => void;
   onToggleVisibility: () => void;
+  isValueVisible: boolean;
   availableFiles: PortfolioFile[];
   selectedFile: string;
   onPortfolioChange: (portfolio_id: string) => void;
@@ -302,6 +304,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   portfolioMetadata,
   onAccountsChange,
   onToggleVisibility,
+  isValueVisible,
   availableFiles = [], // Provide default empty array
   selectedFile,
   onPortfolioChange,
@@ -319,11 +322,11 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
       isSelected: true
     }))
   );
-  const [isValueVisible, setIsValueVisible] = useState(true);
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [showEditAccountModal, setShowEditAccountModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [addAccountDropdownOpen, setAddAccountDropdownOpen] = useState(false);
+  const [mobileAddAccountDropdownOpen, setMobileAddAccountDropdownOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<string>('');
   const [accountToEdit, setAccountToEdit] = useState<string>('');
   const [hoveredAccount, setHoveredAccount] = useState<string | null>(null);
@@ -465,6 +468,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const [suppressIbkrHover, setSuppressIbkrHover] = useState<boolean>(false);
   const [suppressEditIbkrHover, setSuppressEditIbkrHover] = useState<boolean>(false);
   
+  // Mobile expand/collapse state
+  const [isMobileExpanded, setIsMobileExpanded] = useState<boolean>(false);
+  
   // Symbol editing state for enhanced display
   const [editingSymbolIndex, setEditingSymbolIndex] = useState<number | null>(null);
   const [editEditingSymbolIndex, setEditEditingSymbolIndex] = useState<number | null>(null);
@@ -550,7 +556,6 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   };
 
   const toggleValueVisibility = () => {
-    setIsValueVisible(!isValueVisible);
     onToggleVisibility();
   };
 
@@ -1137,9 +1142,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
   const selectedAccountsCount = accounts.filter(account => account.isSelected).length;
 
   return (
-    <div className="sticky top-0 z-20 bg-gray-800 text-white pb-2 pt-4 px-4 border-b border-gray-700">
-      <div className="container mx-auto flex justify-between items-start">
-        <div className="flex-1">
+    <>
+      <TitleBar
+        leftContent={
           <PortfolioSelector
             portfolios={availableFiles}
             selectedPortfolioId={selectedFile}
@@ -1149,24 +1154,66 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
             onPortfolioDeleted={onPortfolioDeleted}
             onDefaultPortfolioSet={onDefaultPortfolioSet}
           />
-          <p className="text-sm text-gray-400 mt-0">
-            Showing {selectedAccountsCount} of {accounts.length} accounts
-          </p>
-        </div>
+        }
+        subtitle={`Showing ${selectedAccountsCount} of ${accounts.length} accounts`}
+        mobileRightContent={
+          <div className="flex items-center gap-1.5">
+            {/* Add Account Dropdown - Mobile */}
+            <DropdownMenu open={mobileAddAccountDropdownOpen} onOpenChange={setMobileAddAccountDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                  title="Add Account"
+                >
+                  <Plus size={16} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setMobileAddAccountDropdownOpen(false);
+                    setTimeout(() => setShowAddAccountModal(true), 100);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <PenLine className="mr-2 h-4 w-4" />
+                  <span>Manual Entry</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setMobileAddAccountDropdownOpen(false);
+                    navigate('/import/upload');
+                  }}
+                  className="cursor-pointer"
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  <span>Upload Statement</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        {/* Hamburger Menu for Mobile */}
-        <div className="md:hidden">
-          <HamburgerMenu
-            accounts={accounts}
-            toggleAccountSelection={toggleAccountSelection}
-            isValueVisible={isValueVisible}
-            toggleValueVisibility={toggleValueVisibility}
-            setShowAddAccountModal={setShowAddAccountModal}
-          />
-        </div>
+            {/* Visibility Toggle */}
+            <button
+              onClick={toggleValueVisibility}
+              className="p-1.5 rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-colors"
+              title={isValueVisible ? "Hide values" : "Show values"}
+            >
+              {isValueVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
 
-        {/* Full Header for Desktop */}
-        <div className="hidden md:flex items-center space-x-4">
+            {/* Expand/Collapse Button */}
+            <button
+              onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+              className="p-1.5 rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+              title={isMobileExpanded ? "Collapse accounts" : "Expand accounts"}
+            >
+              {isMobileExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          </div>
+        }
+        rightContent={
+          <>
           <div className="flex space-x-2">
             {accounts.map(account => {
               const syncStatus = autoSyncStatuses[account.account_name];
@@ -1257,7 +1304,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
               );
             })}
 
-            {/* Add New Account Dropdown */}
+            {/* Add New Account Dropdown - Desktop */}
             <DropdownMenu open={addAccountDropdownOpen} onOpenChange={setAddAccountDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center space-x-2 pl-3 pr-4 py-2 rounded-md bg-emerald-500/20 backdrop-blur-sm text-white hover:bg-emerald-500/30 transition-all duration-300 transform hover:scale-105 shadow-emerald-500/10 hover:shadow-emerald-500/20 border border-emerald-400/30 hover:border-emerald-300/40 group">
@@ -1270,9 +1317,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault();
-                    // Close dropdown first
                     setAddAccountDropdownOpen(false);
-                    // Then open modal after a short delay
                     setTimeout(() => setShowAddAccountModal(true), 100);
                   }}
                   className="cursor-pointer"
@@ -1281,7 +1326,10 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                   <span>Manual Entry</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => navigate('/import/upload')}
+                  onSelect={() => {
+                    setAddAccountDropdownOpen(false);
+                    navigate('/import/upload');
+                  }}
                   className="cursor-pointer"
                 >
                   <FileUp className="mr-2 h-4 w-4" />
@@ -1298,9 +1346,89 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           >
             {isValueVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
           </button>
+          </>
+        }
+        mobileContent={
+          isMobileExpanded ? (
+            <div className="mt-3 -mx-4 border-t border-gray-700 bg-gray-800/50 max-h-[50vh] overflow-y-auto">
+                {accounts.map(account => {
+                  const syncStatus = autoSyncStatuses[account.account_name];
+                  const isSyncing = syncStatus === 'processing';
 
-        </div>
-      </div>
+                  return (
+                    <div
+                      key={account.account_name}
+                      className="flex items-center justify-between px-4 py-3 border-b border-gray-700 last:border-b-0 hover:bg-gray-700/50"
+                    >
+                      {/* Account info - clickable to select/deselect */}
+                      <div
+                        className="flex items-center gap-3 flex-1 cursor-pointer"
+                        onClick={() => toggleAccountSelection(account.account_name)}
+                      >
+                        {isSyncing ? (
+                          <Loader2 size={20} className="text-blue-400 animate-spin flex-shrink-0" />
+                        ) : account.isSelected ? (
+                          <CheckCircle2 size={20} className="text-blue-400 flex-shrink-0" />
+                        ) : (
+                          <Circle size={20} className="text-gray-400 flex-shrink-0" />
+                        )}
+                        
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{account.account_name}</p>
+                          {isSyncing && (
+                            <p className="text-xs text-blue-400">Auto-sync in progress</p>
+                          )}
+                          {isValueVisible ? (
+                            <p className="text-xs text-gray-400">
+                              {new Intl.NumberFormat('en-US', {
+                                maximumFractionDigits: 0
+                              }).format(calculateAccountTotal(account))} {portfolioMetadata.base_currency}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-400 flex items-center">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 mr-1"></span>
+                              {portfolioMetadata.base_currency}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action buttons - Edit and Delete */}
+                      <div className="flex items-center gap-1 ml-2">
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmEditAccount(account.account_name);
+                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
+                          title="Edit account"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmDeleteAccount(account.account_name);
+                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/20"
+                          title="Delete account"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : null
+        }
+      />
       
       {/* Add Account Modal */}
       <Dialog open={showAddAccountModal} onOpenChange={(open) => {
@@ -1321,6 +1449,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           setIbkrAccessToken('');
           setIbkrQueryId('');
           setSaveIbkrCredentials(false);
+          // Also ensure dropdowns are closed
+          setAddAccountDropdownOpen(false);
+          setMobileAddAccountDropdownOpen(false);
         }
       }}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
@@ -2492,7 +2623,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
         initialUnits={customHoldingContext?.initialUnits}
         initialName={customHoldingContext?.initialName}
       />
-    </div>
+    </>
   );
 };
 

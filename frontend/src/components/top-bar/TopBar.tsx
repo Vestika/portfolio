@@ -6,9 +6,6 @@ import {
   Menu,
   X,
   Newspaper,
-  User,
-  Settings,
-  LogOut,
   Library,
   ArrowRightLeft
 } from 'lucide-react'
@@ -18,14 +15,9 @@ import { AboutModal } from './AboutModal'
 import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
 import GoogleProfilePicture from './GoogleProfilePicture'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useUserProfile } from '../contexts/UserProfileContext'
+import { IconButton } from './IconButton'
+import { useUserProfile } from '../../contexts/UserProfileContext'
+import { useMixpanel } from '../../contexts/MixpanelContext'
 
 export type NavigationView = 'portfolios' | 'cashflow' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
@@ -56,16 +48,15 @@ interface TopBarProps {
   activeView?: NavigationView // Now optional, derived from URL
   onViewChange?: (view: NavigationView) => void // Now optional
   onProfileClick?: () => void
-  onSettingsClick?: () => void
-  onSignOutClick?: () => void
   onFeedbackClick?: () => void
 }
 
-export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onSettingsClick, onSignOutClick, onFeedbackClick }: TopBarProps) {
+export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onFeedbackClick }: TopBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const { googleProfileData } = useUserProfile()
+  const { track } = useMixpanel()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -111,6 +102,13 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   ]
 
   const handleNavClick = (view: NavigationView) => {
+    // Mixpanel: Track navigation view change
+    track('navigation_view_changed', {
+      from_view: activeView,
+      to_view: view,
+      is_mobile: isMobileMenuOpen,
+    })
+
     navigate(viewToPath[view])
     onViewChange?.(view) // Call callback if provided (for backwards compatibility)
     setIsMobileMenuOpen(false)
@@ -123,11 +121,28 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   return (
     <div className="w-full bg-black border-b border-gray-800 sticky top-0 z-50">
       <div className="flex items-center justify-between px-4 sm:px-6 py-1">
-        {/* Left side - Logo and App Name */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={handleAboutClick}>
-          <h1 className="text-lg sm:text-xl text-white hover:text-gray-300 transition-colors" style={{ fontFamily: "'Poiret One', sans-serif", textShadow: '0 0 3px rgb(251, 46, 118), 0 0 5px rgba(251, 46, 118, 0.7), 0 0 6px rgba(251, 46, 118, 0.4)' }}>
-            Vestika
-          </h1>
+        {/* Left side - Mobile Menu Button (mobile only) + Logo */}
+        <div className="flex items-center gap-3">
+          {/* Mobile Menu Button - LEFT SIDE */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-0 text-white hover:text-gray-300 transition-colors focus:outline-none bg-transparent border-0"
+            aria-label="Toggle mobile menu"
+            style={{ outline: 'none', boxShadow: 'none' }}
+          >
+            {isMobileMenuOpen ? (
+              <X className="h-6 w-6" strokeWidth={2.5} />
+            ) : (
+              <Menu className="h-6 w-6" strokeWidth={2.5} />
+            )}
+          </button>
+          
+          {/* Logo and App Name */}
+          <div className="flex items-center cursor-pointer" onClick={handleAboutClick}>
+            <h1 className="text-lg sm:text-xl text-white hover:text-gray-300 transition-colors" style={{ fontFamily: "'Poiret One', sans-serif", textShadow: '0 0 3px rgb(251, 46, 118), 0 0 5px rgba(251, 46, 118, 0.7), 0 0 6px rgba(251, 46, 118, 0.4)' }}>
+              Vestika
+            </h1>
+          </div>
         </div>
 
         {/* Desktop Navigation */}
@@ -177,50 +192,17 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           {/* Notification Bell */}
           <NotificationBell />
           
-          {/* Profile Icon Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-8 h-8">
-                <GoogleProfilePicture
-                  photoURL={googleProfileData?.photoURL}
-                  displayName={googleProfileData?.displayName}
-                  size="sm"
-                  className="border-0 bg-transparent"
-                />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
-              sideOffset={8}
-            >
-              <DropdownMenuItem
-                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <User size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Profile Icon */}
+          <IconButton onClick={onProfileClick} ariaLabel="Profile">
+            <GoogleProfilePicture
+              photoURL={googleProfileData?.photoURL}
+              displayName={googleProfileData?.displayName}
+              size="sm"
+            />
+          </IconButton>
         </div>
 
-        {/* Mobile Menu Button and Icons */}
+        {/* Right side - Mobile Icons */}
         <div className="md:hidden flex items-center gap-2">
           {/* Q&A button mobile */}
           <a
@@ -245,60 +227,13 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
           <NotificationBell />
 
           {/* Profile Icon for mobile */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="rounded-full bg-gray-600/80 backdrop-blur-md text-white hover:bg-gray-600 transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500/50 p-0 w-7 h-7">
-                <GoogleProfilePicture
-                  photoURL={googleProfileData?.photoURL}
-                  displayName={googleProfileData?.displayName}
-                  size="sm"
-                  className="border-0 bg-transparent"
-                />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-56 bg-gray-800/95 backdrop-blur-md border-gray-700 shadow-xl"
-              sideOffset={8}
-            >
-              <DropdownMenuItem
-                onClick={() => onProfileClick ? onProfileClick() : navigate('/profile')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <User size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onSettingsClick ? onSettingsClick() : navigate('/settings')}
-                className="flex items-center cursor-pointer text-gray-100 hover:bg-gray-700/80 focus:bg-gray-700/80 transition-colors"
-              >
-                <Settings size={16} className="mr-3 text-gray-400" />
-                <span className="font-medium">Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem
-                onClick={onSignOutClick}
-                className="flex items-center cursor-pointer text-red-400 hover:bg-red-500/20 focus:bg-red-500/20 transition-colors"
-              >
-                <LogOut size={16} className="mr-3" />
-                <span className="font-medium">Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-1 text-gray-400 hover:text-white transition-colors focus:outline-none focus:ring-0 active:outline-none"
-            aria-label="Toggle mobile menu"
-            style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
-          >
-            {isMobileMenuOpen ? (
-              <X className="h-4 w-4" />
-            ) : (
-              <Menu className="h-4 w-4" />
-            )}
-          </button>
+          <IconButton onClick={onProfileClick} ariaLabel="Profile">
+            <GoogleProfilePicture
+              photoURL={googleProfileData?.photoURL}
+              displayName={googleProfileData?.displayName}
+              size="sm"
+            />
+          </IconButton>
         </div>
       </div>
 

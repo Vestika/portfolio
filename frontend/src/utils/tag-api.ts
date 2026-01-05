@@ -14,19 +14,23 @@ export class TagAPI {
   }
 
   static async deleteTagDefinition(tagName: string): Promise<void> {
-    await api.delete(`/tags/definitions/${tagName}`);
+    // URL encode the tag name to handle special characters like ? # & etc.
+    const encodedTagName = encodeURIComponent(tagName);
+    await api.delete(`/tags/definitions/${encodedTagName}`);
   }
 
   static async adoptTemplateTag(templateName: string, customName?: string): Promise<TagDefinition> {
     const params = customName ? { custom_name: customName } : {};
-    const response = await api.post(`/tags/adopt-template/${templateName}`, null, { params });
+    const encodedTemplateName = encodeURIComponent(templateName);
+    const response = await api.post(`/tags/adopt-template/${encodedTemplateName}`, null, { params });
     return response.data;
   }
 
   // Holding Tags Management
   static async getHoldingTags(symbol: string, portfolioId?: string): Promise<HoldingTags> {
     const params = portfolioId ? { portfolio_id: portfolioId } : {};
-    const response = await api.get(`/holdings/${symbol}/tags`, { params });
+    const encodedSymbol = encodeURIComponent(symbol);
+    const response = await api.get(`/holdings/${encodedSymbol}/tags`, { params });
     return response.data;
   }
 
@@ -37,7 +41,9 @@ export class TagAPI {
     portfolioId?: string
   ): Promise<HoldingTags> {
     const params = portfolioId ? { portfolio_id: portfolioId } : {};
-    const response = await api.put(`/holdings/${symbol}/tags/${tagName}`, tagValue, { params });
+    const encodedSymbol = encodeURIComponent(symbol);
+    const encodedTagName = encodeURIComponent(tagName);
+    const response = await api.put(`/holdings/${encodedSymbol}/tags/${encodedTagName}`, tagValue, { params });
     return response.data;
   }
 
@@ -47,7 +53,9 @@ export class TagAPI {
     portfolioId?: string
   ): Promise<void> {
     const params = portfolioId ? { portfolio_id: portfolioId } : {};
-    await api.delete(`/holdings/${symbol}/tags/${tagName}`, { params });
+    const encodedSymbol = encodeURIComponent(symbol);
+    const encodedTagName = encodeURIComponent(tagName);
+    await api.delete(`/holdings/${encodedSymbol}/tags/${encodedTagName}`, { params });
   }
 
   static async getAllHoldingTags(portfolioId?: string): Promise<HoldingTags[]> {
@@ -74,7 +82,8 @@ export class TagAPI {
     portfolioId?: string
   ): Promise<{ tag_name: string; holdings: any[] }> {
     const params = portfolioId ? { portfolio_id: portfolioId } : {};
-    const response = await api.get(`/tags/${tagName}/aggregation`, { params });
+    const encodedTagName = encodeURIComponent(tagName);
+    const response = await api.get(`/tags/${encodedTagName}/aggregation`, { params });
     return response.data;
   }
 
