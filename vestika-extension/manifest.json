@@ -17,7 +17,6 @@
   ],
   "host_permissions": [
     "https://app.vestika.io/*",
-    "http://localhost/*",
     "https://*/*",
     "http://*/*"
   ],
@@ -37,9 +36,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://app.vestika.io/*",
-        "http://localhost:5173/*",
-        "http://localhost:*/*"
+        "https://app.vestika.io/*"
       ],
       "js": ["src/content/vestika-auth.ts"],
       "run_at": "document_start"
@@ -49,8 +46,7 @@
     {
       "resources": ["assets/injected-auth-bridge.js"],
       "matches": [
-        "https://app.vestika.io/*",
-        "http://localhost:*/*"
+        "https://app.vestika.io/*"
       ]
     }
   ]
