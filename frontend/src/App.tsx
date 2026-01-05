@@ -516,13 +516,13 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main Content Area - Add padding bottom on mobile to account for footer */}
-      <div className="flex flex-col lg:flex-row flex-1 pb-[80px] md:pb-0">
+      {/* Main Content Area */}
+      <div className="flex flex-col lg:flex-row flex-1">
         {/* Main View Content */}
         <div
           className="flex-1 transition-all duration-300 w-full"
         >
-          <main className="flex-1 pb-[80px] md:pb-0">
+          <main className="flex-1 pb-[72px] md:pb-0">
             <Routes>
               {/* Main views */}
               <Route
