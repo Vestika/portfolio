@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { RSUPlan } from '../types';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { SymbolAutocomplete } from './ui/autocomplete';
+import { SymbolSuggestion } from '../hooks/useSymbolAutocomplete';
 
 interface RSUPlanConfigProps {
   plan: RSUPlan;
@@ -24,8 +26,47 @@ const RSUPlanConfig: React.FC<RSUPlanConfigProps> = ({
   isCollapsed = false, 
   onToggleCollapse 
 }) => {
+  const symbolInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus symbol field when plan is new (empty symbol) and not collapsed
+  useEffect(() => {
+    if (!plan.symbol && !isCollapsed && symbolInputRef.current) {
+      // Small delay to ensure the input is rendered
+      setTimeout(() => {
+        symbolInputRef.current?.focus();
+      }, 100);
+    }
+  }, [plan.symbol, isCollapsed]);
+
   const updatePlan = (updates: Partial<RSUPlan>) => {
     onChange({ ...plan, ...updates });
+  };
+
+  const handleSymbolSelect = (suggestion: SymbolSuggestion) => {
+    // Extract the clean symbol (without exchange prefix)
+    let symbol = suggestion.symbol;
+    
+    // Remove exchange prefixes for display/storage
+    if (symbol.toUpperCase().startsWith('NYSE:')) {
+      symbol = symbol.substring(5);
+    } else if (symbol.toUpperCase().startsWith('NASDAQ:')) {
+      symbol = symbol.substring(7);
+    } else if (symbol.toUpperCase().startsWith('TASE:')) {
+      symbol = symbol.substring(5);
+    } else if (symbol.toUpperCase().startsWith('FX:')) {
+      symbol = symbol.substring(3);
+    }
+    
+    // Remove -USD suffix for crypto if present
+    if (suggestion.symbol_type === 'crypto' && symbol.endsWith('-USD')) {
+      symbol = symbol.replace('-USD', '');
+    }
+    
+    updatePlan({ symbol: symbol.toUpperCase() });
+  };
+
+  const handleAddCustomSymbol = (searchTerm: string) => {
+    updatePlan({ symbol: searchTerm.toUpperCase() });
   };
 
   return (
@@ -57,11 +98,13 @@ const RSUPlanConfig: React.FC<RSUPlanConfigProps> = ({
         <div className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="symbol">Stock Symbol</Label>
-            <Input
-              id="symbol"
-              value={plan.symbol}
-              onChange={(e) => updatePlan({ symbol: e.target.value.toUpperCase() })}
+            <SymbolAutocomplete
+              ref={symbolInputRef}
               placeholder="e.g., AAPL"
+              value={plan.symbol}
+              onSelect={handleSymbolSelect}
+              onClose={() => {}}
+              onAddCustom={handleAddCustomSymbol}
             />
           </div>
 

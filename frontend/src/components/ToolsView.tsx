@@ -8,7 +8,6 @@ import TaxPlannerTool from './TaxPlannerTool'
 import FIRECalculator from './FIRECalculator'
 import { MortgageVsInvestCalculator } from './MortgageVsInvestCalculator'
 import { BuyOrRentCalculator } from './BuyOrRentCalculator'
-import { useMixpanel } from '../contexts/MixpanelContext'
 
 export type ToolKey = 'tax-planner' | 'compound' | 'scenario' | 'fire' | 'mortgage-invest' | 'buy-or-rent'
 
@@ -28,7 +27,6 @@ const tools: Array<{ key: ToolKey; name: string; description: string; icon: Luci
 export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { track } = useMixpanel()
   const [collapsed, setCollapsed] = useState<boolean>(true)
 
   // Derive active tool from URL or prop
@@ -47,27 +45,50 @@ export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
   const activeTool = getActiveToolFromPath()
 
   const handleToolClick = (tool: typeof tools[0]) => {
-    // Mixpanel: Track tool usage
-    track('feature_tools_calculator_used', {
-      tool_type: tool.key,
-      previous_tool: activeTool,
-    })
-
     navigate(tool.path)
   }
 
   return (
-    <div className="min-h-[60vh] px-2 max-w-6xl mx-auto">
-      <div className="text-center mb-6">
-        <div className="text-6xl mb-4">
-          <Wrench className="h-16 w-16 mx-auto text-gray-400" />
+    <div className="min-h-[60vh] px-2 sm:px-4 max-w-6xl mx-auto w-full pb-4 md:pb-0">
+      <div className="text-center mb-4 sm:mb-6">
+        <div className="text-4xl sm:text-6xl mb-2 sm:mb-4">
+          <Wrench className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-gray-400" />
         </div>
-        <h2 className="text-2xl font-bold text-white">Portfolio Tools</h2>
-        <p className="text-gray-300">Advanced tools and calculators to help optimize your investment strategy.</p>
+        <h2 className="text-xl sm:text-2xl font-bold text-white">Portfolio Tools</h2>
+        <p className="text-sm sm:text-base text-gray-300 px-2">Advanced tools and calculators to help optimize your investment strategy.</p>
       </div>
 
-      <div className="flex gap-4">
-        <aside className={`${collapsed ? 'w-14' : 'w-64'} shrink-0 transition-all duration-200`}>
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* Mobile: Horizontal scrollable toolbar */}
+        <aside className="md:hidden w-full overflow-x-auto">
+          <div className="bg-gray-800 rounded-lg p-2">
+            <nav className="flex gap-2 min-w-max">
+              {tools.map((t) => {
+                const isActive = activeTool === t.key
+                const Icon = t.icon
+                return (
+                  <button
+                    key={t.key}
+                    className={`flex-shrink-0 rounded-md border transition-colors flex flex-col items-center justify-center px-3 py-2 min-w-[80px] ${
+                      isActive
+                        ? 'bg-blue-600/20 border-blue-500 text-white'
+                        : 'bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-800'
+                    }`}
+                    onClick={() => handleToolClick(t)}
+                    title={t.name}
+                    aria-label={t.name}
+                  >
+                    <Icon className="h-5 w-5 mb-1" />
+                    <div className="text-xs font-semibold text-center">{t.name}</div>
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* Desktop: Vertical sidebar */}
+        <aside className={`hidden md:block ${collapsed ? 'w-14' : 'w-64'} shrink-0 transition-all duration-200`}>
           <div className="bg-gray-800 rounded-lg p-2 h-full">
             <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} mb-2`}>
               {!collapsed && <div className="text-sm font-medium text-white">Tools</div>}
@@ -110,7 +131,7 @@ export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
           </div>
         </aside>
 
-        <main className="flex-1 space-y-6">
+        <main className="flex-1 space-y-6 min-w-0 w-full">
           {activeTool === 'tax-planner' && <TaxPlannerTool />}
           {activeTool === 'compound' && <CompoundInterestTool />}
           {activeTool === 'scenario' && <ScenarioComparisonTool />}

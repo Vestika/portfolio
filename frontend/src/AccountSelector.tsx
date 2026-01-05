@@ -1454,7 +1454,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           setMobileAddAccountDropdownOpen(false);
         }
       }}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col w-[calc(100vw-2rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Plus className="mr-2 h-5 w-5 text-green-500" />
@@ -1466,9 +1466,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="flex gap-6 py-4 min-h-[400px]">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 py-4 min-h-[400px]">
               {/* Left Column - Form Fields */}
-              <div className="flex-1 space-y-4">
+              <div className="flex-1 space-y-4 min-w-0">
                 <div className="grid gap-2">
                   <Label htmlFor="account-name">Account Name</Label>
                   <Input
@@ -1680,6 +1680,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               vesting_period_years: 4,
                               vesting_frequency: 'quarterly'
                             };
+                            // Auto-expand the new plan
+                            setCollapsedRSUPlans(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(newRSUPlan.id);
+                              return newSet;
+                            });
                             setNewAccount({
                               ...newAccount,
                               rsu_plans: [...newAccount.rsu_plans, newRSUPlan]
@@ -1696,7 +1702,16 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
                       <div className="space-y-3">
                         {newAccount.rsu_plans.map((plan, index) => (
-                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div 
+                            key={plan.id} 
+                            className="border rounded-lg p-3 sm:p-4 bg-muted/20 min-w-0"
+                            ref={(el) => {
+                              // Scroll into view if this is the last (newly added) plan and has no symbol
+                              if (el && index === newAccount.rsu_plans.length - 1 && !plan.symbol) {
+                                setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+                              }
+                            }}
+                          >
                             <div className="flex items-center justify-between mb-3">
                               <Label className="text-sm font-medium">
                                 RSU Plan - {plan.symbol || 'New Plan'}
@@ -1750,6 +1765,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               base_stock_price: 180,
                               exchange_rate: 3.65
                             };
+                            // Auto-expand the new plan
+                            setCollapsedESPPPlans(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(newESPPPlan.id);
+                              return newSet;
+                            });
                             setNewAccount({
                               ...newAccount,
                               espp_plans: [...newAccount.espp_plans, newESPPPlan]
@@ -1766,7 +1787,16 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
                       <div className="space-y-3">
                         {newAccount.espp_plans.map((plan, index) => (
-                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div 
+                            key={plan.id} 
+                            className="border rounded-lg p-3 sm:p-4 bg-muted/20 min-w-0"
+                            ref={(el) => {
+                              // Scroll into view if this is the last (newly added) plan and has no symbol
+                              if (el && index === newAccount.espp_plans.length - 1 && !plan.symbol) {
+                                setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+                              }
+                            }}
+                          >
                             <div className="flex items-center justify-between mb-3">
                               <Label className="text-sm font-medium">
                                 ESPP Plan - {plan.symbol || 'New Plan'}
@@ -1884,8 +1914,8 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                       {/* Table Body */}
                       <div className="flex-1 overflow-y-auto">
                         {newAccount.holdings.map((holding, index) => (
-                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
-                            <div className="flex-1 p-0">
+                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50 min-w-[300px]">
+                            <div className="flex-1 p-0 min-w-0">
                               {editingSymbolIndex === index ? (
                                 <div className="symbol-autocomplete-container">
                                   <SymbolAutocomplete
@@ -1936,7 +1966,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                 />
                               )}
                             </div>
-                            <div className="w-28 p-0">
+                            <div className="w-28 sm:w-32 p-0 flex-shrink-0">
                               <Input
                                 placeholder="0"
                                 type="number"
@@ -2039,7 +2069,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           setAccountToEdit('');
         }
       }}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col w-[calc(100vw-2rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Edit className="mr-2 h-5 w-5 text-blue-500" />
@@ -2051,9 +2081,9 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="flex gap-6 py-4 min-h-[400px]">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 py-4 min-h-[400px]">
               {/* Left Column - Form Fields */}
-              <div className="flex-1 space-y-4">
+              <div className="flex-1 space-y-4 min-w-0">
                 <div className="grid gap-2">
                   <Label htmlFor="edit-account-name">Account Name</Label>
                   <Input
@@ -2267,6 +2297,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               vesting_period_years: 4,
                               vesting_frequency: 'quarterly'
                             };
+                            // Auto-expand the new plan
+                            setEditCollapsedRSUPlans(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(newRSUPlan.id);
+                              return newSet;
+                            });
                             setEditAccount({
                               ...editAccount,
                               rsu_plans: [...editAccount.rsu_plans, newRSUPlan]
@@ -2283,7 +2319,16 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
                       <div className="space-y-3">
                         {editAccount.rsu_plans.map((plan, index) => (
-                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div 
+                            key={plan.id} 
+                            className="border rounded-lg p-3 sm:p-4 bg-muted/20 min-w-0"
+                            ref={(el) => {
+                              // Scroll into view if this is the last (newly added) plan and has no symbol
+                              if (el && index === editAccount.rsu_plans.length - 1 && !plan.symbol) {
+                                setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+                              }
+                            }}
+                          >
                             <div className="flex items-center justify-between mb-3">
                               <Label className="text-sm font-medium">
                                 RSU Plan - {plan.symbol || 'New Plan'}
@@ -2336,6 +2381,12 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                               stock_discount_percentage: 15,
                               base_stock_price: 100
                             };
+                            // Auto-expand the new plan
+                            setEditCollapsedESPPPlans(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(newESPPPlan.id);
+                              return newSet;
+                            });
                             setEditAccount({
                               ...editAccount,
                               espp_plans: [...editAccount.espp_plans, newESPPPlan]
@@ -2352,7 +2403,16 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
 
                       <div className="space-y-3">
                         {editAccount.espp_plans.map((plan, index) => (
-                          <div key={plan.id} className="border rounded-lg p-4 bg-muted/20">
+                          <div 
+                            key={plan.id} 
+                            className="border rounded-lg p-3 sm:p-4 bg-muted/20 min-w-0"
+                            ref={(el) => {
+                              // Scroll into view if this is the last (newly added) plan and has no symbol
+                              if (el && index === editAccount.espp_plans.length - 1 && !plan.symbol) {
+                                setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+                              }
+                            }}
+                          >
                             <div className="flex items-center justify-between mb-3">
                               <Label className="text-sm font-medium">
                                 ESPP Plan - {plan.symbol || 'New Plan'}
@@ -2459,19 +2519,19 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                 ) : (
                   <>
                     <Label className="mb-3">Holdings</Label>
-                    <div className="rounded-md border flex-1 flex flex-col">
+                    <div className="rounded-md border flex-1 flex flex-col overflow-x-auto">
                       {/* Table Header */}
-                      <div className="flex items-center border-b bg-muted/50 px-0">
-                        <div className="flex-1 px-3 py-3 text-sm font-medium">Symbol</div>
-                        <div className="w-28 px-3 py-3 text-sm font-medium">Units</div>
-                        <div className="w-12 px-3 py-3"></div>
+                      <div className="flex items-center border-b bg-muted/50 px-0 min-w-[300px]">
+                        <div className="flex-1 px-3 py-3 text-sm font-medium min-w-0">Symbol</div>
+                        <div className="w-28 sm:w-32 px-3 py-3 text-sm font-medium flex-shrink-0">Units</div>
+                        <div className="w-12 px-3 py-3 flex-shrink-0"></div>
                       </div>
 
                       {/* Table Body */}
                       <div className="flex-1 overflow-y-auto">
                         {editAccount.holdings.map((holding, index) => (
-                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50">
-                            <div className="flex-1 p-0">
+                          <div key={index} className="flex items-center border-b last:border-b-0 hover:bg-muted/50 min-w-[300px]">
+                            <div className="flex-1 p-0 min-w-0 overflow-hidden">
                               {editEditingSymbolIndex === index ? (
                                 <div className="symbol-autocomplete-container">
                                   <SymbolAutocomplete
@@ -2522,7 +2582,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                 />
                               )}
                             </div>
-                            <div className="w-28 p-0">
+                            <div className="w-28 sm:w-32 p-0 flex-shrink-0">
                               <Input
                                 placeholder="0"
                                 type="number"
@@ -2536,7 +2596,7 @@ const AccountSelector: React.FC<AccountSelectorProps> = ({
                                 ref={(el) => editHoldingRefs.current[`edit-${index}-units`] = el}
                               />
                             </div>
-                            <div className="w-12 flex justify-center py-2">
+                            <div className="w-12 flex justify-center py-2 flex-shrink-0">
                               {editAccount.holdings.length > 1 && (holding.symbol || holding.units) && (
                                 <Button
                                   type="button"

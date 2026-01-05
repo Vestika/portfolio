@@ -71,11 +71,11 @@ export function AboutModal({ isOpen, onOpenChange }: AboutModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
       onClick={handleBackgroundClick}
     >
       <div 
-        className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-lg p-6 md:p-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-lg p-6 md:p-8 pb-[88px] md:pb-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         onClick={(e) => e.stopPropagation()}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >

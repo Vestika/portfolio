@@ -23,11 +23,13 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   onKeyDown,
   className
 }, ref) => {
-  const [open, setOpen] = useState(true); // Default to open when rendered
+  const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement | null>(null);
   const isSelectingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const isClickingInputRef = useRef(false);
   
   const { suggestions, isLoading, fetchSuggestions, clearSuggestions } = useSymbolAutocomplete();
   
@@ -56,6 +58,16 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
   const handleInputChange = (newValue: string) => {
     setInputValue(newValue);
     if (!open) setOpen(true);
+  };
+
+  // Handle focus - open dropdown when input is focused and has text
+  const handleFocus = () => {
+    // If there's text, open and fetch suggestions
+    if (inputValue.trim()) {
+      setOpen(true);
+      fetchSuggestions(inputValue.trim());
+    }
+    // If empty, wait for user to type (will open via handleInputChange)
   };
 
   const selectSuggestion = (suggestion: SymbolSuggestion) => {
@@ -154,22 +166,48 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
     return symbol;
   };
 
+  // Determine if popover should be open - open when focused or when there's text
+  const shouldOpen = open && (inputValue.trim().length > 0);
+
   return (
-    <Popover open={open && inputValue.trim().length > 0} onOpenChange={(isOpen) => {
-      setOpen(isOpen);
+    <Popover open={shouldOpen} onOpenChange={(isOpen) => {
       if (!isOpen) {
+        setOpen(false);
         onClose();
       }
     }}>
       <PopoverTrigger asChild>
         <div className="relative w-full">
           <input
-            ref={ref}
+            ref={(node) => {
+              inputRef.current = node;
+              if (typeof ref === 'function') {
+                ref(node);
+              } else if (ref) {
+                ref.current = node;
+              }
+            }}
             type="text"
             placeholder={placeholder}
             value={inputValue}
             onChange={(e) => handleInputChange(e.target.value)}
-            onFocus={() => setOpen(true)}
+            onFocus={handleFocus}
+            onMouseDown={(e) => {
+              // Track that we're clicking on the input
+              isClickingInputRef.current = true;
+              // If clicking when not focused, prevent default blur and focus manually
+              if (document.activeElement !== e.currentTarget) {
+                e.preventDefault();
+                setTimeout(() => {
+                  (e.currentTarget as HTMLInputElement).focus();
+                  isClickingInputRef.current = false;
+                }, 0);
+              } else {
+                setTimeout(() => {
+                  isClickingInputRef.current = false;
+                }, 100);
+              }
+            }}
             onBlur={(e) => {
               // Check if the focus is moving to the popover content
               const relatedTarget = e.relatedTarget as Node;
@@ -177,13 +215,28 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
                 return;
               }
               
-              // Use setTimeout to allow mousedown to fire first
+              // If we're clicking on the input itself, don't close
+              if (isClickingInputRef.current) {
+                return;
+              }
+              
+              // Use setTimeout to allow mousedown/click events to fire first
+              // This prevents closing when clicking on the input from outside
               setTimeout(() => {
-                if (!isSelectingRef.current) {
+                // Check if input is still focused (might have been refocused by click)
+                const isStillFocused = document.activeElement === inputRef.current;
+                if (!isStillFocused && !isSelectingRef.current && !isClickingInputRef.current) {
                   setOpen(false);
                   onClose();
                 }
-              }, 150);
+              }, 200);
+            }}
+            onClick={() => {
+              // When clicking on the input, ensure it's focused and open if there's text
+              if (inputValue.trim()) {
+                setOpen(true);
+                fetchSuggestions(inputValue.trim());
+              }
             }}
             onKeyDown={handleKeyDown}
             className={cn(
@@ -198,8 +251,9 @@ export const SymbolAutocomplete = React.forwardRef<HTMLInputElement, Autocomplet
         </div>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-[400px] p-0 pointer-events-auto" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 pointer-events-auto" 
         align="start"
+        sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {
           // Prevent closing when interacting with the input

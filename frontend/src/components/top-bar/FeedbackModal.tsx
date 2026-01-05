@@ -52,7 +52,7 @@ export function FeedbackModal({ isOpen, onOpenChange }: FeedbackModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
       onClick={handleBackgroundClick}
     >
       <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl shadow-2xl"

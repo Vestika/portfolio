@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Bell, BellRing } from 'lucide-react';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { IconButton } from './IconButton';
@@ -10,6 +10,8 @@ interface NotificationBellProps {
 export const NotificationBell: React.FC<NotificationBellProps> = ({ className = "" }) => {
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
 
 
   // Format notification time
@@ -51,6 +53,17 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
     }
   };
 
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right, // Distance from right edge in pixels
+      });
+    }
+  }, [isOpen]);
+
   // Handle notification click - navigate if it has a link
   const handleNotificationClick = (notification: typeof notifications[0]) => {
     if (notification.status === 'unread') {
@@ -73,6 +86,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
     <div className={`relative ${className}`}>
       {/* Bell Icon */}
       <IconButton
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
         ariaLabel="Notifications"
@@ -92,9 +106,21 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
         )}
       </IconButton>
 
-      {/* Dropdown */}
+      {/* Dropdown - Fixed positioning to prevent layout shifts */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-gray-700 rounded-md shadow-lg z-50 border border-gray-600">
+        <>
+          {/* Backdrop to close dropdown */}
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => setIsOpen(false)}
+          />
+          <div 
+            className="fixed w-80 max-w-[calc(100vw-2rem)] bg-gray-700 rounded-md shadow-lg z-[70] border border-gray-600"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              right: `${Math.max(16, dropdownPosition.right)}px`, // Minimum 1rem (16px) from right edge
+            }}
+          >
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-600 flex items-center justify-between">
             <h3 className="text-sm font-medium text-white">Notifications</h3>
@@ -149,15 +175,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ className = 
               ))
             )}
           </div>
-        </div>
-      )}
-
-      {/* Backdrop to close dropdown */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
+          </div>
+        </>
       )}
     </div>
   );
