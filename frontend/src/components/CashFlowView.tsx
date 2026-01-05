@@ -575,10 +575,10 @@ export function CashFlowView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 md:space-y-4 px-2 md:px-0">
       {/* Scenario Tabs */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
+        <div className="flex items-center justify-between px-2 md:px-4 py-2 border-b border-gray-700">
           {/* Tabs container */}
           <div className="flex items-center gap-2 overflow-x-auto flex-1">
             {/* Saved scenario tabs */}
@@ -588,7 +588,7 @@ export function CashFlowView() {
               return (
                 <div
                   key={scenario.scenarioId}
-                  className={`group flex items-center gap-1.5 px-3 py-2 cursor-pointer transition-colors whitespace-nowrap border-b-2 ${
+                  className={`group flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 md:py-2 cursor-pointer transition-colors whitespace-nowrap border-b-2 ${
                     isActive
                       ? 'text-white border-blue-500'
                       : 'text-gray-400 border-transparent hover:text-gray-200 hover:border-gray-600'
@@ -615,7 +615,7 @@ export function CashFlowView() {
                     />
                   ) : (
                     <span
-                      className="text-sm"
+                      className="text-xs md:text-sm"
                       onDoubleClick={() => isActive && setEditingTabName(true)}
                       title="Double-click to rename"
                     >
@@ -643,7 +643,7 @@ export function CashFlowView() {
               return (
                 <div
                   key={draft.localId}
-                  className={`group flex items-center gap-1.5 px-3 py-2 cursor-pointer transition-colors whitespace-nowrap border-b-2 ${
+                  className={`group flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 md:py-2 cursor-pointer transition-colors whitespace-nowrap border-b-2 ${
                     isActive
                       ? 'text-white border-blue-500'
                       : 'text-gray-400 border-transparent hover:text-gray-200 hover:border-gray-600'
@@ -670,7 +670,7 @@ export function CashFlowView() {
                     />
                   ) : (
                     <span
-                      className="text-sm"
+                      className="text-xs md:text-sm"
                       onDoubleClick={() => isActive && setEditingTabName(true)}
                       title="Double-click to rename"
                     >
@@ -694,25 +694,25 @@ export function CashFlowView() {
 
             {/* New scenario button */}
             <button
-              className="flex items-center justify-center px-2 py-2 text-gray-500 hover:text-white transition-colors"
+              className="flex items-center justify-center px-1.5 md:px-2 py-1.5 md:py-2 text-gray-500 hover:text-white transition-colors flex-shrink-0"
               onClick={newScenario}
               title="New scenario"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 md:h-4 w-3.5 md:w-4" />
             </button>
           </div>
 
           {/* Save indicator and button */}
-          <div className="flex items-center gap-2 pb-1 flex-shrink-0">
+          <div className="flex items-center gap-1.5 md:gap-2 pb-1 flex-shrink-0">
             {isSaving && (
-              <div className="flex items-center gap-1.5 text-gray-400 text-sm">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Saving...</span>
+              <div className="flex items-center gap-1 md:gap-1.5 text-gray-400 text-xs md:text-sm">
+                <Loader2 className="h-3 md:h-3.5 w-3 md:w-3.5 animate-spin" />
+                <span className="hidden sm:inline">Saving...</span>
               </div>
             )}
             {!isSaving && canSave && (
               <button
-                className="px-3 py-1 text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
+                className="px-2 md:px-3 py-0.5 md:py-1 text-xs md:text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
                 onClick={saveScenario}
               >
                 Save
@@ -722,13 +722,13 @@ export function CashFlowView() {
         </div>
 
         {/* Controls */}
-        <div className="flex items-center justify-between flex-wrap gap-4 p-4">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 md:gap-4 p-2 md:p-4">
           {/* Portfolio Selector */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-300">Portfolio:</label>
-            <div className="relative">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 md:flex-initial">
+            <label className="text-xs md:text-sm text-gray-300 hidden md:inline">Portfolio:</label>
+            <div className="relative flex-1 md:flex-initial">
               <select
-                className="appearance-none bg-gray-900 text-white border border-gray-700 rounded-md px-4 py-2 pr-10 cursor-pointer hover:border-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-full md:w-auto appearance-none bg-gray-900 text-white border border-gray-700 rounded-md px-3 md:px-4 py-1.5 md:py-2 pr-8 md:pr-10 text-sm cursor-pointer hover:border-gray-600 focus:outline-none focus:border-blue-500"
                 value={selectedPortfolioId}
                 onChange={(e) => handlePortfolioChange(e.target.value)}
               >
@@ -738,132 +738,139 @@ export function CashFlowView() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <ChevronDown className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 h-3.5 md:h-4 w-3.5 md:w-4 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
-          {/* View Toggle */}
-          <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-1">
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
-                viewMode === 'diagram'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setViewMode('diagram')}
-            >
-              <Network className="h-4 w-4" />
-              Diagram
-            </button>
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
-                viewMode === 'table'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setViewMode('table')}
-            >
-              <TableIcon className="h-4 w-4" />
-              Table
-            </button>
-          </div>
+          {/* Controls Row - Mobile optimized */}
+          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+            {/* View Toggle */}
+            <div className="flex items-center gap-1 bg-gray-900 rounded-lg p-0.5 md:p-1">
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 ${
+                  viewMode === 'diagram'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setViewMode('diagram')}
+                title="Diagram view"
+              >
+                <Network className="h-3.5 md:h-4 w-3.5 md:w-4" />
+                <span className="hidden sm:inline">Diagram</span>
+              </button>
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors flex items-center gap-1 md:gap-2 ${
+                  viewMode === 'table'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setViewMode('table')}
+                title="Table view"
+              >
+                <TableIcon className="h-3.5 md:h-4 w-3.5 md:w-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+            </div>
 
-          {/* Period Toggle */}
-          <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-1">
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                timePeriod === 'monthly'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setTimePeriod('monthly')}
-            >
-              Monthly
-            </button>
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                timePeriod === 'yearly'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setTimePeriod('yearly')}
-            >
-              Yearly
-            </button>
-          </div>
+            {/* Period Toggle */}
+            <div className="flex items-center gap-1 bg-gray-900 rounded-lg p-0.5 md:p-1">
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors ${
+                  timePeriod === 'monthly'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setTimePeriod('monthly')}
+              >
+                <span className="hidden sm:inline">Monthly</span>
+                <span className="sm:hidden">M</span>
+              </button>
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors ${
+                  timePeriod === 'yearly'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setTimePeriod('yearly')}
+              >
+                <span className="hidden sm:inline">Yearly</span>
+                <span className="sm:hidden">Y</span>
+              </button>
+            </div>
 
-          {/* Currency Toggle */}
-          <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-1">
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                displayCurrency === 'USD'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setDisplayCurrency('USD')}
-            >
-              $ USD
-            </button>
-            <button
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                displayCurrency === 'ILS'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-              onClick={() => setDisplayCurrency('ILS')}
-            >
-              ₪ ILS
-            </button>
-          </div>
+            {/* Currency Toggle */}
+            <div className="flex items-center gap-1 bg-gray-900 rounded-lg p-0.5 md:p-1">
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors ${
+                  displayCurrency === 'USD'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setDisplayCurrency('USD')}
+              >
+                $<span className="hidden sm:inline"> USD</span>
+              </button>
+              <button
+                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors ${
+                  displayCurrency === 'ILS'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setDisplayCurrency('ILS')}
+              >
+                ₪<span className="hidden sm:inline"> ILS</span>
+              </button>
+            </div>
 
-          {/* Actions Menu */}
-          <div className="relative" ref={actionsMenuRef}>
-            <button
-              onClick={() => setActionsMenuOpen(!actionsMenuOpen)}
-              className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-              title="More actions"
-            >
-              <MoreVertical className="h-5 w-5" />
-            </button>
+            {/* Actions Menu */}
+            <div className="relative" ref={actionsMenuRef}>
+              <button
+                onClick={() => setActionsMenuOpen(!actionsMenuOpen)}
+                className="p-1.5 md:p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                title="More actions"
+              >
+                <MoreVertical className="h-4 md:h-5 w-4 md:w-5" />
+              </button>
 
-            {actionsMenuOpen && (
-              <div className="absolute right-0 mt-1 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      handleExportScenario()
-                      setActionsMenuOpen(false)
-                    }}
-                    disabled={!currentScenario}
-                    className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export Scenario
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleImportScenario()
-                      setActionsMenuOpen(false)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2"
-                  >
-                    <Upload className="h-4 w-4" />
-                    Import Scenario
-                  </button>
-                  <div className="border-t border-gray-700 my-1" />
-                  <button
-                    onClick={() => {
-                      handleClearAll()
-                      setActionsMenuOpen(false)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:text-red-300 hover:bg-gray-700 flex items-center gap-2"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Clear All
-                  </button>
+              {actionsMenuOpen && (
+                <div className="absolute right-0 mt-1 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        handleExportScenario()
+                        setActionsMenuOpen(false)
+                      }}
+                      disabled={!currentScenario}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Scenario
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleImportScenario()
+                        setActionsMenuOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Import Scenario
+                    </button>
+                    <div className="border-t border-gray-700 my-1" />
+                    <button
+                      onClick={() => {
+                        handleClearAll()
+                        setActionsMenuOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-400 hover:text-red-300 hover:bg-gray-700 flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Clear All
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -880,29 +887,29 @@ export function CashFlowView() {
       {currentScenario && (
         <>
           {/* Summary Bar */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center">
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-2 md:p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 text-center">
               <div>
-                <div className="text-xs text-gray-400 mb-1">Inflows</div>
-                <div className="text-lg font-semibold text-green-400">
+                <div className="text-xs text-gray-400 mb-0.5 md:mb-1">Inflows</div>
+                <div className="text-base md:text-lg font-semibold text-green-400">
                   {formatAmount(displayTotals.inflows)}{periodSuffix}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-1">Outflows</div>
-                <div className="text-lg font-semibold text-red-400">
+                <div className="text-xs text-gray-400 mb-0.5 md:mb-1">Outflows</div>
+                <div className="text-base md:text-lg font-semibold text-red-400">
                   {formatAmount(displayTotals.outflows)}{periodSuffix}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-1">Transfers</div>
-                <div className="text-lg font-semibold text-blue-400">
+                <div className="text-xs text-gray-400 mb-0.5 md:mb-1">Transfers</div>
+                <div className="text-base md:text-lg font-semibold text-blue-400">
                   {formatAmount(displayTotals.transfers)}{periodSuffix}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-1">Net Cash Flow</div>
-                <div className={`text-lg font-semibold ${displayTotals.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="text-xs text-gray-400 mb-0.5 md:mb-1">Net Cash Flow</div>
+                <div className={`text-base md:text-lg font-semibold ${displayTotals.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {formatAmount(displayTotals.net)}{periodSuffix}
                 </div>
               </div>
@@ -923,7 +930,7 @@ export function CashFlowView() {
                 onAddFlow={handleAddItem}
                 currencyConversionRate={USD_TO_ILS_RATE}
               />
-              <div className="text-center text-xs text-gray-500">
+              <div className="text-center text-xs text-gray-500 px-2">
                 Click on nodes to view details and manage flows.
               </div>
             </>
