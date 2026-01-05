@@ -6,20 +6,25 @@ import {
   Tags,
   Wrench,
   Library,
+  MoreHorizontal,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { NavigationView, viewToPath, pathToView } from './TopBar'
 import { useMixpanel } from '../../contexts/MixpanelContext'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
 
 interface FooterProps {
   activeView?: NavigationView
   onViewChange?: (view: NavigationView) => void
 }
 
-// All navigation items for footer (mobile only)
-// Arranged in 2 rows: 3 items per row for better mobile UX
-const footerNavItems = [
-  // First row - most commonly used
+// Primary navigation items (shown directly in footer)
+const primaryNavItems = [
   {
     id: 'portfolios' as NavigationView,
     label: 'Portfolio',
@@ -35,21 +40,24 @@ const footerNavItems = [
     label: 'News',
     icon: <Newspaper className="h-5 w-5" />,
   },
-  // Second row
   {
     id: 'analyst' as NavigationView,
     label: 'Analyst',
     icon: <Bot className="h-5 w-5" />,
   },
+]
+
+// Secondary navigation items (shown in "More" menu)
+const moreNavItems = [
   {
     id: 'tags' as NavigationView,
     label: 'Tags',
-    icon: <Tags className="h-5 w-5" />,
+    icon: <Tags className="h-4 w-4" />,
   },
   {
     id: 'tools' as NavigationView,
     label: 'Tools',
-    icon: <Wrench className="h-5 w-5" />,
+    icon: <Wrench className="h-4 w-4" />,
   },
 ]
 
@@ -83,61 +91,82 @@ export function Footer({ activeView: propActiveView, onViewChange }: FooterProps
     onViewChange?.(view)
   }
 
+  // Check if any item in "More" menu is active
+  const isMoreMenuActive = moreNavItems.some(item => activeView === item.id)
+
   return (
     <footer className="md:hidden fixed bottom-0 left-0 right-0 w-full max-w-full bg-black border-t border-gray-800 z-50 safe-area-inset-bottom overflow-x-hidden">
-      <nav className="flex flex-col px-2 py-2 w-full max-w-full">
-        {/* First row - 3 items */}
-        <div className="flex items-center justify-around w-full">
-          {footerNavItems.slice(0, 3).map((item) => (
+      <nav className="flex items-center justify-around px-1 py-2 w-full max-w-full">
+        {/* Primary navigation items */}
+        {primaryNavItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => handleNavClick(item.id)}
+            className={`relative flex flex-col items-center justify-center gap-1 px-1 py-1 flex-1 min-w-0 transition-all duration-200 border-none bg-transparent focus:outline-none focus:ring-0 active:outline-none ${
+              activeView === item.id
+                ? 'text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+            style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
+            aria-label={item.label}
+          >
+            <span className={`flex items-center justify-center transition-transform ${
+              activeView === item.id ? 'scale-110' : ''
+            }`}>
+              {item.icon}
+            </span>
+            <span className="text-xs font-medium">{item.label}</span>
+            {activeView === item.id && (
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
+            )}
+          </button>
+        ))}
+
+        {/* More menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
-              key={item.id}
-              onClick={() => handleNavClick(item.id)}
-              className={`relative flex flex-col items-center justify-center gap-1 px-2 py-2 flex-1 max-w-[33.33%] min-w-0 transition-all duration-200 border-none bg-transparent focus:outline-none focus:ring-0 active:outline-none ${
-                activeView === item.id
+              className={`relative flex flex-col items-center justify-center gap-1 px-1 py-1 flex-1 min-w-0 transition-all duration-200 border-none bg-transparent focus:outline-none focus:ring-0 active:outline-none ${
+                isMoreMenuActive
                   ? 'text-white'
                   : 'text-gray-400 hover:text-gray-200'
               }`}
               style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
-              aria-label={item.label}
+              aria-label="More"
             >
               <span className={`flex items-center justify-center transition-transform ${
-                activeView === item.id ? 'scale-110' : ''
+                isMoreMenuActive ? 'scale-110' : ''
               }`}>
-                {item.icon}
+                <MoreHorizontal className="h-5 w-5" />
               </span>
-              <span className="text-xs font-medium">{item.label}</span>
-              {activeView === item.id && (
+              <span className="text-xs font-medium">More</span>
+              {isMoreMenuActive && (
                 <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
               )}
             </button>
-          ))}
-        </div>
-        {/* Second row - 3 items */}
-        <div className="flex items-center justify-around w-full">
-          {footerNavItems.slice(3, 6).map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleNavClick(item.id)}
-              className={`relative flex flex-col items-center justify-center gap-1 px-2 py-2 flex-1 max-w-[33.33%] min-w-0 transition-all duration-200 border-none bg-transparent focus:outline-none focus:ring-0 active:outline-none ${
-                activeView === item.id
-                  ? 'text-white'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-              style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
-              aria-label={item.label}
-            >
-              <span className={`flex items-center justify-center transition-transform ${
-                activeView === item.id ? 'scale-110' : ''
-              }`}>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            side="top"
+            sideOffset={8}
+            className="bg-gray-900 border-gray-700 min-w-[160px]"
+          >
+            {moreNavItems.map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                onClick={() => handleNavClick(item.id)}
+                className={`flex items-center gap-2 cursor-pointer ${
+                  activeView === item.id
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                }`}
+              >
                 {item.icon}
-              </span>
-              <span className="text-xs font-medium">{item.label}</span>
-              {activeView === item.id && (
-                <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
+                <span>{item.label}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
     </footer>
   )
