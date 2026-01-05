@@ -13,6 +13,7 @@ import { NotificationBell } from './NotificationBell'
 import { FeedbackModal } from './FeedbackModal'
 import GoogleProfilePicture from './GoogleProfilePicture'
 import { IconButton } from './IconButton'
+import { PWAInstallButton } from './PWAInstallButton'
 import { useUserProfile } from '../../contexts/UserProfileContext'
 import { useMixpanel } from '../../contexts/MixpanelContext'
 import { desktopOnlyNavItems } from './Footer'
@@ -183,6 +184,9 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
 
         {/* Right side - Mobile Icons */}
         <div className="md:hidden flex items-center gap-2">
+          {/* PWA Install Button (mobile only) */}
+          <PWAInstallButton />
+
           {/* Q&A button mobile */}
           <a
             href="https://vestika.io"
