@@ -507,7 +507,7 @@ export function CashFlowView() {
           updatedAt: new Date().toISOString(),
         }))
 
-        // Create new draft scenario
+        // Create a new draft scenario
         const newDraft: DraftCashFlowScenario = {
           localId: crypto.randomUUID(),
           portfolioId: selectedPortfolioId,
