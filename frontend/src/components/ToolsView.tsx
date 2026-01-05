@@ -1,17 +1,16 @@
 // React is not needed for JSX in modern React
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Wrench, Calculator, BarChart3, Receipt, Target, Home, Building2, Wallet, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
+import { Wrench, Calculator, BarChart3, Receipt, Target, Home, Building2, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
 import CompoundInterestTool from './CompoundInterestTool'
 import ScenarioComparisonTool from './ScenarioComparisonTool'
 import TaxPlannerTool from './TaxPlannerTool'
 import FIRECalculator from './FIRECalculator'
 import { MortgageVsInvestCalculator } from './MortgageVsInvestCalculator'
 import { BuyOrRentCalculator } from './BuyOrRentCalculator'
-import { CashFlowCalculator } from './CashFlowCalculator'
 import { useMixpanel } from '../contexts/MixpanelContext'
 
-export type ToolKey = 'tax-planner' | 'compound' | 'scenario' | 'fire' | 'mortgage-invest' | 'buy-or-rent' | 'cash-flow'
+export type ToolKey = 'tax-planner' | 'compound' | 'scenario' | 'fire' | 'mortgage-invest' | 'buy-or-rent'
 
 interface ToolsViewProps {
   activeTool?: ToolKey
@@ -23,8 +22,7 @@ const tools: Array<{ key: ToolKey; name: string; description: string; icon: Luci
   { key: 'scenario', name: 'Scenario Comparison', description: 'Compare mortgage vs investing cases', icon: BarChart3, path: '/tools/scenario' },
   { key: 'fire', name: 'FIRE Calculator', description: 'Calculate time to financial independence', icon: Target, path: '/tools/fire' },
   { key: 'mortgage-invest', name: 'Mortgage vs Invest', description: 'Pay off mortgage or invest in market?', icon: Home, path: '/tools/mortgage-invest' },
-  { key: 'buy-or-rent', name: 'Buy or Rent', description: 'Buy apartment or rent and invest?', icon: Building2, path: '/tools/buy-or-rent' },
-  { key: 'cash-flow', name: 'Cash Flow Calculator', description: 'Track monthly income and expenses', icon: Wallet, path: '/tools/cash-flow' }
+  { key: 'buy-or-rent', name: 'Buy or Rent', description: 'Buy apartment or rent and invest?', icon: Building2, path: '/tools/buy-or-rent' }
 ]
 
 export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
@@ -42,7 +40,6 @@ export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
       '/tools/fire': 'fire',
       '/tools/mortgage-invest': 'mortgage-invest',
       '/tools/buy-or-rent': 'buy-or-rent',
-      '/tools/cash-flow': 'cash-flow',
     }
     return pathMap[location.pathname] || propActiveTool || 'tax-planner'
   }
@@ -120,7 +117,6 @@ export function ToolsView({ activeTool: propActiveTool }: ToolsViewProps) {
           {activeTool === 'fire' && <FIRECalculator />}
           {activeTool === 'mortgage-invest' && <MortgageVsInvestCalculator />}
           {activeTool === 'buy-or-rent' && <BuyOrRentCalculator />}
-          {activeTool === 'cash-flow' && <CashFlowCalculator />}
         </main>
       </div>
     </div>
