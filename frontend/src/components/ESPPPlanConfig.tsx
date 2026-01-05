@@ -4,6 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { X, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { SymbolAutocomplete } from './ui/autocomplete';
+import { SymbolSuggestion } from '../hooks/useSymbolAutocomplete';
 
 interface ESPPPlanConfigProps {
   plan: ESPPPlan;
@@ -22,6 +24,33 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
   
   const updatePlan = (updates: Partial<ESPPPlan>) => {
     onChange({ ...plan, ...updates });
+  };
+
+  const handleSymbolSelect = (suggestion: SymbolSuggestion) => {
+    // Extract the clean symbol (without exchange prefix)
+    let symbol = suggestion.symbol;
+    
+    // Remove exchange prefixes for display/storage
+    if (symbol.toUpperCase().startsWith('NYSE:')) {
+      symbol = symbol.substring(5);
+    } else if (symbol.toUpperCase().startsWith('NASDAQ:')) {
+      symbol = symbol.substring(7);
+    } else if (symbol.toUpperCase().startsWith('TASE:')) {
+      symbol = symbol.substring(5);
+    } else if (symbol.toUpperCase().startsWith('FX:')) {
+      symbol = symbol.substring(3);
+    }
+    
+    // Remove -USD suffix for crypto if present
+    if (suggestion.symbol_type === 'crypto' && symbol.endsWith('-USD')) {
+      symbol = symbol.replace('-USD', '');
+    }
+    
+    updatePlan({ symbol: symbol.toUpperCase() });
+  };
+
+  const handleAddCustomSymbol = (searchTerm: string) => {
+    updatePlan({ symbol: searchTerm.toUpperCase() });
   };
 
 
@@ -66,11 +95,12 @@ const ESPPPlanConfig: React.FC<ESPPPlanConfigProps> = ({
         <div className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="symbol">Stock Symbol</Label>
-            <Input
-              id="symbol"
-              value={plan.symbol}
-              onChange={(e) => updatePlan({ symbol: e.target.value.toUpperCase() })}
+            <SymbolAutocomplete
               placeholder="e.g., AAPL"
+              value={plan.symbol}
+              onSelect={handleSymbolSelect}
+              onClose={() => {}}
+              onAddCustom={handleAddCustomSymbol}
             />
           </div>
 
