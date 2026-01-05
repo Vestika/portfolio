@@ -3,8 +3,6 @@ import {
   Tags,
   Wrench,
   Bot,
-  Menu,
-  X,
   Newspaper,
   Library,
   ArrowRightLeft
@@ -18,11 +16,12 @@ import GoogleProfilePicture from './GoogleProfilePicture'
 import { IconButton } from './IconButton'
 import { useUserProfile } from '../../contexts/UserProfileContext'
 import { useMixpanel } from '../../contexts/MixpanelContext'
+import { desktopOnlyNavItems } from './Footer'
 
 export type NavigationView = 'portfolios' | 'cashflow' | 'news' | 'analyst' | 'tags' | 'tools' | 'config-gallery'
 
 // Map view IDs to URL paths
-const viewToPath: Record<NavigationView, string> = {
+export const viewToPath: Record<NavigationView, string> = {
   'portfolios': '/portfolio',
   'cashflow': '/cashflow',
   'news': '/news',
@@ -33,7 +32,7 @@ const viewToPath: Record<NavigationView, string> = {
 }
 
 // Map URL paths to view IDs
-const pathToView: Record<string, NavigationView> = {
+export const pathToView: Record<string, NavigationView> = {
   '/portfolio': 'portfolios',
   '/portfolios': 'portfolios',
   '/cashflow': 'cashflow',
@@ -52,7 +51,6 @@ interface TopBarProps {
 }
 
 export function TopBar({ activeView: propActiveView, onViewChange, onProfileClick, onFeedbackClick }: TopBarProps) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const { googleProfileData } = useUserProfile()
@@ -63,6 +61,7 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   // Derive active view from URL, fallback to prop
   const activeView: NavigationView = pathToView[location.pathname] || propActiveView || 'portfolios'
   
+  // All navigation items for desktop (includes everything)
   const navigationItems = [
     {
       id: 'portfolios' as NavigationView,
@@ -94,11 +93,7 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
       label: 'Tools',
       icon: <Wrench className="h-4 w-4" />,
     },
-    {
-      id: 'config-gallery' as NavigationView,
-      label: 'Extension Configs',
-      icon: <Library className="h-4 w-4" />,
-    },
+    ...desktopOnlyNavItems, // Config is desktop-only
   ]
 
   const handleNavClick = (view: NavigationView) => {
@@ -106,12 +101,11 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
     track('navigation_view_changed', {
       from_view: activeView,
       to_view: view,
-      is_mobile: isMobileMenuOpen,
+      is_mobile: false, // Desktop navigation
     })
 
     navigate(viewToPath[view])
     onViewChange?.(view) // Call callback if provided (for backwards compatibility)
-    setIsMobileMenuOpen(false)
   }
 
   const handleAboutClick = () => {
@@ -119,24 +113,10 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
   }
 
   return (
-    <div className="w-full bg-black border-b border-gray-800 sticky top-0 z-50">
+    <div className="w-full max-w-full bg-black border-b border-gray-800 sticky top-0 z-50 overflow-x-hidden">
       <div className="flex items-center justify-between px-4 sm:px-6 py-1">
-        {/* Left side - Mobile Menu Button (mobile only) + Logo */}
+        {/* Left side - Logo (mobile menu removed since all items are in footer) */}
         <div className="flex items-center gap-3">
-          {/* Mobile Menu Button - LEFT SIDE */}
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-0 text-white hover:text-gray-300 transition-colors focus:outline-none bg-transparent border-0"
-            aria-label="Toggle mobile menu"
-            style={{ outline: 'none', boxShadow: 'none' }}
-          >
-            {isMobileMenuOpen ? (
-              <X className="h-6 w-6" strokeWidth={2.5} />
-            ) : (
-              <Menu className="h-6 w-6" strokeWidth={2.5} />
-            )}
-          </button>
-          
           {/* Logo and App Name */}
           <div className="flex items-center cursor-pointer" onClick={handleAboutClick}>
             <h1 className="text-lg sm:text-xl text-white hover:text-gray-300 transition-colors" style={{ fontFamily: "'Poiret One', sans-serif", textShadow: '0 0 3px rgb(251, 46, 118), 0 0 5px rgba(251, 46, 118, 0.7), 0 0 6px rgba(251, 46, 118, 0.4)' }}>
@@ -237,30 +217,8 @@ export function TopBar({ activeView: propActiveView, onViewChange, onProfileClic
         </div>
       </div>
 
-      {/* Mobile Navigation Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-black border-t border-gray-800">
-          <nav className="px-4 py-2 space-y-1">
-            {navigationItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all duration-200 border-none bg-transparent focus:outline-none focus:ring-0 active:outline-none ${
-                  activeView === item.id 
-                    ? 'text-white border-l-2 border-white' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-                style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
-              >
-                <span className="flex items-center justify-center w-4 h-4">
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-      )}
+      {/* Mobile Navigation Menu - Hidden on mobile (all items are in footer, Config is desktop-only) */}
+      {/* Mobile menu is not needed since all mobile items are in footer */}
       
       {/* About Modal */}
       <AboutModal 

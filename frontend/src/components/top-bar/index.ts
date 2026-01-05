@@ -1,5 +1,6 @@
 // Top bar and related components
-export { TopBar, type NavigationView } from './TopBar'
+export { TopBar, type NavigationView, viewToPath, pathToView } from './TopBar'
+export { Footer, desktopOnlyNavItems } from './Footer'
 export { default as ProfileSidebar } from './ProfileSidebar'
 export { AboutModal } from './AboutModal'
 export { FeedbackModal } from './FeedbackModal'

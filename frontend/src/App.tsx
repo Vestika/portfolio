@@ -13,7 +13,7 @@ import {
 } from './components/PortfolioSkeleton';
 import Login from './components/Login';
 import OnboardingFlow from './components/OnboardingFlow';
-import { TopBar, NavigationView, ProfileSidebar } from './components/top-bar';
+import { TopBar, NavigationView, ProfileSidebar, Footer } from './components/top-bar';
 import { PortfolioView } from './components/PortfolioView';
 import { NewsView } from './components/news';
 import { CashFlowView } from './components/CashFlowView';
@@ -559,7 +559,7 @@ const App: React.FC = () => {
     <NotificationProvider>
       <UserProfileProvider>
         <PopupManager />
-        <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
+        <div className="flex flex-col min-h-screen bg-gray-900 text-white relative overflow-x-hidden w-full">
         {/* Top Bar Navigation */}
         <TopBar 
           activeView={activeView} 
@@ -604,8 +604,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main Content Area */}
-      <div className="flex flex-col lg:flex-row flex-1">
+      {/* Main Content Area - Add padding bottom on mobile to account for footer (2 rows = taller footer) */}
+      <div className="flex flex-col lg:flex-row flex-1 pb-20 md:pb-0">
         {/* Main View Content */}
         <div
           className="flex-1 transition-all duration-300 w-full"
@@ -747,6 +747,12 @@ const App: React.FC = () => {
         onSignOut={handleSignOut}
         onToggleVisibility={handleToggleVisibility}
         isValueVisible={isValueVisible}
+      />
+      
+      {/* Mobile Footer Navigation */}
+      <Footer 
+        activeView={activeView}
+        onViewChange={handleViewChange}
       />
       </div>
       </UserProfileProvider>
