@@ -16,21 +16,31 @@ export function PWAInstallButton() {
   const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator as any).standalone;
 
   useEffect(() => {
+    // Check PWA readiness
+    console.log('📱 [PWA] Install button mounted', {
+      isIOS,
+      isInStandaloneMode,
+      hasServiceWorker: 'serviceWorker' in navigator,
+      displayMode: window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser'
+    });
+
     // Don't show button if already installed
     if (isInStandaloneMode || window.matchMedia('(display-mode: standalone)').matches) {
+      console.log('✅ [PWA] App already installed');
       setIsInstallable(false);
       return;
     }
 
     // iOS Safari doesn't support beforeinstallprompt, so show iOS instructions
     if (isIOS) {
+      console.log('🍎 [PWA] iOS detected - showing manual install instructions');
       setIsInstallable(true);
       return;
     }
 
     // Listen for the beforeinstallprompt event (Android/Chrome/Edge)
     const handleBeforeInstallPrompt = (e: Event) => {
-      console.log('📱 [PWA] beforeinstallprompt event fired');
+      console.log('🎉 [PWA] beforeinstallprompt event fired - app is installable!');
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       setIsInstallable(true);
@@ -46,9 +56,20 @@ export function PWAInstallButton() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
+    // Log if event hasn't fired after 3 seconds (for debugging)
+    const debugTimer = setTimeout(() => {
+      console.log('⏰ [PWA] beforeinstallprompt not fired yet. This is normal if:', [
+        '1. App is already installed',
+        '2. Not served over HTTPS',
+        '3. Service worker not registered yet',
+        '4. Not enough user engagement'
+      ]);
+    }, 3000);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      clearTimeout(debugTimer);
     };
   }, [isIOS, isInStandaloneMode]);
 

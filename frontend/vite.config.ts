@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: false, // Don't inject service worker registration
+      injectRegister: 'auto', // Auto-inject service worker registration for install prompt
       manifest: {
         name: 'Vestika Portfolio Manager',
         short_name: 'Vestika',
@@ -35,8 +35,27 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Disable all workbox features - manifest only mode
-        globPatterns: []
+        // Minimal service worker - only caches essential app shell
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // Don't cache large images or user data
+        globIgnores: ['**/v-*.png'],
+        // Increase size limit to handle large bundle
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        runtimeCaching: [
+          {
+            // Network-first strategy for API calls (always try network first)
+            urlPattern: /^https:\/\/.*\.vestika\.io\/api\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 5 * 60 // 5 minutes
+              },
+              networkTimeoutSeconds: 10
+            }
+          }
+        ]
       },
       devOptions: {
         enabled: true // Enable PWA in dev mode for testing
