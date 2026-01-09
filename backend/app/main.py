@@ -95,7 +95,17 @@ async def startup_event():
                 logger.info("Created unique index on users.email")
             except Exception as index_err:
                 logger.warning(f"Failed to create users.email index: {index_err}")
-            
+
+            # Create indexes for user_deletion_audit (Israeli Privacy Law Amendment 13 compliance)
+            try:
+                db = await db_manager.get_database("vestika")
+                await db.user_deletion_audit.create_index("user_id")
+                await db.user_deletion_audit.create_index("email")
+                await db.user_deletion_audit.create_index("requested_at")
+                logger.info("Created indexes for user_deletion_audit collection")
+            except Exception as index_err:
+                logger.warning(f"Failed to create user_deletion_audit indexes: {index_err}")
+
             # Start the background scheduler for historical price caching
             # Scheduler now runs initial sync at T+0 automatically!
             try:

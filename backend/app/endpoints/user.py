@@ -1,6 +1,6 @@
 """User and authentication endpoints"""
 from typing import Any, Optional, List, Literal
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -8,6 +8,14 @@ from pydantic import BaseModel, EmailStr
 from core.auth import get_current_user
 from core.database import db_manager, get_db
 from pymongo.asynchronous.database import AsyncDatabase
+from models.deletion_models import (
+    DeleteAccountRequest,
+    DeleteAccountResponse,
+    DeletionPartialFailureException
+)
+from core.user_deletion_service import UserDeletionService
+from core.analytics import get_analytics_service
+from services.telegram.service import get_telegram_service
 
 # Create router for this module
 router = APIRouter(tags=["user"])
@@ -175,7 +183,7 @@ async def set_mini_chart_timeframe(
     """
     try:
         preferences_collection = db_manager.get_collection("user_preferences")
-        
+
         await preferences_collection.update_one(
             {"user_id": user.id},
             {
@@ -186,10 +194,139 @@ async def set_mini_chart_timeframe(
             },
             upsert=True
         )
-        
+
         return {
             "message": "Mini-chart timeframe preference saved successfully",
             "timeframe": request.timeframe
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Account Deletion - Israeli Privacy Law Amendment 13 Compliance
+# ============================================================================
+
+async def check_deletion_rate_limit(user_id: str, db: AsyncDatabase) -> None:
+    """
+    Rate limit account deletion attempts to prevent abuse.
+
+    Allows maximum 1 deletion attempt per hour per user.
+    This prevents automated abuse while allowing legitimate retries.
+
+    Args:
+        user_id: The user ID to check
+        db: Database connection
+
+    Raises:
+        HTTPException: 429 if rate limit exceeded
+    """
+    recent_attempts = await db.user_deletion_audit.count_documents({
+        "user_id": user_id,
+        "requested_at": {"$gte": datetime.utcnow() - timedelta(hours=1)}
+    })
+
+    if recent_attempts > 0:
+        raise HTTPException(
+            status_code=429,
+            detail="Account deletion rate limit exceeded. Please wait before trying again."
+        )
+
+
+@router.post("/me/delete-account", response_model=DeleteAccountResponse)
+async def delete_user_account(
+    request: DeleteAccountRequest,
+    user=Depends(get_current_user),
+    db: AsyncDatabase = Depends(get_db)
+) -> DeleteAccountResponse:
+    """
+    Permanently delete user account and all associated data.
+
+    **Complies with Israeli Privacy Law Amendment 13 ("right to be forgotten").**
+
+    This operation:
+    - Deletes all user data from MongoDB (15+ collections)
+    - Removes user from Firebase Authentication
+    - Cleans up external services (Mixpanel, Redis)
+    - Creates immutable audit log
+    - Cannot be undone
+
+    **Data deleted:**
+    - Portfolios, accounts, and holdings
+    - Tags and custom charts
+    - Chat history and notifications
+    - User profile and preferences
+    - All other user-specific data
+
+    **Rate limit:** 1 attempt per hour
+
+    Args:
+        request: Must contain confirmation="DELETE"
+        user: Current authenticated user
+        db: Database connection
+
+    Returns:
+        DeleteAccountResponse with success status and audit_id
+
+    Raises:
+        HTTPException: 400 if confirmation invalid, 429 if rate limited, 500 if deletion fails
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Validate confirmation text
+    if request.confirmation != "DELETE":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation text must be exactly 'DELETE'"
+        )
+
+    # Check rate limit
+    try:
+        await check_deletion_rate_limit(user.id, db)
+    except HTTPException:
+        raise
+
+    # Track deletion event BEFORE user is deleted from Mixpanel
+    try:
+        analytics = get_analytics_service()
+        analytics.track_event(
+            user=user,
+            event_name="account_deleted_initiated",
+            properties={}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to track account deletion event: {e}")
+
+    # Perform deletion
+    try:
+        deletion_service = UserDeletionService(db)
+        result = await deletion_service.delete_user_account(user)
+
+        return DeleteAccountResponse(
+            success=True,
+            audit_id=result.audit_id,
+            message="Your account has been permanently deleted"
+        )
+
+    except DeletionPartialFailureException as e:
+        # Some data was deleted but some operations failed
+        logger.error(f"Partial deletion failure: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": e.message,
+                "audit_id": e.audit_id,
+                "failed_collections": e.failed_collections,
+                "partial_failure": True
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Account deletion failed: {e}", exc_info=True)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete account. Please contact support."
+        )

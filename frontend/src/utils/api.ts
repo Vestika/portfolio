@@ -106,4 +106,37 @@ api.interceptors.response.use(
   }
 );
 
+// ============================================================================
+// Account Deletion API
+// ============================================================================
+
+export interface DeleteAccountRequest {
+  confirmation: string; // Must be "DELETE"
+}
+
+export interface DeleteAccountResponse {
+  success: boolean;
+  audit_id: string;
+  message: string;
+}
+
+/**
+ * Permanently delete user account and all associated data.
+ *
+ * Complies with Israeli Privacy Law Amendment 13 ("right to be forgotten").
+ *
+ * @param confirmation - Must be exactly "DELETE" to confirm
+ * @returns Promise with deletion result
+ * @throws Error if confirmation invalid or deletion fails
+ */
+export const deleteAccount = async (
+  confirmation: string
+): Promise<DeleteAccountResponse> => {
+  const response = await api.post<DeleteAccountResponse>(
+    '/users/me/delete-account',
+    { confirmation }
+  );
+  return response.data;
+};
+
 export default api; 
