@@ -1,4 +1,5 @@
 """User and authentication endpoints"""
+import logging
 from typing import Any, Optional, List, Literal
 from datetime import datetime, timedelta
 from bson import ObjectId
@@ -16,6 +17,8 @@ from models.deletion_models import (
 from core.user_deletion_service import UserDeletionService
 from core.analytics import get_analytics_service
 from services.telegram.service import get_telegram_service
+
+logger = logging.getLogger(__name__)
 
 # Create router for this module
 router = APIRouter(tags=["user"])
@@ -207,32 +210,6 @@ async def set_mini_chart_timeframe(
 # Account Deletion - Israeli Privacy Law Amendment 13 Compliance
 # ============================================================================
 
-async def check_deletion_rate_limit(user_id: str, db: AsyncDatabase) -> None:
-    """
-    Rate limit account deletion attempts to prevent abuse.
-
-    Allows maximum 1 deletion attempt per hour per user.
-    This prevents automated abuse while allowing legitimate retries.
-
-    Args:
-        user_id: The user ID to check
-        db: Database connection
-
-    Raises:
-        HTTPException: 429 if rate limit exceeded
-    """
-    recent_attempts = await db.user_deletion_audit.count_documents({
-        "user_id": user_id,
-        "requested_at": {"$gte": datetime.utcnow() - timedelta(hours=1)}
-    })
-
-    if recent_attempts > 0:
-        raise HTTPException(
-            status_code=429,
-            detail="Account deletion rate limit exceeded. Please wait before trying again."
-        )
-
-
 @router.post("/me/delete-account", response_model=DeleteAccountResponse)
 async def delete_user_account(
     request: DeleteAccountRequest,
@@ -258,8 +235,6 @@ async def delete_user_account(
     - User profile and preferences
     - All other user-specific data
 
-    **Rate limit:** 1 attempt per hour
-
     Args:
         request: Must contain confirmation="DELETE"
         user: Current authenticated user
@@ -269,23 +244,14 @@ async def delete_user_account(
         DeleteAccountResponse with success status and audit_id
 
     Raises:
-        HTTPException: 400 if confirmation invalid, 429 if rate limited, 500 if deletion fails
+        HTTPException: 400 if confirmation invalid, 500 if deletion fails
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
     # Validate confirmation text
     if request.confirmation != "DELETE":
         raise HTTPException(
             status_code=400,
             detail="Confirmation text must be exactly 'DELETE'"
         )
-
-    # Check rate limit
-    try:
-        await check_deletion_rate_limit(user.id, db)
-    except HTTPException:
-        raise
 
     # Track deletion event BEFORE user is deleted from Mixpanel
     try:
