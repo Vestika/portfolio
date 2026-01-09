@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, LogOut, Check } from 'lucide-react';
+import { X, LogOut, Check, AlertTriangle, Trash2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,10 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from '../../contexts/AuthContext';
-import api from '../../utils/api';
+import api, { deleteAccount } from '../../utils/api';
 import GoogleProfilePicture from './GoogleProfilePicture';
 import { useUserProfile } from '../../contexts/UserProfileContext';
+import { signOut } from 'firebase/auth';
+import { auth } from '../../firebase';
 
 interface ProfileSidebarProps {
   isOpen: boolean;
@@ -38,6 +47,13 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
     email: '',
     timezone: 'UTC',
   });
+
+  // Account deletion state
+  const [showDeletionModal, setShowDeletionModal] = useState(false);
+  const [showFinalConfirm, setShowFinalConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionError, setDeletionError] = useState('');
 
   const timezones = [
     'America/New_York',
@@ -121,11 +137,46 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
         timeZone: tz,
         timeZoneName: 'longOffset'
       }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || '';
-      
+
       return `${tz} (${offset})`;
     } catch {
       return tz;
     }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeletionError('');
+
+    try {
+      await deleteAccount(confirmText);
+
+      // Success: Sign out and redirect
+      await signOut(auth);
+
+      // Clear all local state
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Redirect to login with deletion success message
+      window.location.href = '/?account_deleted=true';
+
+    } catch (error: any) {
+      console.error('Account deletion error:', error);
+      setDeletionError(
+        error.response?.data?.detail?.message ||
+        error.response?.data?.detail ||
+        'Failed to delete account. Please try again or contact support.'
+      );
+      setIsDeleting(false);
+    }
+  };
+
+  const resetDeletionModal = () => {
+    setShowDeletionModal(false);
+    setShowFinalConfirm(false);
+    setConfirmText('');
+    setDeletionError('');
   };
 
   return (
@@ -291,6 +342,37 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
 
                 <Separator className="bg-gray-800" />
 
+                {/* Danger Zone */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-red-400 uppercase tracking-wider">Danger Zone</h3>
+
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle size={18} className="text-red-400 mt-0.5 flex-shrink-0" />
+                      <div className="space-y-1 flex-1">
+                        <p className="text-sm text-gray-300 font-medium">
+                          Delete Account
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Permanently delete your account and all associated data. This action cannot be undone.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => setShowDeletionModal(true)}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 text-sm"
+                    >
+                      <Trash2 size={14} className="mr-2" />
+                      Delete My Account
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator className="bg-gray-800" />
+
                 {/* Sign Out */}
                 <div>
                   <Button
@@ -307,6 +389,126 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Account Deletion Modal */}
+      <Dialog open={showDeletionModal} onOpenChange={(open) => !open && resetDeletionModal()}>
+        <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-white flex items-center gap-2">
+              <AlertTriangle size={20} className="text-red-400" />
+              Delete Account
+            </DialogTitle>
+            <DialogDescription className="text-gray-400 text-sm">
+              {!showFinalConfirm
+                ? "This action cannot be undone. Please confirm you want to delete your account."
+                : "Are you absolutely sure? This is your last chance to cancel."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {!showFinalConfirm ? (
+              <>
+                {/* Warning List */}
+                <Alert className="bg-red-500/10 border-red-500/20">
+                  <AlertTriangle size={16} className="text-red-400" />
+                  <AlertDescription className="text-red-400 text-xs space-y-2">
+                    <p className="font-semibold">All of the following will be permanently deleted:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>All your portfolios and holdings</li>
+                      <li>All your tags and custom charts</li>
+                      <li>All your chat history</li>
+                      <li>Your account will be closed immediately</li>
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+
+                {/* Type DELETE Confirmation */}
+                <div className="space-y-2">
+                  <Label className="text-gray-300 text-sm">
+                    Type <span className="font-mono font-bold text-red-400">DELETE</span> to confirm
+                  </Label>
+                  <Input
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
+                    placeholder="DELETE"
+                    className="bg-gray-800 border-gray-700 text-white font-mono"
+                    disabled={isDeleting}
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={resetDeletionModal}
+                    variant="outline"
+                    className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => setShowFinalConfirm(true)}
+                    disabled={confirmText !== 'DELETE' || isDeleting}
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Continue to Delete
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Final Confirmation */}
+                <Alert className="bg-yellow-500/10 border-yellow-500/20">
+                  <AlertTriangle size={16} className="text-yellow-400" />
+                  <AlertDescription className="text-yellow-400 text-sm">
+                    <p className="font-semibold">Final Warning</p>
+                    <p className="text-xs mt-1">
+                      This is your last chance. Once you click "Yes, Delete My Account",
+                      your data will be immediately and permanently deleted.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+
+                {/* Error Message */}
+                {deletionError && (
+                  <Alert className="bg-red-500/10 border-red-500/20">
+                    <X size={16} className="text-red-400" />
+                    <AlertDescription className="text-red-400 text-xs">
+                      {deletionError}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Final Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={() => setShowFinalConfirm(false)}
+                    variant="outline"
+                    className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+                    disabled={isDeleting}
+                  >
+                    Go Back
+                  </Button>
+                  <Button
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Deleting...
+                      </>
+                    ) : (
+                      'Yes, Delete My Account'
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
