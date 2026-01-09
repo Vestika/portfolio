@@ -235,22 +235,39 @@ class UserDeletionService:
 
         This is the critical phase - if any collection fails, we log it but
         continue with others. The audit log tracks successes and failures.
+
+        Special handling:
+        - users collection: Delete by _id (not user_id field)
+        - All other collections: Delete by user_id field
         """
         logger.info(f"📦 [DELETION] Phase 1: Deleting MongoDB collections for user {user.id}")
 
         for collection_name in COLLECTIONS_TO_DELETE:
             try:
                 collection = self.db[collection_name]
-                result = await collection.delete_many({"user_id": user.id})
+
+                # Special case: users collection uses _id, not user_id
+                if collection_name == "users":
+                    # Delete by MongoDB _id
+                    logger.debug(f"  → Deleting from users collection by _id: {user.id}")
+                    result = await collection.delete_many({"_id": ObjectId(user.id)})
+                else:
+                    # Delete by user_id field (all other collections)
+                    result = await collection.delete_many({"user_id": user.id})
 
                 audit_record["deleted_collections"].append({
                     "collection": collection_name,
                     "deleted_count": result.deleted_count
                 })
 
-                logger.debug(
-                    f"  ✓ Deleted {result.deleted_count} records from {collection_name}"
-                )
+                if result.deleted_count > 0:
+                    logger.debug(
+                        f"  ✓ Deleted {result.deleted_count} records from {collection_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"  ⚠️ No records found to delete in {collection_name} for user {user.id}"
+                    )
 
             except Exception as e:
                 logger.error(
@@ -388,14 +405,22 @@ class UserDeletionService:
         logger.info(f"🔥 [DELETION] Phase 3: Deleting Firebase auth for user {user.firebase_uid}")
 
         try:
+            # Delete Firebase authentication account
             firebase_auth.delete_user(user.firebase_uid)
             audit_record["firebase_deleted"] = True
-            logger.info(f"  ✓ Deleted Firebase user {user.firebase_uid}")
+            logger.info(f"  ✓ Successfully deleted Firebase user {user.firebase_uid}")
+            logger.info(f"  ✓ Firebase account deleted: {user.email}")
+
+        except firebase_auth.UserNotFoundError:
+            # User already deleted from Firebase (shouldn't happen but handle it)
+            logger.warning(f"  ⚠️ Firebase user {user.firebase_uid} not found (already deleted?)")
+            audit_record["firebase_deleted"] = True  # Consider this success
+            audit_record["errors"].append(f"Firebase user not found (already deleted?)")
 
         except Exception as e:
-            logger.warning(f"  ⚠️ Failed to delete Firebase user: {e}")
+            logger.error(f"  ❌ Failed to delete Firebase user {user.firebase_uid}: {e}", exc_info=True)
             audit_record["firebase_deleted"] = False
-            audit_record["errors"].append(f"Firebase deletion: {str(e)}")
+            audit_record["errors"].append(f"Firebase deletion failed: {type(e).__name__}: {str(e)}")
             # Don't block deletion if Firebase fails - user can't log in anyway
 
     async def _send_admin_notification(
