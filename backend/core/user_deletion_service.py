@@ -11,6 +11,17 @@ Architecture: 3-Phase Deletion Strategy
 1. MongoDB Collections (Critical - Must Succeed)
 2. External Services (Best-Effort - Log Failures)
 3. Firebase Auth (Delete Last - Need Auth Until End)
+
+Error Handling Strategy:
+- Each phase wrapped in try-except - continues even if one phase fails
+- Each collection deletion wrapped in try-except - continues even if one fails
+- All failures logged to audit trail with detailed error messages
+- Telegram notification sent to admin with comprehensive failure report
+- User receives partial failure error but data is still deleted where possible
+- Admin can review audit log for manual cleanup of failed operations
+
+This ensures maximum data deletion even in failure scenarios, while maintaining
+complete audit trail for compliance and manual cleanup.
 """
 
 import asyncio
@@ -110,20 +121,50 @@ class UserDeletionService:
             logger.info(f"🗑️ [DELETION] Started deletion for user {user.email} (audit_id: {deletion_id})")
 
             # STEP 2: Phase 1 - Delete MongoDB collections
-            deleted_collections = await self._delete_mongodb_collections(user, audit_record)
+            # Continue even if some collections fail
+            try:
+                deleted_collections = await self._delete_mongodb_collections(user, audit_record)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Critical error in MongoDB deletion phase: {e}", exc_info=True)
+                audit_record["errors"].append(f"MongoDB phase critical error: {str(e)}")
 
             # STEP 3: Phase 1.5 - Cleanup shared data (anonymize user references)
-            await self._cleanup_shared_data(user, audit_record)
+            # Continue even if shared data cleanup fails
+            try:
+                await self._cleanup_shared_data(user, audit_record)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Critical error in shared data cleanup: {e}", exc_info=True)
+                audit_record["errors"].append(f"Shared data cleanup error: {str(e)}")
 
             # STEP 4: Phase 2 - External services (best-effort)
-            await self._delete_from_mixpanel(user, audit_record)
-            await self._delete_redis_keys(user, audit_record)
+            # These already have internal try-except, but wrap for safety
+            try:
+                await self._delete_from_mixpanel(user, audit_record)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Critical error in Mixpanel deletion: {e}", exc_info=True)
+                audit_record["errors"].append(f"Mixpanel critical error: {str(e)}")
+
+            try:
+                await self._delete_redis_keys(user, audit_record)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Critical error in Redis cleanup: {e}", exc_info=True)
+                audit_record["errors"].append(f"Redis critical error: {str(e)}")
 
             # STEP 5: Phase 3 - Delete Firebase auth (LAST!)
-            await self._delete_firebase_auth(user, audit_record)
+            # Continue even if Firebase deletion fails
+            try:
+                await self._delete_firebase_auth(user, audit_record)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Critical error in Firebase deletion: {e}", exc_info=True)
+                audit_record["errors"].append(f"Firebase critical error: {str(e)}")
 
             # STEP 6: Send admin notification via Telegram
-            await self._send_admin_notification(user, audit_record, deletion_id)
+            # This should never fail the deletion, already has try-except inside
+            try:
+                await self._send_admin_notification(user, audit_record, deletion_id)
+            except Exception as e:
+                logger.error(f"❌ [DELETION] Failed to send Telegram notification: {e}")
+                # Don't add to errors, this is just notification
 
             # STEP 7: Update audit log with final status
             audit_record["completed_at"] = datetime.utcnow()
@@ -367,33 +408,66 @@ class UserDeletionService:
         Send Telegram notification to admin when user deletes account.
 
         This is informational only - failure doesn't block deletion.
+        Includes detailed failure information for admin review.
         """
         logger.info(f"📱 [DELETION] Sending Telegram notification for user {user.email}")
 
         try:
-            status_emoji = "✅" if audit_record["status"] != "failed" else "❌"
+            # Determine overall status emoji
+            if not audit_record["failed_collections"] and audit_record["firebase_deleted"]:
+                status_emoji = "✅"
+                status_text = "COMPLETE"
+            elif audit_record["failed_collections"]:
+                status_emoji = "⚠️"
+                status_text = "PARTIAL"
+            else:
+                status_emoji = "❌"
+                status_text = "FAILED"
 
+            # Build detailed message
             message = (
-                f"{status_emoji} Account deleted\n"
+                f"{status_emoji} Account Deletion: {status_text}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Email: {user.email}\n"
                 f"User ID: {user.id}\n"
                 f"Firebase UID: {user.firebase_uid}\n"
                 f"Audit ID: {deletion_id}\n"
                 f"Time: {datetime.utcnow().isoformat()}\n"
                 f"\n"
-                f"Collections deleted: {len(audit_record['deleted_collections'])}\n"
-                f"Failed collections: {len(audit_record['failed_collections'])}\n"
-                f"Firebase deleted: {'Yes' if audit_record['firebase_deleted'] else 'No'}\n"
-                f"Mixpanel deleted: {'Yes' if audit_record['mixpanel_deleted'] else 'No'}"
+                f"📊 RESULTS:\n"
+                f"• Collections deleted: {len(audit_record['deleted_collections'])}/{len(COLLECTIONS_TO_DELETE)}\n"
+                f"• Failed collections: {len(audit_record['failed_collections'])}\n"
+                f"• Firebase deleted: {'✅' if audit_record['firebase_deleted'] else '❌'}\n"
+                f"• Mixpanel deleted: {'✅' if audit_record['mixpanel_deleted'] else '⚠️ N/A'}\n"
+                f"• Redis cleaned: {'✅' if audit_record.get('redis_cleaned', False) else '⚠️ N/A'}"
             )
 
+            # Add detailed failure information
             if audit_record["failed_collections"]:
-                message += f"\n\n⚠️ Failed: {', '.join(audit_record['failed_collections'])}"
+                message += f"\n\n⚠️ FAILED COLLECTIONS:\n"
+                for collection in audit_record["failed_collections"]:
+                    message += f"• {collection}\n"
+
+            # Add error messages if any
+            if audit_record.get("errors"):
+                message += f"\n❌ ERRORS:\n"
+                # Limit to first 3 errors to avoid message being too long
+                for error in audit_record["errors"][:3]:
+                    # Truncate long error messages
+                    error_short = error[:100] + "..." if len(error) > 100 else error
+                    message += f"• {error_short}\n"
+
+                if len(audit_record["errors"]) > 3:
+                    message += f"• ... and {len(audit_record['errors']) - 3} more errors\n"
+
+            # Add call to action for partial failures
+            if audit_record["failed_collections"]:
+                message += f"\n⚠️ ACTION REQUIRED: Manual cleanup needed. Check audit log: {deletion_id}"
 
             success = await self.telegram.send_text(message)
 
             if success:
-                logger.info(f"  ✓ Sent Telegram notification to admin")
+                logger.info(f"  ✓ Sent detailed Telegram notification to admin")
             else:
                 logger.warning(f"  ⚠️ Failed to send Telegram notification (no config or error)")
 
