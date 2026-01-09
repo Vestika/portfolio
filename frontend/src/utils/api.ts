@@ -133,7 +133,7 @@ export const deleteAccount = async (
   confirmation: string
 ): Promise<DeleteAccountResponse> => {
   const response = await api.post<DeleteAccountResponse>(
-    '/users/me/delete-account',
+    '/me/delete-account',
     { confirmation }
   );
   return response.data;
