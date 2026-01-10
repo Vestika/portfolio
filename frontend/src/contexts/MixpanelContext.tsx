@@ -2,12 +2,19 @@
  * Mixpanel React Context
  *
  * Provides Mixpanel tracking functionality throughout the React app
+ *
+ * **Privacy Compliance (Amendment 13):**
+ * - Only initializes if user has granted analytics consent
+ * - Respects Do Not Track browser setting
+ * - No tracking before consent
  */
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { mixpanel } from '../lib/mixpanel';
 import { generateSessionId, getViewportDimensions } from '../utils/privacy-sanitizer';
 import type { UserProperties } from '../types/mixpanel';
+import { useConsent, hasAnalyticsConsent } from './ConsentContext';
+import { useAuth } from './AuthContext';
 
 /**
  * Mixpanel Context Type
@@ -39,14 +46,37 @@ interface MixpanelProviderProps {
 export const MixpanelProvider: React.FC<MixpanelProviderProps> = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [sessionId] = useState(() => generateSessionId());
+  const { consentStatus, isLoading } = useConsent();
+  const { user } = useAuth();
 
-  // Initialize Mixpanel on mount
+  // Initialize Mixpanel only after consent check completes
   useEffect(() => {
+    // Wait for consent status to load
+    if (isLoading) {
+      return;
+    }
+
+    // Check if user has granted analytics consent
+    const hasConsent = hasAnalyticsConsent(consentStatus);
+
+    if (!hasConsent) {
+      console.log('[MixpanelContext] Analytics consent not granted. Mixpanel disabled.');
+      setIsInitialized(false);
+      return;
+    }
+
+    // User has granted consent - initialize Mixpanel
     try {
       mixpanel.init();
       setIsInitialized(mixpanel.isInitialized());
 
-      if (mixpanel.isInitialized()) {
+      if (mixpanel.isInitialized() && user) {
+        // Identify user with Firebase UID and email
+        mixpanel.identify(user.uid, {
+          $email: user.email || undefined, // Mixpanel standard property
+          $name: user.displayName || undefined, // Mixpanel standard property
+        });
+
         // Set initial super properties
         const viewport = getViewportDimensions();
         mixpanel.setUserProperties({
@@ -54,11 +84,13 @@ export const MixpanelProvider: React.FC<MixpanelProviderProps> = ({ children }) 
           viewport_width: viewport.width,
           viewport_height: viewport.height,
         } as Partial<UserProperties>);
+
+        console.log('[MixpanelContext] Initialized with user consent and identified user');
       }
     } catch (error) {
       console.error('[MixpanelContext] Initialization error:', error);
     }
-  }, []);
+  }, [consentStatus, isLoading, user]);
 
   // Update viewport dimensions on resize
   useEffect(() => {

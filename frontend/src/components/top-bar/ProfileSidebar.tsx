@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, LogOut, Check, AlertTriangle, Trash2 } from 'lucide-react';
+import { X, LogOut, Check, AlertTriangle, Trash2, Shield, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from '../../contexts/AuthContext';
+import { useConsent } from '../../contexts/ConsentContext';
 import api, { deleteAccount } from '../../utils/api';
 import GoogleProfilePicture from './GoogleProfilePicture';
 import { useUserProfile } from '../../contexts/UserProfileContext';
@@ -38,6 +40,7 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
 }) => {
   const { user } = useAuth();
   const { refreshProfile, googleProfileData } = useUserProfile();
+  const { consentStatus, updateConsent, isLoading: isConsentLoading } = useConsent();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -54,6 +57,9 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionError, setDeletionError] = useState('');
+
+  // Privacy section collapse state
+  const [isPrivacyExpanded, setIsPrivacyExpanded] = useState(false);
 
   const timezones = [
     'America/New_York',
@@ -177,6 +183,38 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
     setShowFinalConfirm(false);
     setConfirmText('');
     setDeletionError('');
+  };
+
+  const handleAnalyticsConsentChange = async (checked: boolean) => {
+    try {
+      await updateConsent(checked, consentStatus?.marketing_consent);
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      console.error('Failed to update analytics consent:', error);
+      setSaveStatus('error');
+      setErrorMessage('Failed to update consent');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setErrorMessage('');
+      }, 5000);
+    }
+  };
+
+  const handleMarketingConsentChange = async (checked: boolean) => {
+    try {
+      await updateConsent(consentStatus?.analytics_consent, checked);
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      console.error('Failed to update marketing consent:', error);
+      setSaveStatus('error');
+      setErrorMessage('Failed to update consent');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setErrorMessage('');
+      }, 5000);
+    }
   };
 
   return (
@@ -330,13 +368,68 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({
 
                   <Separator className="bg-gray-700" />
 
-                  {/* Coming Soon */}
-                  <div className="flex items-center justify-between py-2 opacity-50">
-                    <div className="space-y-0.5">
-                      <Label className="text-gray-300 text-sm">More Settings</Label>
-                      <p className="text-xs text-gray-500">Coming soon</p>
-                    </div>
-                    <Switch disabled checked={false} />
+                  {/* Privacy Preferences - Collapsible */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setIsPrivacyExpanded(!isPrivacyExpanded)}
+                      className="flex items-center justify-between w-full py-2 group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Shield size={14} className="text-blue-400" />
+                        <Label className="text-gray-300 text-sm font-medium cursor-pointer group-hover:text-white transition-colors">
+                          Privacy & Consent
+                        </Label>
+                      </div>
+                      {isPrivacyExpanded ? (
+                        <ChevronDown size={16} className="text-gray-400 group-hover:text-gray-300 transition-colors" />
+                      ) : (
+                        <ChevronRight size={16} className="text-gray-400 group-hover:text-gray-300 transition-colors" />
+                      )}
+                    </button>
+
+                    {isPrivacyExpanded && (
+                      <div className="space-y-4 pl-6 pt-2">
+                        {/* Analytics Consent */}
+                        <div className="flex items-center justify-between py-2">
+                          <div className="space-y-0.5 flex-1 pr-4">
+                            <Label className="text-gray-300 text-sm">Analytics & Performance</Label>
+                            <p className="text-xs text-gray-500">
+                              Help us improve Vestika with usage analytics
+                            </p>
+                          </div>
+                          <Switch
+                            checked={consentStatus?.analytics_consent ?? false}
+                            onCheckedChange={handleAnalyticsConsentChange}
+                            disabled={isConsentLoading}
+                          />
+                        </div>
+
+                        {/* Marketing Consent */}
+                        <div className="flex items-center justify-between py-2">
+                          <div className="space-y-0.5 flex-1 pr-4">
+                            <Label className="text-gray-300 text-sm">Marketing Communications</Label>
+                            <p className="text-xs text-gray-500">
+                              Receive updates about new features and tips
+                            </p>
+                          </div>
+                          <Switch
+                            checked={consentStatus?.marketing_consent ?? false}
+                            onCheckedChange={handleMarketingConsentChange}
+                            disabled={isConsentLoading}
+                          />
+                        </div>
+
+                        {/* Privacy Policy Link */}
+                        <Link
+                          to="/privacy-policy"
+                          onClick={onClose}
+                          className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          <span>Privacy Policy</span>
+                          <ExternalLink size={12} />
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 </div>
 
