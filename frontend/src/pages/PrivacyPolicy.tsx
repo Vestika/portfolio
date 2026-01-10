@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Lock, Eye, Download, Trash2, Mail, AlertCircle, Globe } from 'lucide-react';
+import { Shield, Lock, Eye, Trash2, Mail, AlertCircle, Globe } from 'lucide-react';
 
 type Language = 'en' | 'he';
 
