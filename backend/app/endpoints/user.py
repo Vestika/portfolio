@@ -14,7 +14,7 @@ from models.deletion_models import (
     DeleteAccountResponse,
     DeletionPartialFailureException
 )
-can from models.user_preferences_model import (
+from models.user_preferences_model import (
     UpdateConsentRequest,
     ConsentStatusResponse,
     ConsentRecord
