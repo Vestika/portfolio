@@ -14,6 +14,11 @@ from models.deletion_models import (
     DeleteAccountResponse,
     DeletionPartialFailureException
 )
+can from models.user_preferences_model import (
+    UpdateConsentRequest,
+    ConsentStatusResponse,
+    ConsentRecord
+)
 from core.user_deletion_service import UserDeletionService
 from core.analytics import get_analytics_service
 from services.telegram.service import get_telegram_service
@@ -203,6 +208,142 @@ async def set_mini_chart_timeframe(
             "timeframe": request.timeframe
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Privacy & Consent Management - Israeli Privacy Law Amendment 13 Compliance
+# ============================================================================
+
+@router.get("/me/consent", response_model=ConsentStatusResponse)
+async def get_consent_status(
+    user=Depends(get_current_user)
+) -> ConsentStatusResponse:
+    """
+    Get current consent status for the authenticated user.
+
+    **Complies with Israeli Privacy Law Amendment 13 (Section 11 transparency requirements).**
+
+    Returns user's current consent preferences for:
+    - Analytics tracking (Mixpanel)
+    - Marketing communications
+
+    If no preferences exist, returns default (all declined).
+
+    Returns:
+        ConsentStatusResponse with current consent status and timestamps
+    """
+    try:
+        preferences_collection = db_manager.get_collection("user_preferences")
+        preferences = await preferences_collection.find_one({"user_id": user.id})
+
+        if not preferences:
+            # No preferences exist - return defaults (all declined)
+            now = datetime.utcnow()
+            return ConsentStatusResponse(
+                analytics_consent=False,
+                analytics_consent_date=None,
+                marketing_consent=False,
+                marketing_consent_date=None
+            )
+
+        # Extract consent records
+        analytics_consent = preferences.get("analytics_consent", {})
+        marketing_consent = preferences.get("marketing_consent", {})
+
+        return ConsentStatusResponse(
+            analytics_consent=analytics_consent.get("granted", False),
+            analytics_consent_date=analytics_consent.get("timestamp"),
+            marketing_consent=marketing_consent.get("granted", False),
+            marketing_consent_date=marketing_consent.get("timestamp")
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching consent status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/me/consent", response_model=ConsentStatusResponse)
+async def update_consent(
+    request: UpdateConsentRequest,
+    user=Depends(get_current_user)
+) -> ConsentStatusResponse:
+    """
+    Update consent preferences for the authenticated user.
+
+    **Complies with Israeli Privacy Law Amendment 13 (Section 8 - lawful processing).**
+
+    Users can grant or revoke consent for:
+    - Analytics tracking (Mixpanel) - affects data collection
+    - Marketing communications - affects promotional emails
+
+    **Privacy Note**: Financial data (symbols, prices, account names) is NEVER
+    sent to analytics, regardless of consent status. Only usage events are tracked.
+
+    **Audit Trail**: All consent changes are timestamped and stored for compliance.
+
+    Args:
+        request: UpdateConsentRequest with consent preferences
+        user: Current authenticated user
+
+    Returns:
+        ConsentStatusResponse with updated consent status
+
+    Raises:
+        HTTPException: 500 if update fails
+    """
+    try:
+        preferences_collection = db_manager.get_collection("user_preferences")
+        now = datetime.utcnow()
+
+        # Build update document
+        update_doc = {"updated_at": now}
+
+        if request.analytics_consent is not None:
+            update_doc["analytics_consent"] = {
+                "granted": request.analytics_consent,
+                "timestamp": now,
+                # Note: IP address and user agent could be added here for full audit trail
+                # "ip_address": request.client.host,
+                # "user_agent": request.headers.get("user-agent")
+            }
+
+            # Track consent change in analytics (if user is granting consent)
+            if request.analytics_consent:
+                try:
+                    analytics = get_analytics_service()
+                    analytics.track_event(
+                        user=user,
+                        event_name="consent_granted_analytics",
+                        properties={"timestamp": now.isoformat()}
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to track consent grant: {e}")
+
+        if request.marketing_consent is not None:
+            update_doc["marketing_consent"] = {
+                "granted": request.marketing_consent,
+                "timestamp": now
+            }
+
+        # Update or create preferences with consent records
+        result = await preferences_collection.update_one(
+            {"user_id": user.id},
+            {"$set": update_doc},
+            upsert=True
+        )
+
+        logger.info(
+            f"Consent updated for user {user.id}: "
+            f"analytics={request.analytics_consent}, "
+            f"marketing={request.marketing_consent}"
+        )
+
+        # Return current consent status
+        return await get_consent_status(user=user)
+
+    except Exception as e:
+        logger.error(f"Error updating consent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

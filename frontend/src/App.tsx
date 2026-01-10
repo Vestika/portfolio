@@ -23,11 +23,13 @@ import { ToolsView } from './components/ToolsView';
 import { ImportView } from './components/ImportView';
 import { UploadView } from './components/UploadView';
 import { ConfigGalleryView } from './components/ConfigGalleryView';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { useAuth } from './contexts/AuthContext';
 import { usePortfolioData } from './contexts/PortfolioDataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { UserProfileProvider } from './contexts/UserProfileContext';
 import { PopupManager } from './components/PopupManager';
+import { ConsentBanner } from './components/ConsentBanner';
 // Removed floating feedback widget in favor of top bar modal
 import { signOutUser } from './firebase';
 import {
@@ -650,6 +652,9 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* Privacy Policy - accessible without portfolio context */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+
               {/* Default redirect to portfolio */}
               <Route path="/" element={<Navigate to="/portfolio" replace />} />
 
@@ -667,6 +672,7 @@ const App: React.FC = () => {
         onToggleVisibility={handleToggleVisibility}
         isValueVisible={isValueVisible}
       />
+      <ConsentBanner />
       </div>
       </UserProfileProvider>
     </NotificationProvider>
