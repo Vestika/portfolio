@@ -13,7 +13,7 @@
  */
 
 import React, { useState } from 'react';
-import { X, Shield, Settings } from 'lucide-react';
+import { Shield, Settings } from 'lucide-react';
 import { useConsent } from '../contexts/ConsentContext';
 import { Link } from 'react-router-dom';
 
@@ -22,7 +22,7 @@ interface ConsentBannerProps {
 }
 
 export const ConsentBanner: React.FC<ConsentBannerProps> = ({ onClose }) => {
-  const { shouldShowBanner, acceptAll, declineAll, dismissBanner, updateConsent } = useConsent();
+  const { shouldShowBanner, acceptAll, declineAll, updateConsent } = useConsent();
   const [showCustomize, setShowCustomize] = useState(false);
   const [analyticsConsent, setAnalyticsConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
@@ -58,26 +58,12 @@ export const ConsentBanner: React.FC<ConsentBannerProps> = ({ onClose }) => {
     }
   };
 
-  const handleDismiss = () => {
-    dismissBanner();
-    onClose?.();
-  };
-
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-t-2 border-blue-500 dark:border-blue-400 shadow-2xl">
       <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
-        {/* Close button */}
-        <button
-          onClick={handleDismiss}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          aria-label="Close consent banner"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
         {!showCustomize ? (
           // Simple view - Accept/Decline/Customize
-          <div className="pr-12">
+          <div>
             <div className="flex items-start gap-3 mb-4">
               <Shield className="w-6 h-6 text-blue-500 flex-shrink-0 mt-1" />
               <div>
@@ -126,7 +112,7 @@ export const ConsentBanner: React.FC<ConsentBannerProps> = ({ onClose }) => {
           </div>
         ) : (
           // Customization view - Granular consent options
-          <div className="pr-12">
+          <div>
             <div className="flex items-start gap-3 mb-4">
               <Settings className="w-6 h-6 text-blue-500 flex-shrink-0 mt-1" />
               <div className="flex-1">
