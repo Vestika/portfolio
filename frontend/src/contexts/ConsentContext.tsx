@@ -9,6 +9,11 @@
  * 2. Fetch from MongoDB to ensure sync across devices
  * 3. Update localStorage cache when consent changes
  * 4. Track consent grants in analytics (with consent!)
+ *
+ * Banner visibility logic:
+ * - Shows banner if user has NOT made a choice (no timestamp set)
+ * - Hides banner if user has made ANY choice (timestamp exists)
+ * - Uses consent_date fields to distinguish "no choice" from "declined all"
  */
 
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
@@ -47,7 +52,6 @@ interface ConsentContextType {
 const ConsentContext = createContext<ConsentContextType | undefined>(undefined);
 
 const CONSENT_CACHE_KEY = 'vestika_consent_cache';
-const BANNER_DISMISSED_KEY = 'vestika_consent_banner_dismissed';
 
 interface ConsentProviderProps {
   children: ReactNode;
@@ -77,10 +81,9 @@ export const ConsentProvider: React.FC<ConsentProviderProps> = ({ children }) =>
         const cached = JSON.parse(cachedConsent);
         setConsentStatus(cached);
 
-        // Check if user has explicitly dismissed banner or made a choice
-        const bannerDismissed = localStorage.getItem(BANNER_DISMISSED_KEY) === 'true';
-        const hasConsented = cached.analytics_consent || cached.marketing_consent;
-        setShouldShowBanner(!bannerDismissed && !hasConsented);
+        // Check if user has made a choice (timestamp is set)
+        const hasMadeChoice = cached.analytics_consent_date !== null || cached.marketing_consent_date !== null;
+        setShouldShowBanner(!hasMadeChoice);
       } else {
         // No cache - show banner (user hasn't made a choice)
         setShouldShowBanner(true);
@@ -95,9 +98,9 @@ export const ConsentProvider: React.FC<ConsentProviderProps> = ({ children }) =>
       localStorage.setItem(CONSENT_CACHE_KEY, JSON.stringify(freshConsent));
 
       // Update banner visibility based on fresh data
-      const bannerDismissed = localStorage.getItem(BANNER_DISMISSED_KEY) === 'true';
-      const hasConsented = freshConsent.analytics_consent || freshConsent.marketing_consent;
-      setShouldShowBanner(!bannerDismissed && !hasConsented);
+      // Show banner only if user has NOT made a choice (no timestamp set)
+      const hasMadeChoice = freshConsent.analytics_consent_date !== null || freshConsent.marketing_consent_date !== null;
+      setShouldShowBanner(!hasMadeChoice);
 
     } catch (error) {
       console.error('Failed to load consent status:', error);
@@ -137,7 +140,6 @@ export const ConsentProvider: React.FC<ConsentProviderProps> = ({ children }) =>
 
       // Hide banner after user makes a choice
       setShouldShowBanner(false);
-      localStorage.setItem(BANNER_DISMISSED_KEY, 'true');
 
       console.log('✅ Consent updated:', updatedConsent);
     } catch (error) {
@@ -165,7 +167,6 @@ export const ConsentProvider: React.FC<ConsentProviderProps> = ({ children }) =>
    */
   const dismissBanner = () => {
     setShouldShowBanner(false);
-    localStorage.setItem(BANNER_DISMISSED_KEY, 'true');
 
     // Ensure consent is set to false in MongoDB
     updateConsent(false, false).catch(error => {
