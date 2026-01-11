@@ -18,6 +18,7 @@
 
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import api from '../utils/api';
+import { useAuth } from './AuthContext';
 
 interface ConsentStatus {
   analytics_consent: boolean;
@@ -58,14 +59,34 @@ interface ConsentProviderProps {
 }
 
 export const ConsentProvider: React.FC<ConsentProviderProps> = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
   const [consentStatus, setConsentStatus] = useState<ConsentStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [shouldShowBanner, setShouldShowBanner] = useState(false);
 
-  // Load consent status on mount
+  // Load consent status after auth is ready
   useEffect(() => {
-    loadConsentStatus();
-  }, []);
+    // Wait for auth to finish loading
+    if (authLoading) {
+      return;
+    }
+
+    // Only fetch consent if user is authenticated
+    if (user) {
+      loadConsentStatus();
+    } else {
+      // User not logged in - set defaults
+      const defaultConsent: ConsentStatus = {
+        analytics_consent: false,
+        analytics_consent_date: null,
+        marketing_consent: false,
+        marketing_consent_date: null
+      };
+      setConsentStatus(defaultConsent);
+      setIsLoading(false);
+      setShouldShowBanner(false); // Don't show banner when not logged in
+    }
+  }, [authLoading, user]);
 
   /**
    * Load consent status from MongoDB (via API)
