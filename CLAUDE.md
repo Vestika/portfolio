@@ -218,6 +218,11 @@ FINNHUB_API_KEY=your_key_here  # Get from https://finnhub.io/
 GOOGLE_AI_API_KEY=your_key_here  # Get from https://aistudio.google.com/apikey
 FIREBASE_CREDENTIALS={}  # Firebase service account JSON
 
+# Analytics
+USERJAM_API_KEY=your_key_here  # Get from https://userjam.com/settings/tracking
+MIXPANEL_API_KEY=your_key_here
+MIXPANEL_ENABLED=true
+
 # Optional
 TELEGRAM_BOT_TOKEN=your_token
 TELEGRAM_CHAT_ID=your_chat_id
@@ -230,6 +235,11 @@ LOG_LEVEL=INFO
 VITE_API_URL=http://localhost:8080
 VITE_GROWTHBOOK_API_HOST=https://cdn.growthbook.io
 VITE_GROWTHBOOK_CLIENT_KEY=sdk-JCSC6ZrWMHjBLLPA
+
+# Analytics
+VITE_USERJAM_KEY=your_key_here  # Get from https://userjam.com/settings/tracking
+VITE_MIXPANEL_TOKEN=your_mixpanel_token
+VITE_MIXPANEL_DEBUG=true
 ```
 
 ## API Documentation
@@ -364,6 +374,8 @@ See README.md for full documentation.
 
 The following markdown files contain detailed implementation documentation:
 
+- `USERJAM_INTEGRATION.md` - Userjam analytics integration guide
+- `USERJAM_INTEGRATION_EXAMPLES.md` - Code examples for Userjam integration
 - `GROWTHBOOK_INTEGRATION.md` - Feature flag setup
 - `FINANCIAL_ANALYST_AI.md` - AI analyst implementation
 - `TAGGING_SYSTEM_IMPLEMENTATION.md` - Tag system details
