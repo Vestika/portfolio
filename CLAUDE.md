@@ -401,6 +401,49 @@ IMMEDIATELY after implementing any front-end change:
 
 This verification ensures changes meet design standards and user requirements.
 
+### UI/UX Expert Knowledge Base
+
+**Comprehensive Resources** in `.claude/skills/`:
+
+1. **ui-ux-expert.md** - Complete design guide covering:
+   - Essential books and resources (top 10 must-reads)
+   - 2026 design philosophy and trends
+   - Platform guidelines (iOS HIG, Material Design 3)
+   - WCAG 2.2 accessibility standards
+   - Mobile-first and responsive design
+   - Micro-interactions and animations
+   - Design systems and component libraries
+   - Dark mode, forms, dashboards
+   - Pre-launch checklists
+
+2. **ui-ux-quick-reference.md** - Fast lookups for:
+   - Contrast ratios (4.5:1 text, 3:1 UI)
+   - Touch targets (48x48px)
+   - Animation timing (150-500ms)
+   - Typography scales and spacing (8px grid)
+   - Responsive breakpoints
+   - Decision trees (modal vs toast vs tooltip)
+   - Accessibility quick checks
+
+3. **README.md** - Usage guide and sources
+
+**When to Reference:**
+- Designing new UI components or features
+- Reviewing accessibility compliance
+- Making platform-specific design decisions
+- Optimizing animations and micro-interactions
+- Implementing dark mode
+- Creating forms or dashboards
+- Quick value lookups (contrast, sizing, timing)
+
+**Usage Examples:**
+```
+"Review this button design for WCAG 2.2 compliance"
+"What's the minimum touch target size for mobile?"
+"Help me design a mobile-first form"
+"Check if this animation timing follows best practices"
+```
+
 ### Comprehensive Design Review
 Invoke the `@agent-design-review-specialist` subagent for thorough design validation when:
 - Completing significant UI/UX features
