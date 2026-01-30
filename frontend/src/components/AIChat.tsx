@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button } from './ui/button';
 import TaggingInput from './TaggingInput';
 import TaggedMessage from './TaggedMessage';
+import MessageActions from './MessageActions';
+import { ChatSidebar } from './chat/ChatSidebar';
 import {
   chatWithAnalyst,
   getChatSessions,
   getChatSessionMessages,
+  closeChatSession,
   ChatSession,
   ChatMessage,
   AutocompleteSuggestion
 } from '../utils/ai-api';
 import { useMixpanel } from '../contexts/MixpanelContext';
+import { Bot, Menu, X, Target, TrendingUp, Lightbulb, MessageCircle, AlertTriangle, Send } from 'lucide-react';
 
 interface AIChatProps {
   isOpen?: boolean;
@@ -27,7 +30,7 @@ const AIChat: React.FC<AIChatProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [showSessions, setShowSessions] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState<AutocompleteSuggestion[]>([]);
   const { track } = useMixpanel();
 
@@ -38,9 +41,7 @@ const AIChat: React.FC<AIChatProps> = ({
     "How is my portfolio performing?",
     "What's my current asset allocation?",
     "Which stocks are my biggest winners?",
-    "Show me my portfolio diversification",
-    "What's my risk exposure?",
-    "How much did I gain/lose this month?"
+    "Show me my portfolio diversification"
   ];
 
   const scrollToBottom = () => {
@@ -96,7 +97,7 @@ const AIChat: React.FC<AIChatProps> = ({
 
     try {
       const response = await chatWithAnalyst(userMessage, currentSessionId || undefined, selectedTags);
-      
+
       // Update session ID if this is a new session
       if (!currentSessionId) {
         setCurrentSessionId(response.session_id);
@@ -127,14 +128,12 @@ const AIChat: React.FC<AIChatProps> = ({
     setInputMessage(question);
   };
 
-
-
   const loadSession = async (sessionId: string) => {
     try {
       const sessionData = await getChatSessionMessages(sessionId);
       setMessages(sessionData.messages);
       setCurrentSessionId(sessionId);
-      setShowSessions(false);
+      setIsMobileSidebarOpen(false); // Close mobile sidebar after selection
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load session';
       setError(errorMessage);
@@ -144,234 +143,310 @@ const AIChat: React.FC<AIChatProps> = ({
   const startNewSession = () => {
     setMessages([]);
     setCurrentSessionId(null);
-    setShowSessions(false);
+    setIsMobileSidebarOpen(false);
+  };
+
+  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    if (!confirm('Delete this chat session? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await closeChatSession(sessionId);
+
+      // If we deleted the current session, start a new one
+      if (sessionId === currentSessionId) {
+        startNewSession();
+      }
+
+      // Reload sessions
+      await loadChatSessions();
+    } catch (err: unknown) {
+      console.error('Failed to delete session:', err);
+      setError('Failed to delete session');
+    }
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
-  };
-
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleDateString();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="h-full flex flex-col relative max-w-4xl mx-auto">
-      {/* Minimal Header */}
-      <div className="flex items-center justify-between p-3 bg-white/5 backdrop-blur-sm border-b border-white/10">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-300">AI Assistant</span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {onClose && (
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="text-gray-400 hover:text-white hover:bg-white/10 h-8 w-8 p-0"
-            >
-              ×
-            </Button>
-          )}
-          <Button
-            onClick={() => setShowSessions(!showSessions)}
-            variant="ghost"
-            size="sm"
-            className="text-gray-400 hover:text-white hover:bg-white/10 text-xs"
-          >
-            History
-          </Button>
-          <Button
-            onClick={startNewSession}
-            variant="ghost"
-            size="sm"
-            className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 text-xs"
-          >
-            New
-          </Button>
-        </div>
+    <div className="flex h-screen bg-black overflow-hidden">
+      {/* Desktop Sidebar - Always visible on desktop */}
+      <div className="hidden lg:block w-[260px] flex-shrink-0 bg-gray-950 border-r border-white/10">
+        <ChatSidebar
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSelectSession={loadSession}
+          onNewChat={startNewSession}
+          onDeleteSession={handleDeleteSession}
+        />
       </div>
 
-      {/* Sessions Panel */}
-      {showSessions && (
-        <div className="absolute top-12 left-0 right-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-white/10 p-4">
-          <div className="space-y-1 max-h-40 overflow-y-auto">
-            {sessions.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">No chat history</p>
-            ) : (
-              sessions.map((session) => (
+      {/* Mobile Sidebar - Overlay */}
+      {isMobileSidebarOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Sliding Sidebar */}
+          <div className="fixed inset-y-0 left-0 w-full sm:w-[320px] bg-gray-950 border-r border-white/10 z-50 lg:hidden">
+            <div className="flex items-center justify-between p-3 border-b border-white/10">
+              <h2 className="text-lg font-semibold text-white">Chat History</h2>
+              <button
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-lg"
+                aria-label="Close sidebar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="h-[calc(100%-60px)]">
+              <ChatSidebar
+                sessions={sessions}
+                currentSessionId={currentSessionId}
+                onSelectSession={loadSession}
+                onNewChat={startNewSession}
+                onDeleteSession={handleDeleteSession}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Minimal Header */}
+        <div className="h-14 px-6 flex items-center justify-between border-b border-white/10 bg-black/50 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            {/* Mobile menu button - only visible on mobile */}
+            <button
+              className="lg:hidden p-2 hover:bg-white/10 rounded-lg"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Open sidebar"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            <Bot className="h-5 w-5 text-blue-400" />
+            <h1 className="text-base font-semibold text-white">AI Financial Analyst</h1>
+          </div>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/10 rounded-lg"
+              aria-label="Close chat"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {messages.length === 0 && !isLoading && (
+            <div className="flex flex-col items-center justify-center h-full pb-8">
+              {/* Hero Section */}
+              <div className="w-20 h-20 mb-6 text-blue-400 relative">
+                <Bot className="h-20 w-20 animate-pulse" aria-hidden="true" />
                 <div
-                  key={session._id}
-                  onClick={() => loadSession(session._id)}
-                  className={`p-3 rounded-lg cursor-pointer text-sm transition-all ${
-                    currentSessionId === session._id
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                      : 'hover:bg-white/10 text-gray-300'
-                  }`}
+                  className="absolute inset-0 rounded-full bg-blue-400/20 animate-ping"
+                  style={{ animationDuration: '2s' }}
+                  aria-hidden="true"
+                />
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">AI-Powered Portfolio Analysis</h3>
+              <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-md text-center px-4">
+                Chat with your AI analyst to get insights about your holdings, risk exposure, and investment strategy.
+              </p>
+
+              {/* Feature Preview Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 max-w-3xl w-full px-4">
+                <div className="bg-white/5 rounded-lg p-4 border border-white/10 text-center">
+                  <Target className="h-8 w-8 text-blue-400 mx-auto mb-2" aria-hidden="true" />
+                  <h4 className="text-sm font-semibold text-white mb-1">Risk Assessment</h4>
+                  <p className="text-xs text-gray-400">Analyze portfolio risk and volatility</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-4 border border-white/10 text-center">
+                  <TrendingUp className="h-8 w-8 text-green-400 mx-auto mb-2" aria-hidden="true" />
+                  <h4 className="text-sm font-semibold text-white mb-1">Performance Tracking</h4>
+                  <p className="text-xs text-gray-400">Monitor returns and growth trends</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-4 border border-white/10 text-center">
+                  <Lightbulb className="h-8 w-8 text-yellow-400 mx-auto mb-2" aria-hidden="true" />
+                  <h4 className="text-sm font-semibold text-white mb-1">Investment Insights</h4>
+                  <p className="text-xs text-gray-400">Discover opportunities and patterns</p>
+                </div>
+              </div>
+
+              {/* Example Questions */}
+              <div className="w-full max-w-3xl px-4">
+                <p className="text-sm text-gray-400 mb-3 font-medium">Try asking:</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {exampleQuestions.map((question, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExampleQuestion(question)}
+                      className="h-12 p-4 text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-blue-500/30 rounded-xl transition-all text-sm text-gray-300 hover:text-white flex items-center min-h-[48px]"
+                      aria-label={`Ask: ${question}`}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2 text-gray-500 flex-shrink-0" aria-hidden="true" />
+                      <span className="flex-1">{question}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Keyboard Hints */}
+              <div className="mt-6 text-xs text-gray-500">
+                <kbd className="bg-gray-800 px-2 py-1 rounded">Enter</kbd> to send •{' '}
+                <kbd className="bg-gray-800 px-2 py-1 rounded">@</kbd> for portfolios •{' '}
+                <kbd className="bg-gray-800 px-2 py-1 rounded">$</kbd> for symbols
+              </div>
+            </div>
+          )}
+
+          {messages.map((message, index) => (
+            <div key={index} className="flex justify-center mb-4">
+              <div className="w-full max-w-3xl">
+                <div
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className="flex justify-between items-center">
-                    <span>{formatDate(session.created_at)}</span>
-                    <span className="text-xs text-gray-500">
-                      {session.messages.length} msg
-                    </span>
+                  {message.role === 'assistant' && (
+                    <div className="w-8 h-8 mr-3 mt-1 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Bot className="w-4 h-4 text-white" aria-hidden="true" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-2xl shadow-sm ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-md'
+                        : 'bg-white/10 backdrop-blur-sm text-gray-100 rounded-bl-md border border-white/20'
+                    }`}
+                  >
+                    <TaggedMessage content={message.content} />
+                    <MessageActions
+                      content={message.content}
+                      messageRole={message.role}
+                      onFeedback={(isPositive) => {
+                        // TODO: Send feedback to backend
+                        console.log('Feedback:', isPositive ? 'positive' : 'negative');
+                      }}
+                    />
+                    <div
+                      className={`text-xs mt-2 opacity-70 ${
+                        message.role === 'user' ? 'text-blue-100' : 'text-gray-300'
+                      }`}
+                    >
+                      {formatTime(message.timestamp)}
+                    </div>
+                  </div>
+                  {message.role === 'user' && (
+                    <div className="w-8 h-8 ml-3 mt-1 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="flex justify-center mb-4">
+              <div className="w-full max-w-3xl">
+                <div className="flex justify-start" role="status" aria-live="polite" aria-label="AI is typing">
+                  <div className="w-8 h-8 mr-3 mt-1 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-4 h-4 text-white animate-pulse" aria-hidden="true" />
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm text-gray-100 max-w-xs px-4 py-3 rounded-2xl rounded-bl-md border border-white/20">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex space-x-1" aria-hidden="true">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      </div>
+                      <span className="text-sm text-gray-300">Analyzing your portfolio...</span>
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
-      )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {messages.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-end h-full pb-4">
-            <div className="text-center max-w-md mb-6">
-              <div className="w-16 h-16 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">AI Financial Assistant</h3>
-              <p className="text-gray-400 mb-6">
-                Ask about portfolio analysis, diversification, risk assessment, or investment strategies.
-              </p>
-            </div>
-            
-            {/* Example Questions */}
-            <div className="w-full max-w-2xl">
-              <p className="text-sm text-gray-400 text-center mb-4">Try asking:</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {exampleQuestions.map((question, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleExampleQuestion(question)}
-                    className="p-3 text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl transition-all duration-200 text-sm text-gray-300 hover:text-white"
-                  >
-                    {question}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {messages.map((message, index) => (
+        {/* Error Message */}
+        {error && (
           <div
-            key={index}
-            className={`flex mb-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl backdrop-blur-sm"
+            role="alert"
+            aria-live="assertive"
           >
-            {message.role === 'assistant' && (
-              <div className="w-8 h-8 mr-3 mt-1 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-            )}
-            <div
-              className={`max-w-[75%] lg:max-w-2xl px-4 py-3 rounded-2xl shadow-sm ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-md'
-                  : 'bg-white/10 backdrop-blur-sm text-gray-100 rounded-bl-md border border-white/20'
-              }`}
-            >
-              <TaggedMessage content={message.content} />
-              <div
-                className={`text-xs mt-2 opacity-70 ${
-                  message.role === 'user' ? 'text-blue-100' : 'text-gray-300'
-                }`}
-              >
-                {formatTime(message.timestamp)}
-              </div>
-            </div>
-            {message.role === 'user' && (
-              <div className="w-8 h-8 ml-3 mt-1 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-            )}
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="flex justify-start mb-4">
-            <div className="w-8 h-8 mr-3 mt-1 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <div className="flex items-center max-w-3xl mx-auto">
+              <svg className="h-4 w-4 text-red-400 mr-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
               </svg>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm text-gray-100 max-w-xs px-4 py-3 rounded-2xl rounded-bl-md border border-white/20">
-              <div className="flex items-center space-x-3">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
-                </div>
-                <span className="text-sm text-gray-300">Thinking...</span>
-              </div>
+              <p className="text-sm text-red-200">{error}</p>
             </div>
           </div>
         )}
 
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="mx-6 mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl backdrop-blur-sm">
-          <div className="flex items-center">
-            <svg className="h-4 w-4 text-red-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            <p className="text-sm text-red-200">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className={`${messages.length === 0 ? 'px-6 py-4 border-t border-white/10 bg-white/5 backdrop-blur-sm' : 'px-6 py-4 border-t border-white/10 bg-white/5 backdrop-blur-sm'}`}>
-        <div className="flex space-x-3 max-w-4xl mx-auto">
-          <TaggingInput
-            value={inputMessage}
-            onChange={setInputMessage}
-            onSend={handleSendMessage}
-            onTagSelect={(tag) => setSelectedTags(prev => [...prev, tag])}
-            disabled={isLoading}
-            placeholder={messages.length === 0 ? "Ask me about your portfolio..." : "Ask about your portfolio... Use @ for portfolios/accounts, $ for symbols"}
-          />
-          <Button
-            onClick={handleSendMessage}
-            disabled={isLoading || !inputMessage.trim()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
-          >
-            {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            )}
-          </Button>
-        </div>
-        
-        {/* Disclaimer - only show when there are messages */}
-        {messages.length > 0 && (
-          <div className="mt-3 text-xs text-gray-500 text-center max-w-4xl mx-auto">
-            <p>
-              AI provides informational analysis only, not financial advice. Consult a qualified advisor for investment decisions.
+        {/* Persistent Disclaimer */}
+        <div className="border-t border-white/10 bg-yellow-900/10 px-6 py-3">
+          <div className="flex items-start gap-2 max-w-3xl mx-auto">
+            <AlertTriangle className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-xs text-yellow-300/90 leading-relaxed">
+              <strong className="font-semibold">Important:</strong> AI provides informational analysis only, not financial advice. Always consult a qualified financial advisor before making investment decisions.
             </p>
           </div>
-        )}
+        </div>
+
+        {/* Input Area */}
+        <div className="px-6 py-4 border-t border-white/10 bg-black/50 backdrop-blur-sm">
+          <div className="max-w-3xl mx-auto flex gap-3">
+            <TaggingInput
+              value={inputMessage}
+              onChange={setInputMessage}
+              onSend={handleSendMessage}
+              onTagSelect={(tag) => setSelectedTags(prev => [...prev, tag])}
+              disabled={isLoading}
+              placeholder={messages.length === 0 ? "Ask me about your portfolio..." : "Type @ for portfolios, $ for symbols"}
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={isLoading || !inputMessage.trim()}
+              className="min-w-[56px] min-h-[56px] w-14 h-14 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition-all hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              aria-label="Send message"
+            >
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="w-5 h-5" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-export default AIChat; 
+export default AIChat;
