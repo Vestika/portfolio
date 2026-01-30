@@ -40,7 +40,7 @@ export default defineConfig({
         // Don't cache large images or user data
         globIgnores: ['**/v-*.png'],
         // Increase size limit to handle large bundle
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
         runtimeCaching: [
           {
             // Network-first strategy for API calls (always try network first)
@@ -66,6 +66,18 @@ export default defineConfig({
     alias: {
       "@": "/src",
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor code into separate chunks
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'chart-vendor': ['recharts', 'highcharts', 'highcharts-react-official'],
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1500, // Increase warning limit to 1500 KB
   },
   server: {
     port: 5173,
