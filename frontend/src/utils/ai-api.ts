@@ -1,18 +1,5 @@
 import api from './api';
 
-export interface AIAnalysisResponse {
-  portfolio_id: string;
-  analysis: string;
-  timestamp: string;
-  model_used: string;
-  portfolio_summary: {
-    total_value: number;
-    base_currency: string;
-    accounts_count: number;
-    holdings_count: number;
-  };
-}
-
 export interface ChatMessageRequest {
   message: string;
   session_id?: string;
@@ -50,17 +37,6 @@ export interface ChatSessionMessages {
   created_at: string;
   last_activity: string;
 }
-
-// AI Portfolio Analysis
-export const analyzePortfolio = async (portfolioId: string): Promise<AIAnalysisResponse> => {
-  try {
-    const response = await api.post(`/portfolio/${portfolioId}/analyze`);
-    return response.data;
-  } catch (error) {
-    console.error('Error analyzing portfolio:', error);
-    throw error;
-  }
-};
 
 // AI Chat Functions
 export const chatWithAnalyst = async (
@@ -102,29 +78,6 @@ export const getChatSessionMessages = async (
     return response.data;
   } catch (error) {
     console.error('Error getting chat session messages:', error);
-    throw error;
-  }
-};
-
-export const closeChatSession = async (sessionId: string): Promise<void> => {
-  try {
-    await api.delete(`/chat/sessions/${sessionId}`);
-  } catch (error) {
-    console.error('Error closing chat session:', error);
-    throw error;
-  }
-};
-
-export const searchChatHistory = async (
-  query: string
-): Promise<ChatSession[]> => {
-  try {
-    const response = await api.get(`/chat/search`, {
-      params: { query }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error searching chat history:', error);
     throw error;
   }
 };
