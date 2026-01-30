@@ -50,6 +50,9 @@ dependencies:
   '@radix-ui/react-tabs':
     specifier: ^1.1.13
     version: 1.1.13(@types/react-dom@18.3.7)(@types/react@18.3.23)(react-dom@18.3.1)(react@18.3.1)
+  '@types/highlight.js':
+    specifier: ^10.1.0
+    version: 10.1.0
   autoprefixer:
     specifier: ^10.4.20
     version: 10.4.21(postcss@8.5.6)
@@ -74,6 +77,9 @@ dependencies:
   highcharts-react-official:
     specifier: ^3.2.3
     version: 3.2.3(highcharts@12.4.0)(react@18.3.1)
+  highlight.js:
+    specifier: ^11.11.1
+    version: 11.11.1
   js-yaml:
     specifier: ^4.1.0
     version: 4.1.0
@@ -4386,6 +4392,13 @@ packages:
       '@types/unist': 3.0.3
     dev: false
 
+  /@types/highlight.js@10.1.0:
+    resolution: {integrity: sha512-77hF2dGBsOgnvZll1vymYiNUtqJ8cJfXPD6GG/2M0aLRc29PkvB7Au6sIDjIEFcSICBhCh2+Pyq6WSRS7LUm6A==}
+    deprecated: This is a stub types definition. highlight.js provides its own type definitions, so you do not need this installed.
+    dependencies:
+      highlight.js: 11.11.1
+    dev: false
+
   /@types/js-yaml@4.0.9:
     resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
     dev: true
@@ -6056,6 +6069,11 @@ packages:
 
   /highcharts@12.4.0:
     resolution: {integrity: sha512-o6UxxfChSUrvrZUbWrAuqL1HO/+exhAUPcZY6nnqLsadZQlnP16d082sg7DnXKZCk1gtfkyfkp6g3qkIZ9miZg==}
+    dev: false
+
+  /highlight.js@11.11.1:
+    resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
+    engines: {node: '>=12.0.0'}
     dev: false
 
   /hoist-non-react-statics@3.3.2:

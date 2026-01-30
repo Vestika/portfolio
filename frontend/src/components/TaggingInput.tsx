@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Input } from './ui/input';
 import { getChatAutocomplete, AutocompleteSuggestion } from '../utils/ai-api';
+import { DollarSign, AtSign } from 'lucide-react';
 
 interface TaggingInputProps {
   value: string;
@@ -170,6 +171,10 @@ const TaggingInput: React.FC<TaggingInputProps> = ({
     };
   }, []);
 
+  // Detect mobile for suggestion positioning
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const suggestionPosition = isMobile ? "top-full mt-2" : "bottom-full mb-2";
+
   return (
     <div className="relative flex-1">
       <Input
@@ -179,42 +184,58 @@ const TaggingInput: React.FC<TaggingInputProps> = ({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
-        className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+        className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 h-14 text-base"
+        aria-label="Chat message input"
+        aria-describedby="chat-help-text"
+        aria-autocomplete="list"
+        aria-controls={showSuggestions ? "autocomplete-list" : undefined}
+        aria-expanded={showSuggestions}
       />
-      
+
+      <span id="chat-help-text" className="sr-only">
+        Type @ to tag portfolios or accounts. Type $ to tag stock symbols. Press Enter to send.
+      </span>
+
       {/* Autocomplete Suggestions */}
-      {showSuggestions && (
+      {showSuggestions && suggestions.length > 0 && (
         <div
           ref={suggestionsRef}
-          className="absolute bottom-full left-0 right-0 mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50"
+          id="autocomplete-list"
+          role="listbox"
+          aria-label="Autocomplete suggestions"
+          className={`absolute ${suggestionPosition} left-0 right-0 bg-gray-800 border border-gray-600 rounded-xl shadow-lg max-h-64 overflow-y-auto z-50`}
         >
           {suggestions.map((suggestion, index) => (
-            <div
+            <button
               key={`${suggestion.id}-${index}`}
               onClick={() => handleSuggestionClick(suggestion)}
-              className="px-3 py-2 hover:bg-gray-700 cursor-pointer text-sm text-gray-200 border-b border-gray-600 last:border-b-0"
+              role="option"
+              aria-selected={false}
+              className="w-full min-h-[48px] px-4 py-3 hover:bg-gray-700 cursor-pointer transition-colors text-left flex items-center gap-3 border-b border-gray-700 last:border-b-0"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="text-blue-400 font-medium">
-                    {currentTag?.type === '@' ? '@' : '$'}
-                  </span>
-                  <span className="font-medium">
+              <div className="flex-shrink-0">
+                {currentTag?.type === '$' ? (
+                  <DollarSign className="h-4 w-4 text-green-400" aria-hidden="true" />
+                ) : (
+                  <AtSign className="h-4 w-4 text-blue-400" aria-hidden="true" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-gray-200 truncate">
                     {suggestion.symbol || suggestion.name}
                   </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500 bg-gray-700 px-2 py-1 rounded">
+                  <span className="text-xs text-gray-500 bg-gray-700 px-2 py-1 rounded flex-shrink-0">
                     {suggestion.type}
                   </span>
-                  {suggestion.symbol && (
-                    <span className="text-xs text-gray-400">
-                      {suggestion.name}
-                    </span>
-                  )}
                 </div>
+                {suggestion.symbol && suggestion.name && (
+                  <div className="text-xs text-gray-400 truncate mt-0.5">
+                    {suggestion.name}
+                  </div>
+                )}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
