@@ -14,6 +14,7 @@ import pandas as pd
 from core.auth import get_current_user
 from core.database import db_manager
 from core.analytics import get_analytics_service
+from core.userjam_analytics import get_userjam_service
 from core.analytics_events import (
     EVENT_PORTFOLIO_CREATED,
     EVENT_PORTFOLIO_DELETED,
@@ -2062,7 +2063,7 @@ async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_cur
         # Clear portfolios cache to force reload
         invalidate_portfolio_cache(portfolio_id)
 
-        # Track portfolio creation
+        # Track portfolio creation in Mixpanel
         analytics = get_analytics_service()
         analytics.track_event(
             user=user,
@@ -2074,6 +2075,20 @@ async def create_portfolio(request: CreatePortfolioRequest, user=Depends(get_cur
                 accounts_count=0,
                 holdings_count=0
             )
+        )
+
+        # Track portfolio creation in Userjam
+        userjam = get_userjam_service()
+        userjam.track_event(
+            user=user,
+            event_name="portfolio.created",
+            properties={
+                "portfolio_id": portfolio_id,
+                "portfolio_name": request.portfolio_name,
+                "base_currency": request.base_currency,
+                "accounts_count": 0,
+                "holdings_count": 0
+            }
         )
 
         return {
@@ -2249,12 +2264,20 @@ async def delete_portfolio(portfolio_id: str, user=Depends(get_current_user)) ->
         # Clear from portfolios cache
         invalidate_portfolio_cache(portfolio_id)
 
-        # Track portfolio deletion
+        # Track portfolio deletion in Mixpanel
         analytics = get_analytics_service()
         analytics.track_event(
             user=user,
             event_name=EVENT_PORTFOLIO_DELETED,
             properties=build_portfolio_properties(portfolio_id=portfolio_id)
+        )
+
+        # Track portfolio deletion in Userjam
+        userjam = get_userjam_service()
+        userjam.track_event(
+            user=user,
+            event_name="portfolio.deleted",
+            properties={"portfolio_id": portfolio_id}
         )
 
         return {"message": f"Portfolio {portfolio_id} deleted successfully"}

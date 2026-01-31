@@ -2,9 +2,10 @@
 Main FastAPI application with endpoints organized in separate modules
 """
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from core.database import db_manager
 from core.firebase import FirebaseAuthMiddleware
@@ -53,14 +54,44 @@ app.add_middleware(
 app.add_middleware(
     FirebaseAuthMiddleware,
     exclude_paths=[
-        "/docs", 
-        "/openapi.json", 
+        "/docs",
+        "/openapi.json",
         "/redoc",
         "/cache/status",
         "/cache/historical",
         "/cache/scheduler/status"
     ]
 )
+
+# Global error handler for tracking errors in Userjam
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Track all unhandled exceptions in Userjam"""
+    try:
+        from core.userjam_analytics import get_userjam_service
+        userjam = get_userjam_service()
+
+        # Get user from request state if available
+        user = getattr(request.state, 'user', None)
+
+        if user:
+            userjam.track_error(
+                user=user,
+                error=exc,
+                context={
+                    "method": request.method,
+                    "url": str(request.url),
+                    "path": request.url.path,
+                }
+            )
+    except Exception as e:
+        logger.warning(f"Failed to track error in Userjam: {e}")
+
+    # Return error response
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": str(exc)}
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -147,6 +178,15 @@ async def startup_event():
             except Exception as e:
                 logger.warning(f"Failed to start analytics service: {e}")
 
+            # Initialize Userjam analytics service
+            try:
+                from core.userjam_analytics import get_userjam_service
+                userjam_service = get_userjam_service()
+                await userjam_service.start()
+                logger.info("Userjam analytics service started successfully")
+            except Exception as e:
+                logger.warning(f"Failed to start Userjam analytics service: {e}")
+
             # Auto-populate symbols if data is older than 1 month OR collection is empty
             try:
                 logger.info("Checking symbols data age...")
@@ -216,6 +256,15 @@ async def shutdown_event():
             logger.info("Analytics service stopped successfully")
         except Exception as e:
             logger.warning(f"Error stopping analytics service: {e}")
+
+        # Stop Userjam analytics service
+        try:
+            from core.userjam_analytics import get_userjam_service
+            userjam_service = get_userjam_service()
+            await userjam_service.stop()
+            logger.info("Userjam analytics service stopped successfully")
+        except Exception as e:
+            logger.warning(f"Error stopping Userjam analytics service: {e}")
 
         # Clean up the closing price service
         await closing_price_service.cleanup()
