@@ -111,6 +111,12 @@ class Settings(BaseSettings):
         description="Run Mixpanel in mock mode (for testing)"
     )
 
+    # Userjam Analytics Configuration
+    userjam_api_key: Optional[str] = Field(
+        default=None,
+        description="Userjam API key for analytics tracking"
+    )
+
 
 # Global settings instance
 settings = Settings() 

@@ -3,6 +3,7 @@ import { User } from 'firebase/auth';
 import { onAuthStateChange } from '../firebase';
 import { mixpanel } from '../lib/mixpanel';
 import { hashEmail } from '../utils/privacy-sanitizer';
+import { identify as userjamIdentify } from '../utils/userjam';
 
 interface AuthContextType {
   user: User | null;
@@ -49,8 +50,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           account_creation_date: user.metadata.creationTime || new Date().toISOString(),
         } as any);
         mixpanel.track('auth_sign_in_success');
+
+        // Identify user in Userjam
+        userjamIdentify({
+          name: user.displayName || user.email || 'Unknown User',
+          email: user.email || undefined,
+          created_at: user.metadata.creationTime || new Date().toISOString(),
+        });
       } else {
-        // User signed out - reset Mixpanel
+        // User signed out - reset Mixpanel (no Userjam reset needed)
         mixpanel.reset();
       }
     });

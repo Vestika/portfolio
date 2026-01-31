@@ -13,6 +13,7 @@ from core.ai_analyst import ai_analyst
 from core.portfolio_analyzer import portfolio_analyzer
 from core.chat_manager import chat_manager
 from core.analytics import get_analytics_service
+from core.userjam_analytics import get_userjam_service
 from core.analytics_events import EVENT_AI_CHAT_SENT, build_ai_properties
 from models.portfolio import Portfolio
 from .portfolio import get_or_create_calculator
@@ -179,7 +180,7 @@ async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_cur
         # Add AI response to session
         await chat_manager.add_message_to_session(session_id, user.id, "assistant", ai_response["response"])
 
-        # Track AI chat event
+        # Track AI chat event in Mixpanel
         duration_ms = (time.time() - start_time) * 1000
         analytics = get_analytics_service()
         analytics.track_event(
@@ -193,6 +194,21 @@ async def chat_with_ai_analyst(request: ChatMessageRequest, user=Depends(get_cur
                 model_used=ai_response["model_used"],
                 duration_ms=duration_ms
             )
+        )
+
+        # Track AI chat event in Userjam
+        userjam = get_userjam_service()
+        userjam.track_event(
+            user=user,
+            event_name="ai_chat.message_sent",
+            properties={
+                "portfolio_id": portfolio_context[0]["id"] if portfolio_context else None,
+                "message_length": len(request.message),
+                "session_id": session_id,
+                "tagged_entities_count": len(request.tagged_entities) if request.tagged_entities else 0,
+                "model_used": ai_response["model_used"],
+                "duration_ms": round(duration_ms, 2)
+            }
         )
 
         return {

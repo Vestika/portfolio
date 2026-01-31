@@ -32,6 +32,7 @@ import { PopupManager } from './components/PopupManager';
 import { ConsentBanner } from './components/ConsentBanner';
 // Removed floating feedback widget in favor of top bar modal
 import { signOutUser } from './firebase';
+import { trackPageView } from './utils/userjam';
 import {
   PortfolioMetadata,
   PortfolioData,
@@ -110,6 +111,13 @@ const App: React.FC = () => {
   const [mainRSUVesting, setMainRSUVesting] = useState<Record<string, unknown>>({});
   const [mainOptionsVesting, setMainOptionsVesting] = useState<Record<string, unknown>>({});
   const [mainESPPPlans, setMainESPPPlans] = useState<Record<string, unknown>>({});
+
+  // Track page views in Userjam
+  useEffect(() => {
+    if (user && !authLoading) {
+      trackPageView(location.pathname);
+    }
+  }, [location.pathname, user, authLoading]);
 
   // Get available portfolios from context (no separate API call needed)
   const availablePortfolios = getAvailablePortfolios();

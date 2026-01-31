@@ -38,6 +38,7 @@ jobs:
           TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
           MIXPANEL_API_KEY: "${{ secrets.MIXPANEL_API_KEY }}"
           MIXPANEL_ENABLED: "true"
+          USERJAM_API_KEY: "${{ secrets.USERJAM_API_KEY }}"
           EOF
 
       # Build the Docker image
