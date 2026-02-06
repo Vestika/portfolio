@@ -33,6 +33,14 @@ mixpanel = "^4.10.1"
 aiohttp = "^3.13.2"
 
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.24"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["slow: marks tests that hit real APIs (deselect with '-m \"not slow\"')"]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
