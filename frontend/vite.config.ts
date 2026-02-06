@@ -73,7 +73,7 @@ export default defineConfig({
         manualChunks: {
           // Split vendor code into separate chunks
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'chart-vendor': ['recharts', 'highcharts', 'highcharts-react-official'],
+          'chart-vendor': ['highcharts', 'highcharts-react-official'],
         }
       }
     },
