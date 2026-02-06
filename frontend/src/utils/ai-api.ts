@@ -102,4 +102,12 @@ export const getChatAutocomplete = async (
     console.error('Error getting chat autocomplete:', error);
     throw error;
   }
+};
+
+// Close/delete a chat session (local only - no backend endpoint)
+export const closeChatSession = async (sessionId: string): Promise<void> => {
+  // TODO: Add backend endpoint for deleting chat sessions
+  // For now, this is a no-op - deletion is handled client-side only
+  console.log('Closing chat session:', sessionId);
+  return Promise.resolve();
 }; 
