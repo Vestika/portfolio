@@ -63,15 +63,5 @@ db_manager = DatabaseManager()
 
 async def get_db() -> AsyncGenerator[AsyncDatabase, None]:
     """FastAPI dependency to get database instance"""
-    try:
-        database = await db_manager.get_database()
-        yield database
-    except Exception as e:
-        # If database is not available, create a mock database
-        from unittest.mock import AsyncMock
-        mock_db = AsyncMock()
-        mock_db.users = AsyncMock()
-        mock_db.users.find_one = AsyncMock(return_value=None)
-        mock_db.users.insert_one = AsyncMock()
-        yield mock_db
-        return
+    database = await db_manager.get_database()
+    yield database

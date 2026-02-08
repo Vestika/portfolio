@@ -7,8 +7,17 @@ from loguru import logger
 from typing import Optional, Literal, Any
 from config import settings
 
-# Create Maya instance and get detailed stock data including price
-maya = Maya()
+# Lazy-initialized Maya instance (TASE API).
+# Created on first use rather than at import time so the server can start
+# even when api.tase.co.il is unreachable.
+_maya: Optional[Maya] = None
+
+
+def _get_maya() -> Maya:
+    global _maya
+    if _maya is None:
+        _maya = Maya()
+    return _maya
 
 
 class StockFetcher(ABC):
@@ -165,7 +174,7 @@ class TaseFetcher(StockFetcher):
                     symbol_int = int(symbol)
 
                     # Get detailed information for the specific security (includes current price)
-                    details = maya.get_details(str(symbol_int))
+                    details = _get_maya().get_details(str(symbol_int))
                     
                     if not details:
                         logger.warning(f"No details found for TASE symbol: {symbol}")
