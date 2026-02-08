@@ -2,7 +2,7 @@
 from typing import Any, Optional
 from datetime import datetime, date, timedelta
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 import logging
 import yfinance as yf
@@ -444,7 +444,7 @@ async def update_real_estate_prices(portfolio_docs: list, global_current_prices:
     print(f"✅ [REAL ESTATE] Price update complete")
 
 
-async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -> tuple:
+async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list, request: Request | None = None) -> tuple:
     """
     Collect global current and historical prices using CACHED data with smart fallback.
     
@@ -620,8 +620,12 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
             all_symbols_for_historical.extend(list(fx_symbols_needed))
             print(f"📊 [COLLECT PRICES CACHED] Added {len(fx_symbols_needed)} FX symbols for currency conversion: {fx_symbols_needed}")
         
-        manager = PriceManager()
-        cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=365)  # 1 year of data
+        market_reader = getattr(request.app.state, 'market_reader', None) if request else None
+        if market_reader:
+            cached_historical = await market_reader.get_historical_prices(all_symbols_for_historical, days=365)
+        else:
+            manager = PriceManager()
+            cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=365)  # fallback
         
         # Use cached data for symbols that have it
         # Ensure symbol keys match exactly what was requested (defensive normalization)
@@ -691,33 +695,24 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list) -
         if missing_symbols:
             print(f"⚠️  [COLLECT PRICES CACHED] {len(missing_symbols)} symbols using fallback (flat line)")
             
-            # Trigger background backfill for missing symbols (async, doesn't block!)
+            # Trigger background backfill via market_data writer (async, doesn't block!)
             try:
-                from services.closing_price.historical_sync import get_sync_service
-                
-                async def background_backfill():
-                    """Backfill missing symbols in background"""
-                    sync_service = get_sync_service()
-                    for symbol in missing_symbols[:10]:  # Limit to 10 per request
-                        try:
-                            # Determine market type from symbol
-                            if symbol.startswith("FX:"):
-                                market = "CURRENCY"
-                            elif symbol.endswith("-USD") and not symbol.isdigit():
-                                market = "CRYPTO"
-                            elif symbol.isdigit():
-                                market = "TASE"
-                            else:
-                                market = "US"
-                            
-                            await sync_service.backfill_new_symbol(symbol, market)
-                        except Exception as e:
-                            logger.warning(f"Background backfill failed for {symbol}: {e}")
-                
-                # Start background task (doesn't block the response!)
-                asyncio.create_task(background_backfill())
-                print(f"🔄 [COLLECT PRICES CACHED] Triggered background backfill for {min(len(missing_symbols), 10)} symbols")
-                
+                market_writer = getattr(request.app.state, 'market_writer', None) if request else None
+                if market_writer:
+                    symbols_to_backfill = missing_symbols[:10]  # Limit to 10 per request
+                    markets = []
+                    for symbol in symbols_to_backfill:
+                        if symbol.startswith("FX:"):
+                            markets.append("CURRENCY")
+                        elif symbol.endswith("-USD") and not symbol.isdigit():
+                            markets.append("CRYPTO")
+                        elif symbol.isdigit():
+                            markets.append("TASE")
+                        else:
+                            markets.append("US")
+                    await market_writer.add_symbols(symbols_to_backfill, markets)
+                    print(f"🔄 [COLLECT PRICES CACHED] Enqueued {len(symbols_to_backfill)} symbols in market_data writer")
+
             except Exception as e:
                 logger.warning(f"[COLLECT PRICES CACHED] Failed to trigger background backfill: {e}")
         
@@ -1432,7 +1427,7 @@ async def get_usd_ils_by_dates(request: USDILSByDatesRequest, user=Depends(get_c
 
 
 @router.get("/portfolios/complete-data")
-async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> dict[str, Any]:
+async def get_all_portfolios_complete_data(request: Request, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Comprehensive endpoint that returns ALL portfolio data for the user at once.
     This enables instant portfolio switching without additional API calls.
@@ -1517,7 +1512,7 @@ async def get_all_portfolios_complete_data(user=Depends(get_current_user)) -> di
             (user_tag_library, all_holding_tags),
             all_options_vesting
         ) = await asyncio.gather(
-            collect_global_prices_cached(all_symbols, portfolio_docs),  # CHANGED: Use cached version!
+            collect_global_prices_cached(all_symbols, portfolio_docs, request),  # Uses market_data reader
             collect_global_logos(all_symbols),  # NEW: Logo collection in parallel
             collect_earnings_data(all_symbols, global_securities),  # NEW: Earnings collection in parallel
             collect_user_tags(user),
@@ -1681,7 +1676,7 @@ class BatchPricesRequest(BaseModel):
 
 
 @router.post("/prices/batch")
-async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+async def get_batch_prices(request: Request, req: BatchPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Return latest prices for a list of symbols. Also attempts to include original
     currency if known from `symbols` collection; falls back to USD.
@@ -1756,18 +1751,20 @@ async def get_batch_prices(req: BatchPricesRequest, user=Depends(get_current_use
                 today = date.today()
                 start = today - timedelta(days=days)
 
-                # Step 1: Try MongoDB cache first (FAST!)
+                # Step 1: Try market_data reader first (FAST -- served from RAM!)
                 try:
-                    from services.closing_price.price_manager import PriceManager
-                    manager = PriceManager()
-                    cached_data = await manager.get_historical_prices(stock_symbols, days=days)
-                    
+                    market_reader = getattr(request.app.state, 'market_reader', None)
+                    if market_reader:
+                        cached_data = await market_reader.get_historical_prices(stock_symbols, days=days)
+                    else:
+                        cached_data = await PriceManager().get_historical_prices(stock_symbols, days=days)
+
                     for sym, series in cached_data.items():
                         if series:  # Only use if we got data
                             historical[sym] = series
                 except Exception:
                     pass
-                
+
                 # Step 2: Fallback to yfinance for cache misses
                 missing_symbols = [s for s in stock_symbols if s not in historical]
                 if missing_symbols:
@@ -1862,7 +1859,7 @@ class HistoricalPricesRequest(BaseModel):
 
 
 @router.post("/prices/historical")
-async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+async def get_historical_series(request: Request, req: HistoricalPricesRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Return historical series and 1-day change percent for symbols.
     
@@ -1887,17 +1884,20 @@ async def get_historical_series(req: HistoricalPricesRequest, user=Depends(get_c
         historical: dict[str, list[dict[str, Any]]] = {}
         change_percent: dict[str, float] = {}
         
-        # Step 1: Try MongoDB cache first (FAST!)
+        # Step 1: Try market_data reader first (FAST -- served from RAM!)
         try:
-            from services.closing_price.price_manager import PriceManager
-            manager = PriceManager()
-            cached_data = await manager.get_historical_prices(stock_symbols, days=days)
-            
+            market_reader = getattr(request.app.state, 'market_reader', None)
+            if market_reader:
+                cached_data = await market_reader.get_historical_prices(stock_symbols, days=days)
+            else:
+                from services.closing_price.price_manager import PriceManager
+                cached_data = await PriceManager().get_historical_prices(stock_symbols, days=days)
+
             for sym, series in cached_data.items():
-                if series:  # Only use if we got data
+                if series:
                     historical[sym] = series
                     logger.info(f"[HISTORICAL] {sym}: {len(series)} points from cache")
-            
+
             logger.info(f"[HISTORICAL ENDPOINT] Cache hit for {len(historical)}/{len(stock_symbols)} symbols")
         except Exception as e:
             logger.warning(f"[HISTORICAL ENDPOINT] Cache lookup failed: {e}")

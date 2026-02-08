@@ -57,6 +57,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={"AAPL": date.today()})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         fetcher = _make_mock_fetcher()
         registry = _make_registry(fetcher)
 
@@ -72,6 +73,7 @@ class TestMarketDataWriter:
         reader = MagicMock(spec=MarketDataReader)
         stale_date = date.today() - timedelta(days=5)
         reader.get_last_dates = AsyncMock(return_value={"STALE": stale_date})
+        reader.get_tracked_symbols = AsyncMock(return_value={"STALE": "US"})
         fetcher = _make_mock_fetcher(make_bars("STALE", days=3))
         registry = _make_registry(fetcher)
 
@@ -89,6 +91,7 @@ class TestMarketDataWriter:
         reader = MagicMock(spec=MarketDataReader)
         fresh_date = date.today() - timedelta(days=1)
         reader.get_last_dates = AsyncMock(return_value={"FRESH": fresh_date})
+        reader.get_tracked_symbols = AsyncMock(return_value={"FRESH": "US"})
         fetcher = _make_mock_fetcher()
         registry = _make_registry(fetcher)
 
@@ -105,6 +108,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         bars = make_bars("AAPL", days=5)
         fetcher = _make_mock_fetcher(bars)
         registry = _make_registry(fetcher)
@@ -134,6 +138,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         fetcher = AsyncMock()
         fetcher.fetch_historical = AsyncMock(side_effect=[RuntimeError("oops"), make_bars("AAPL", days=3)])
         fetcher.market = "US"
@@ -154,6 +159,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         fetcher = AsyncMock()
         fetcher.fetch_historical = AsyncMock(side_effect=RuntimeError("permanent failure"))
         fetcher.market = "US"
@@ -176,6 +182,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         fetcher = AsyncMock()
         fetcher.fetch_historical = AsyncMock(
             side_effect=[RateLimitError("429"), make_bars("AAPL", days=3)]
@@ -304,6 +311,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         bars = make_bars("AAPL", days=3)
         fetcher = _make_mock_fetcher(bars)
         registry = _make_registry(fetcher)
@@ -329,6 +337,7 @@ class TestMarketDataWriter:
         db = FakeDatabase()
         reader = MagicMock(spec=MarketDataReader)
         reader.get_last_dates = AsyncMock(return_value={})
+        reader.get_tracked_symbols = AsyncMock(return_value={})
         fetcher = _make_mock_fetcher()
         registry = _make_registry(fetcher)
 

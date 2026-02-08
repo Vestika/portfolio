@@ -126,18 +126,10 @@ async def ensure_benchmark_symbols() -> None:
                     added_at=now,
                     last_queried_at=now
                 )
-                
+
                 await db.database.tracked_symbols.insert_one(tracked_symbol.dict(by_alias=True))
                 logger.info(f"[BENCHMARK] Added {symbol} to tracking as benchmark symbol")
-                
-                # Trigger immediate backfill for historical data
-                try:
-                    from services.closing_price.historical_sync import HistoricalSyncService
-                    sync = HistoricalSyncService()
-                    await sync.backfill_new_symbol(symbol, market)
-                    logger.info(f"[BENCHMARK] Backfilled historical data for {symbol}")
-                except Exception as e:
-                    logger.warning(f"[BENCHMARK] Could not backfill {symbol}: {e}")
+                # Historical backfill handled by market_data writer on startup
             else:
                 logger.debug(f"[BENCHMARK] {symbol} already tracked")
                 
@@ -149,12 +141,9 @@ async def create_database_indexes() -> None:
     """Create database indexes - should only be called once during startup"""
     if db.indexes_created or db.database is None:
         return
-    
+
     logger.info("[INDEX] Creating database indexes...")
-    
-    # Ensure time-series collection exists
-    await setup_historical_prices_collection()
-    
+
     # stock_prices: unique index on symbol (one doc per symbol with upsert)
     await create_index_safe(
         collection=db.database.stock_prices,

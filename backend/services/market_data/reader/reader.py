@@ -11,7 +11,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from ..config import MarketDataConfig
 from ..event_bus.protocol import Event, EventBus, EventType
 from ..models import SymbolDataResponse
-from ..mongo.queries import read_all_historical, read_symbols_historical
+from ..mongo.queries import read_all_historical, read_symbols_historical, read_tracked_symbols
 from .store import InMemoryPriceStore
 
 
@@ -34,6 +34,7 @@ class MarketDataReader:
         self._store = InMemoryPriceStore()
         self._cleanup_task: asyncio.Task[None] | None = None
         self._collection_name = config.timeseries_collection
+        self._tracked_symbols: dict[str, str] = {}  # {symbol: market}
 
     # ------------------------------------------------------------------
     # Public API
@@ -55,6 +56,35 @@ class MarketDataReader:
         """Most recent bar date per symbol.  ``None`` = all known symbols."""
         return self._store.get_last_dates(symbols)
 
+    async def get_tracked_symbols(self) -> dict[str, str]:
+        """Return tracked symbols as ``{symbol: market}``."""
+        return dict(self._tracked_symbols)
+
+    async def get_historical_prices(
+        self,
+        symbols: list[str],
+        days: int = 365,
+    ) -> dict[str, list[dict]]:
+        """Compat method matching old ``PriceManager.get_historical_prices()`` format.
+
+        Returns ``{"AAPL": [{"date": "2025-11-14", "price": 150.50}, ...], ...}``
+        """
+        since = date.today() - timedelta(days=days)
+        resp = await self.get_prices(symbols, since_date=since)
+        result: dict[str, list[dict]] = {}
+        for symbol, sym_data in resp.data.items():
+            if sym_data.status == "ok" and sym_data.bars:
+                result[symbol] = [
+                    {
+                        "date": bar.timestamp.strftime("%Y-%m-%d"),
+                        "price": bar.close,
+                    }
+                    for bar in sym_data.bars
+                ]
+            else:
+                result[symbol] = []
+        return result
+
     async def refresh(self, symbols: list[str] | None = None) -> None:
         """Force re-read from MongoDB."""
         await self._load_from_mongo(symbols)
@@ -70,6 +100,13 @@ class MarketDataReader:
         except Exception:
             logger.opt(exception=True).warning(
                 "Failed to load from MongoDB on startup -- starting with empty store"
+            )
+
+        try:
+            await self._load_tracked_symbols()
+        except Exception:
+            logger.opt(exception=True).warning(
+                "Failed to load tracked symbols on startup"
             )
 
         await self._event_bus.subscribe(EventType.DATA_WRITTEN, self._on_data_written)
@@ -109,6 +146,12 @@ class MarketDataReader:
             for sym, bars in data.items():
                 await self._store.load(sym, bars)
             logger.info(f"Refreshed {len(symbols)} symbols from MongoDB")
+
+    async def _load_tracked_symbols(self) -> None:
+        """Load tracked symbols from MongoDB ``tracked_symbols`` collection."""
+        docs = await read_tracked_symbols(self._db)
+        self._tracked_symbols = {d["symbol"]: d["market"] for d in docs}
+        logger.info(f"Loaded {len(self._tracked_symbols)} tracked symbols")
 
     async def _daily_cleanup_loop(self) -> None:
         """Remove bars older than retention_days once per day."""

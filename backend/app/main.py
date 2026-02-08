@@ -137,16 +137,14 @@ async def startup_event():
             except Exception as index_err:
                 logger.warning(f"Failed to create user_deletion_audit indexes: {index_err}")
 
-            # Start the background scheduler for historical price caching
-            # Scheduler now runs initial sync at T+0 automatically!
+            # Start the background scheduler (live prices + earnings only)
             try:
                 from services.closing_price.scheduler import start_scheduler
                 start_scheduler()
-                logger.info("Historical price caching scheduler started successfully")
-                logger.info("Initial sync will run immediately (T+0), then every 3 hours")
+                logger.info("Background scheduler started (live prices + earnings)")
             except Exception as scheduler_err:
                 logger.warning(f"Failed to start scheduler: {scheduler_err}")
-            
+
         except Exception as e:
             logger.warning(f"Failed to initialize closing price service: {e}")
 
@@ -225,6 +223,16 @@ async def startup_event():
             except Exception as e:
                 logger.warning(f"Failed to check/populate symbols on startup: {e}")
 
+            # Initialize the new market data service (reader + writer for historical prices)
+            try:
+                from services.market_data import init_market_data_service
+                market_reader, market_writer = await init_market_data_service(db=test_db)
+                app.state.market_reader = market_reader
+                app.state.market_writer = market_writer
+                logger.info("Market data service initialized (reader + writer)")
+            except Exception as mds_err:
+                logger.warning(f"Failed to initialize market data service: {mds_err}")
+
         except Exception as e:
             logger.warning(f"Failed to connect to database: {e}")
 
@@ -265,6 +273,17 @@ async def shutdown_event():
             logger.info("Userjam analytics service stopped successfully")
         except Exception as e:
             logger.warning(f"Error stopping Userjam analytics service: {e}")
+
+        # Stop market data service (reader + writer)
+        try:
+            from services.market_data import shutdown_market_data_service
+            reader = getattr(app.state, 'market_reader', None)
+            writer = getattr(app.state, 'market_writer', None)
+            if reader and writer:
+                await shutdown_market_data_service(reader, writer)
+                logger.info("Market data service stopped successfully")
+        except Exception as mds_err:
+            logger.warning(f"Error stopping market data service: {mds_err}")
 
         # Clean up the closing price service
         await closing_price_service.cleanup()

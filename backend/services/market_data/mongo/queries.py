@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 
 from loguru import logger
 from pymongo.asynchronous.database import AsyncDatabase
@@ -83,6 +83,81 @@ async def write_historical(
         inserted = exc.details.get("nInserted", 0)
         logger.warning(f"BulkWriteError for {symbol}: {inserted} inserted, errors: {exc.details.get('writeErrors', [])}")
         return inserted
+
+
+async def read_tracked_symbols(
+    db: AsyncDatabase,
+    collection: str = "tracked_symbols",
+) -> list[dict]:
+    """Read all tracked symbols with their market and last_update.
+
+    Returns list of dicts: ``[{symbol, market, last_update}, ...]``
+    """
+    result: list[dict] = []
+    cursor = db[collection].find(
+        {},
+        {"_id": 0, "symbol": 1, "market": 1, "last_update": 1},
+    )
+    async for doc in cursor:
+        result.append({
+            "symbol": doc["symbol"],
+            "market": doc.get("market", "US"),
+            "last_update": doc.get("last_update"),
+        })
+    return result
+
+
+async def update_tracked_symbol_last_update(
+    db: AsyncDatabase,
+    symbol: str,
+    timestamp: datetime,
+    collection: str = "tracked_symbols",
+) -> None:
+    """Update ``last_update`` field in tracked_symbols after a successful fetch."""
+    await db[collection].update_one(
+        {"symbol": symbol},
+        {"$set": {"last_update": timestamp}},
+    )
+
+
+async def migrate_historical_data(
+    db: AsyncDatabase,
+    source_collection: str,
+    target_collection: str,
+) -> int:
+    """One-time migration: copy data from old collection to new.
+
+    Only runs if the target collection is empty.  Returns count of docs copied.
+    """
+    target_count = await db[target_collection].count_documents({})
+    if target_count > 0:
+        logger.info(f"Migration skipped: {target_collection} already has {target_count} docs")
+        return 0
+
+    source_count = await db[source_collection].count_documents({})
+    if source_count == 0:
+        logger.info(f"Migration skipped: {source_collection} is empty")
+        return 0
+
+    logger.info(f"Migrating {source_count} docs from {source_collection} → {target_collection}")
+    copied = 0
+    batch: list[dict] = []
+    batch_size = 1000
+
+    cursor = db[source_collection].find({}, {"_id": 0})
+    async for doc in cursor:
+        batch.append(doc)
+        if len(batch) >= batch_size:
+            await db[target_collection].insert_many(batch)
+            copied += len(batch)
+            batch = []
+
+    if batch:
+        await db[target_collection].insert_many(batch)
+        copied += len(batch)
+
+    logger.info(f"Migration complete: copied {copied} docs to {target_collection}")
+    return copied
 
 
 async def get_existing_timestamps(
