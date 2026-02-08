@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from loguru import logger
 from pymongo.asynchronous.database import AsyncDatabase
 
 from ..config import MarketDataConfig
 from ..event_bus.protocol import Event, EventBus, EventType
-from ..mongo.queries import write_historical
+from ..mongo.queries import read_tracked_symbols, update_tracked_symbol_last_update, write_historical
 from ..reader.reader import MarketDataReader
 from .backfill_policy import BackfillPolicy
 from .fetchers.registry import FetcherRegistry
@@ -46,6 +46,7 @@ class MarketDataWriter:
         self._collection = config.timeseries_collection
 
         self._symbol_states: dict[str, date | None] = {}
+        self._symbol_markets: dict[str, str] = {}  # symbol → market from tracked_symbols
         self._worker_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
         self._running = False
@@ -58,6 +59,7 @@ class MarketDataWriter:
         """App reports new symbols.  Enqueued with HIGH priority."""
         today = date.today()
         for symbol, market in zip(symbols, markets):
+            self._symbol_markets[symbol] = market
             last = self._symbol_states.get(symbol)
             start = self._backfill_policy.compute_backfill_start(last, self._config.retention_days)
             task = FetchTask(
@@ -126,21 +128,48 @@ class MarketDataWriter:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Load state from reader, start workers + daily scheduler."""
+        """Load state from reader + tracked_symbols, start workers + daily scheduler."""
         self._running = True
 
-        # Bootstrap from reader
+        # Bootstrap from reader (bars already in RAM)
         last_dates = await self._reader.get_last_dates()
         self._symbol_states = {s: d for s, d in last_dates.items()}
-        logger.info(f"Writer bootstrap: {len(self._symbol_states)} symbols from reader")
+
+        # Load tracked symbols (includes symbols that may not have bars yet)
+        tracked = await self._reader.get_tracked_symbols()
+        self._symbol_markets = dict(tracked)
+
+        # Merge tracked symbols into symbol_states (those not in reader get None)
+        for symbol in tracked:
+            if symbol not in self._symbol_states:
+                self._symbol_states[symbol] = None
+
+        logger.info(
+            f"Writer bootstrap: {len(self._symbol_states)} symbols "
+            f"({len(last_dates)} with bars, {len(tracked)} tracked)"
+        )
+
+        # Use last_update from tracked_symbols for smarter backfill decisions
+        tracked_docs = await read_tracked_symbols(self._db)
+        last_updates: dict[str, datetime | None] = {
+            d["symbol"]: d.get("last_update") for d in tracked_docs
+        }
 
         # Startup backfill
         today = date.today()
         enqueued = 0
-        for symbol, last in self._symbol_states.items():
-            if self._backfill_policy.needs_startup_backfill(last):
-                start = self._backfill_policy.compute_backfill_start(last, self._config.retention_days)
-                priority = TaskPriority.HIGH if last is None else TaskPriority.NORMAL
+        for symbol, last_bar_date in self._symbol_states.items():
+            # Use last_update from tracked_symbols if available and more recent
+            last_update = last_updates.get(symbol)
+            effective_last = last_bar_date
+            if last_update is not None:
+                last_update_date = last_update.date() if isinstance(last_update, datetime) else last_update
+                if effective_last is None or last_update_date > effective_last:
+                    effective_last = last_update_date
+
+            if self._backfill_policy.needs_startup_backfill(effective_last):
+                start = self._backfill_policy.compute_backfill_start(last_bar_date, self._config.retention_days)
+                priority = TaskPriority.HIGH if last_bar_date is None else TaskPriority.NORMAL
                 task = FetchTask(
                     symbol=symbol,
                     market=self._guess_market(symbol),
@@ -223,6 +252,17 @@ class MarketDataWriter:
                         # Update local state
                         newest = max(b.timestamp.date() for b in bars)
                         self._symbol_states[task.symbol] = newest
+
+                        # Update last_update in tracked_symbols
+                        try:
+                            now = datetime.now(UTC).replace(tzinfo=None)
+                            await update_tracked_symbol_last_update(
+                                self._db, task.symbol, now
+                            )
+                        except Exception:
+                            logger.opt(exception=True).debug(
+                                f"Failed to update last_update for {task.symbol}"
+                            )
                     else:
                         rate_limiter.report_success()
 
@@ -276,9 +316,11 @@ class MarketDataWriter:
         logger.info(f"Daily backfill: enqueued {count} symbols")
 
     def _guess_market(self, symbol: str) -> str:
-        """Best-effort market detection from symbol format."""
+        """Best-effort market detection: check tracked map first, then heuristic."""
+        if symbol in self._symbol_markets:
+            return self._symbol_markets[symbol]
         if symbol.isdigit():
             return "TASE"
         if symbol.startswith("FX:"):
-            return "US"  # Currency pairs fetched via Yahoo
+            return "CURRENCY"
         return "US"

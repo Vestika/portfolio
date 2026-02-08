@@ -1,13 +1,12 @@
 """Market data endpoints"""
 import logging
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from core.auth import get_current_user, get_current_user_or_anonymous
 from core.database import db_manager
 from services.closing_price.price_manager import PriceManager
-from services.closing_price.historical_sync import get_sync_service
 from services.closing_price.live_price_updater import get_updater_service
 from services.closing_price.live_price_cache import get_live_price_cache
 
@@ -63,7 +62,7 @@ async def populate_symbols_api(
                     "market": doc.get("market", ""),
                     "search_terms": doc.get("search_terms", [])[:3]  # Limit to first 3 terms
                 })
-        
+
         return {
             "success": True,
             "message": f"Symbols population completed. Updated: {result['updated_types']}, Skipped: {result['skipped_types']}",
@@ -91,16 +90,16 @@ async def cleanup_duplicate_symbols_api() -> dict[str, Any]:
     try:
         # Import the cleanup function
         from populate_symbols import cleanup_duplicate_symbols
-        
+
         # Run the cleanup
         cleanup_stats = await cleanup_duplicate_symbols()
-        
+
         return {
             "success": True,
             "message": f"Symbol cleanup completed. Removed {cleanup_stats['duplicates_removed']} duplicates.",
             "stats": cleanup_stats
         }
-        
+
     except Exception as e:
         logger.error(f"Error during symbol cleanup via API: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to cleanup symbols: {str(e)}")
@@ -111,54 +110,43 @@ async def cleanup_duplicate_symbols_api() -> dict[str, Any]:
 # ============================================================================
 
 @router.get("/cache/status")
-async def get_cache_status() -> dict[str, Any]:
+async def get_cache_status(request: Request) -> dict[str, Any]:
     """
     Get status of the historical price caching system.
-    
+
     Returns:
         - Live cache statistics
-        - Number of symbols with historical data
-        - Last sync information
+        - Number of symbols with historical data (from market_data reader)
+        - Writer queue status
     """
     try:
         cache = get_live_price_cache()
         cache_stats = cache.get_stats()
-        
-        # Get historical data stats from MongoDB
-        from services.closing_price.database import db, ensure_connections
-        await ensure_connections()
-        
-        # Count unique symbols in historical_prices
-        try:
-            pipeline = [
-                {"$group": {"_id": "$symbol"}},
-                {"$count": "total"}
-            ]
-            result_list = await db.database.historical_prices.aggregate(pipeline).to_list(length=1)
-            historical_symbols_count = result_list[0]["total"] if result_list else 0
-        except Exception as agg_error:
-            logger.warning(f"Error counting historical symbols: {agg_error}")
-            # Fallback: count with distinct
-            try:
-                distinct_symbols = await db.database.historical_prices.distinct("symbol")
-                historical_symbols_count = len(distinct_symbols)
-            except:
-                historical_symbols_count = 0
-        
-        # Get sample of oldest and newest historical data
-        oldest = await db.database.historical_prices.find_one(sort=[("timestamp", 1)])
-        newest = await db.database.historical_prices.find_one(sort=[("timestamp", -1)])
-        
+
+        # Get market_data reader/writer stats
+        market_reader = getattr(request.app.state, 'market_reader', None)
+        market_writer = getattr(request.app.state, 'market_writer', None)
+
+        reader_stats = {}
+        if market_reader:
+            last_dates = await market_reader.get_last_dates()
+            tracked = await market_reader.get_tracked_symbols()
+            reader_stats = {
+                "symbols_in_ram": len(last_dates),
+                "tracked_symbols": len(tracked),
+            }
+
+        writer_stats = {}
+        if market_writer:
+            writer_stats = await market_writer.get_queue_status()
+
         return {
             "live_cache": cache_stats,
-            "historical_data": {
-                "symbols_with_history": historical_symbols_count,
-                "oldest_data": oldest["timestamp"].isoformat() if oldest else None,
-                "newest_data": newest["timestamp"].isoformat() if newest else None
-            },
+            "market_data_reader": reader_stats,
+            "market_data_writer": writer_stats,
             "status": "healthy"
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting cache status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get cache status: {str(e)}")
@@ -168,99 +156,101 @@ async def get_cache_status() -> dict[str, Any]:
 async def refresh_live_prices(user=Depends(get_current_user)) -> dict[str, Any]:
     """
     Manually trigger a live price update cycle.
-    
+
     This forces an immediate update of all tracked symbols in the live cache.
     """
     try:
         updater = get_updater_service()
         result = await updater.update_once()
-        
+
         return {
             "success": True,
             "message": f"Live cache refreshed: {result['updated']} symbols updated",
             "stats": result
         }
-        
+
     except Exception as e:
         logger.error(f"Error refreshing live prices: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to refresh live prices: {str(e)}")
 
 
 @router.post("/cache/sync-historical")
-async def sync_historical_prices(user=Depends(get_current_user)) -> dict[str, Any]:
+async def sync_historical_prices(request: Request, user=Depends(get_current_user)) -> dict[str, Any]:
     """
-    Manually trigger a historical price sync (cron job logic).
-    
-    This runs both Stage 1 (fast transfer) and Stage 2 (self-healing).
+    Manually trigger a historical price backfill via the market_data writer.
     """
     try:
-        sync_service = get_sync_service()
-        result = await sync_service.run_daily_sync()
-        
+        market_writer = getattr(request.app.state, 'market_writer', None)
+        if not market_writer:
+            raise HTTPException(status_code=503, detail="Market data writer not available")
+
+        await market_writer.force_backfill()
+        status = await market_writer.get_queue_status()
+
         return {
             "success": True,
-            "message": f"Historical sync completed: {result['total_symbols_updated']} symbols updated",
-            "stats": result
+            "message": f"Historical backfill enqueued: {status['queue_size']} tasks in queue",
+            "stats": status
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error syncing historical prices: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to sync historical prices: {str(e)}")
 
 
 @router.post("/cache/backfill-symbol")
-async def backfill_symbol(request: BackfillSymbolRequest, user=Depends(get_current_user)) -> dict[str, Any]:
+async def backfill_symbol(request: Request, req: BackfillSymbolRequest, user=Depends(get_current_user)) -> dict[str, Any]:
     """
-    Backfill historical data for a specific symbol.
-    
-    This is useful when adding a new symbol or re-fetching data for a symbol.
-    Set force=true to re-fetch even if data already exists.
+    Backfill historical data for a specific symbol via the market_data writer.
     """
     try:
-        sync_service = get_sync_service()
-        result = await sync_service.backfill_new_symbol(request.symbol, request.market, force=request.force)
-        
-        if result["status"] == "success":
-            return {
-                "success": True,
-                "message": f"Backfilled {request.symbol}: {result.get('records_inserted', 0)} records",
-                "stats": result
-            }
-        else:
-            return {
-                "success": False,
-                "message": result.get("message", "Backfill failed"),
-                "stats": result
-            }
-        
+        market_writer = getattr(request.app.state, 'market_writer', None)
+        if not market_writer:
+            raise HTTPException(status_code=503, detail="Market data writer not available")
+
+        await market_writer.add_symbols([req.symbol], [req.market])
+        status = await market_writer.get_queue_status()
+
+        return {
+            "success": True,
+            "message": f"Backfill enqueued for {req.symbol} ({req.market})",
+            "stats": status
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error backfilling symbol {request.symbol}: {e}")
+        logger.error(f"Error backfilling symbol {req.symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to backfill symbol: {str(e)}")
 
 
 @router.post("/cache/backfill-all")
 async def backfill_all_symbols(
+    request: Request,
     days: int = Query(default=365, description="Number of days of history to backfill"),
     user=Depends(get_current_user)
 ) -> dict[str, Any]:
     """
-    One-time migration: Backfill historical data for all tracked symbols.
-    
-    This should be run once to populate historical data for existing symbols.
-    Use with caution - may take several minutes depending on number of symbols.
+    Force re-fetch historical data for ALL tracked symbols via the market_data writer.
     """
     try:
-        sync_service = get_sync_service()
-        
-        logger.info(f"Starting backfill for all symbols ({days} days)")
-        result = await sync_service.backfill_existing_symbols(days)
-        
+        market_writer = getattr(request.app.state, 'market_writer', None)
+        if not market_writer:
+            raise HTTPException(status_code=503, detail="Market data writer not available")
+
+        await market_writer.force_fetch_all()
+        status = await market_writer.get_queue_status()
+
         return {
             "success": True,
-            "message": f"Backfill completed: {result['success_count']} symbols processed",
-            "stats": result
+            "message": f"Backfill-all enqueued: {status['queue_size']} tasks in queue",
+            "stats": status
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error backfilling all symbols: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to backfill all symbols: {str(e)}")
@@ -268,22 +258,24 @@ async def backfill_all_symbols(
 
 @router.get("/cache/historical/{symbol}")
 async def get_symbol_historical(
+    request: Request,
     symbol: str,
     days: int = Query(default=7, description="Number of days of history")
 ) -> dict[str, Any]:
     """
-    Get historical prices for a specific symbol from cache.
-    
-    This retrieves pre-cached data from MongoDB (very fast!).
+    Get historical prices for a specific symbol from the market_data reader (RAM).
     """
     try:
-        # Use the existing price_manager from closing_price service
-        from services.closing_price.service import get_global_service
-        
-        service = get_global_service()
-        result = await service.get_historical_prices([symbol], days)
-        
-        if result and symbol in result:
+        market_reader = getattr(request.app.state, 'market_reader', None)
+        if market_reader:
+            result = await market_reader.get_historical_prices([symbol], days)
+        else:
+            # Fallback to old service
+            from services.closing_price.service import get_global_service
+            service = get_global_service()
+            result = await service.get_historical_prices([symbol], days)
+
+        if result and symbol in result and result[symbol]:
             return {
                 "symbol": symbol,
                 "days": days,
@@ -298,11 +290,9 @@ async def get_symbol_historical(
                 "count": 0,
                 "message": "No historical data found"
             }
-        
+
     except Exception as e:
         logger.error(f"Error getting historical data for {symbol}: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get historical data: {str(e)}")
 
 
@@ -310,20 +300,20 @@ async def get_symbol_historical(
 async def get_scheduler_status() -> dict[str, Any]:
     """
     Get status of the scheduled jobs.
-    
+
     Returns information about the historical sync and live update jobs.
     """
     try:
         from services.closing_price.scheduler import get_scheduler_service
-        
+
         scheduler = get_scheduler_service()
         jobs = scheduler.get_jobs()
-        
+
         return {
             "scheduler_running": scheduler.scheduler is not None and scheduler.scheduler.running,
             "jobs": jobs
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting scheduler status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get scheduler status: {str(e)}")

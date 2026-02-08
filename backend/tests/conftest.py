@@ -101,6 +101,22 @@ class FakeCollection:
             return len(self._docs)
         return sum(1 for d in self._docs if self._matches(d, filter_))
 
+    async def update_one(self, filter_: dict, update: dict, upsert: bool = False):
+        """Simple update_one supporting $set."""
+        for doc in self._docs:
+            if self._matches(doc, filter_):
+                if "$set" in update:
+                    doc.update(update["$set"])
+                return MagicMock(matched_count=1, modified_count=1)
+        if upsert and "$set" in update:
+            new_doc = dict(filter_)
+            new_doc.update(update["$set"])
+            if "$setOnInsert" in update:
+                new_doc.update(update["$setOnInsert"])
+            self._docs.append(new_doc)
+            return MagicMock(matched_count=0, modified_count=0, upserted_id=id(new_doc))
+        return MagicMock(matched_count=0, modified_count=0)
+
     async def create_index(self, *args, **kwargs):
         pass
 
