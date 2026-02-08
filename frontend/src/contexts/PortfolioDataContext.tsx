@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
 import { ChartMarker } from '../components/PortfolioValueLineChart';
 
@@ -55,6 +55,7 @@ export interface AllPortfoliosData {
     chart_type?: string;
     portfolio_id?: string;
   }>;
+  pending_historical_symbols?: string[];
   user_preferences: {
     preferred_currency: string;
     default_portfolio_id: string | null;
@@ -563,7 +564,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         setAllPortfoliosData(portfolioData);
         setAutocompleteData(autocompleteDataResponse.autocomplete_data);
         setChartMarkers(fetchedChartMarkers);
-        
+
+        // Poll for any pending historical prices (new holdings not yet fetched)
+        if (portfolioData.pending_historical_symbols?.length) {
+          pollPendingHistorical(portfolioData.pending_historical_symbols);
+        }
+
         // Auto-select portfolio and accounts after data loads
         if (portfolioData.portfolios && Object.keys(portfolioData.portfolios).length > 0) {
           const portfolioIds = Object.keys(portfolioData.portfolios);
@@ -639,6 +645,65 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       // Don't throw - just log the error, UI will continue working with old tags
     }
   }, [allPortfoliosData]);
+
+  // Polling for pending historical prices
+  const pendingPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pollPendingHistorical = useCallback((symbols: string[], attempt = 0) => {
+    const BACKOFF_MS = [3000, 5000, 8000, 12000, 18000, 30000];
+    const MAX_RETRIES = BACKOFF_MS.length;
+
+    if (attempt >= MAX_RETRIES || symbols.length === 0) return;
+
+    const delay = BACKOFF_MS[attempt];
+    console.log(`[POLL HISTORICAL] Scheduling poll #${attempt + 1} for ${symbols.join(',')} in ${delay}ms`);
+
+    if (pendingPollTimer.current) clearTimeout(pendingPollTimer.current);
+    pendingPollTimer.current = setTimeout(async () => {
+      try {
+        const resp = await api.get(`/portfolios/historical-update?symbols=${symbols.join(',')}`);
+        const { historical_prices, still_pending } = resp.data as {
+          historical_prices: Record<string, Array<{ date: string; price: number }>>;
+          still_pending: string[];
+        };
+
+        // Merge any returned historical data into state
+        const hasNewData = Object.keys(historical_prices).length > 0;
+        if (hasNewData) {
+          setAllPortfoliosData(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              global_historical_prices: {
+                ...prev.global_historical_prices,
+                ...historical_prices,
+              },
+              pending_historical_symbols: still_pending.length > 0 ? still_pending : undefined,
+            };
+          });
+          console.log(`[POLL HISTORICAL] Merged data for ${Object.keys(historical_prices).length} symbols`);
+        }
+
+        // Continue polling if symbols are still pending
+        if (still_pending.length > 0) {
+          pollPendingHistorical(still_pending, attempt + 1);
+        } else {
+          console.log('[POLL HISTORICAL] All symbols resolved');
+        }
+      } catch (err) {
+        console.warn('[POLL HISTORICAL] Poll failed:', err);
+        // Retry on network errors
+        pollPendingHistorical(symbols, attempt + 1);
+      }
+    }, delay);
+  }, []);
+
+  // Cleanup polling timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (pendingPollTimer.current) clearTimeout(pendingPollTimer.current);
+    };
+  }, []);
 
   // Current portfolio data in legacy format (bulletproof version)
   const currentPortfolioData = useMemo((): CompletePortfolioData | null => {

@@ -1459,6 +1459,7 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
                     "preferred_currency": "USD",
                     "default_portfolio_id": None
                 },
+                "pending_historical_symbols": [],
                 "computation_timestamp": datetime.utcnow().isoformat()
             }
 
@@ -1533,6 +1534,17 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
         except:
             default_portfolio_id = None
 
+        # Compute pending historical symbols from writer queue
+        pending_historical = []
+        market_writer = getattr(request.app.state, 'market_writer', None)
+        if market_writer:
+            try:
+                status = await market_writer.get_queue_status()
+                writer_pending = set(status.get("pending_symbols", []))
+                pending_historical = sorted(writer_pending & all_symbols)
+            except Exception:
+                pass  # Non-critical, default to empty
+
         result = {
             "portfolios": all_portfolios_data,
             "global_securities": global_securities,
@@ -1543,6 +1555,7 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
             "user_tag_library": user_tag_library,
             "all_holding_tags": all_holding_tags,
             "all_options_vesting": all_options_vesting,
+            "pending_historical_symbols": pending_historical,
             "user_preferences": {
                 "preferred_currency": "USD",  # Could be customizable later
                 "default_portfolio_id": default_portfolio_id
@@ -1568,6 +1581,55 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
     except Exception as e:
         print(f"❌ [MAIN ENDPOINT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/portfolios/historical-update")
+async def get_historical_update(
+    request: Request,
+    symbols: str = "",
+    user=Depends(get_current_user),
+) -> dict[str, Any]:
+    """Lightweight endpoint to poll for pending historical price data.
+
+    Query params:
+        symbols: comma-separated symbol list (e.g. "AAPL,MSFT,GOOG")
+
+    Returns:
+        historical_prices: dict of symbol -> [{date, price}, ...]
+        still_pending: list of symbols still being fetched
+    """
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        return {"historical_prices": {}, "still_pending": []}
+
+    market_reader = getattr(request.app.state, 'market_reader', None)
+    market_writer = getattr(request.app.state, 'market_writer', None)
+
+    # Fetch historical prices for requested symbols
+    historical_prices: dict[str, list] = {}
+    if market_reader:
+        try:
+            historical_prices = await market_reader.get_historical_prices(symbol_list, days=365)
+        except Exception:
+            pass
+
+    # Check which symbols are still pending in writer queue
+    still_pending: list[str] = []
+    if market_writer:
+        try:
+            status = await market_writer.get_queue_status()
+            writer_pending = set(status.get("pending_symbols", []))
+            still_pending = sorted(set(symbol_list) & writer_pending)
+        except Exception:
+            pass
+
+    # Symbols that have no data AND aren't pending are truly unavailable — exclude from still_pending
+    # (already handled: still_pending only includes symbols that are in writer queue)
+
+    return {
+        "historical_prices": historical_prices,
+        "still_pending": still_pending,
+    }
 
 
 # NEW: Minimal raw portfolios endpoint for frontend-side calculation
