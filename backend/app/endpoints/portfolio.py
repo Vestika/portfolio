@@ -453,14 +453,14 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list, r
     2. If cache has <50% of symbols, fall back to old yfinance method
     3. Trigger backfill in background for missing symbols
     
-    Returns: (global_current_prices, global_historical_prices)
+    Returns: (global_current_prices, global_historical_prices, fallback_symbols)
     """
     start_time = time.time()
     global_current_prices = {}
     global_historical_prices = {}
-    
+
     print(f"📈 [COLLECT PRICES CACHED] Collecting prices for {len(all_symbols)} symbols")
-    
+
     # Get the first available portfolio and calculator
     first_portfolio = None
     first_calculator = None
@@ -473,10 +473,10 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list, r
             break
         except:
             continue
-    
+
     if not first_portfolio or not first_calculator:
         logger.warning("[COLLECT PRICES CACHED] No valid portfolio found")
-        return global_current_prices, global_historical_prices
+        return global_current_prices, global_historical_prices, []
     
     # Step 1: Calculate current prices (fast - no API calls)
     current_prices_start = time.time()
@@ -777,8 +777,8 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list, r
         print(f"    ⚠️ MISMATCH DETECTED: {mismatched_keys}")
     else:
         print(f"    ✅ Keys match perfectly for sampled symbols")
-    
-    return global_current_prices, global_historical_prices
+
+    return global_current_prices, global_historical_prices, missing_symbols if 'missing_symbols' in locals() else []
 
 
 
@@ -1507,7 +1507,7 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
         print(f"⚡ [MAIN ENDPOINT] Step 2 starting - Running parallel data collection: prices, logos, earnings, tags, and options")
         
         (
-            (global_current_prices, global_historical_prices),
+            (global_current_prices, global_historical_prices, fallback_symbols),
             global_logos,
             global_earnings_data,
             (user_tag_library, all_holding_tags),
@@ -1534,16 +1534,18 @@ async def get_all_portfolios_complete_data(request: Request, user=Depends(get_cu
         except:
             default_portfolio_id = None
 
-        # Compute pending historical symbols from writer queue
-        pending_historical = []
+        # Compute pending historical symbols: symbols using flat-line fallback
+        # OR still in the writer queue.  This covers the race where the writer
+        # finishes before we check the queue but after we read the reader cache.
+        pending_set = set(fallback_symbols)
         market_writer = getattr(request.app.state, 'market_writer', None)
         if market_writer:
             try:
                 status = await market_writer.get_queue_status()
-                writer_pending = set(status.get("pending_symbols", []))
-                pending_historical = sorted(writer_pending & all_symbols)
+                pending_set |= set(status.get("pending_symbols", []))
             except Exception:
-                pass  # Non-critical, default to empty
+                pass
+        pending_historical = sorted(pending_set & all_symbols)
 
         result = {
             "portfolios": all_portfolios_data,
