@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { invalidateCache } from './services/portfolioCache';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDn8cytBf4yziTmLqXeNJzw2WdIlZrgCIk",
@@ -35,6 +36,10 @@ export const signInWithGoogle = async () => {
 
 export const signOutUser = async () => {
   try {
+    // Clear IndexedDB cache on logout to prevent cross-user data leaks
+    await invalidateCache();
+    console.log('[Firebase] Cache invalidated on logout');
+
     await signOut(auth);
   } catch (error) {
     console.error('Error signing out:', error);
