@@ -1,14 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
 import { ChartMarker } from '../components/PortfolioValueLineChart';
-import { useAuth } from './AuthContext';
-import {
-  getCachedPortfolios,
-  setCachedPortfolios,
-  invalidateCache,
-  isCacheFresh,
-  getCacheAge
-} from '../services/portfolioCache';
 
 // Helper function to compare arrays
 const arraysEqual = (a: string[], b: string[]) => {
@@ -219,29 +211,26 @@ interface PortfolioDataContextType {
   chartMarkers: ChartMarker[];  // Cached chart markers (user join date, milestones, etc.)
   isLoading: boolean;
   isAutocompleteLoading: boolean;
-  isRefreshing: boolean;        // True when background refresh in progress
-  cacheAge: number | null;      // Seconds since cache was updated
   error: string | null;
-
+  
   // Portfolio selection state
   selectedPortfolioId: string | null;
   setSelectedPortfolioId: (portfolioId: string) => void;
-
+  
   // Account selection state
   selectedAccountNames: string[];
   setSelectedAccountNames: (accountNames: string[]) => void;
-
+  
   // Computed data (reactive to portfolio + account selection)
   currentPortfolioData: CompletePortfolioData | null; // Current portfolio in legacy format
   computedData: ComputedPortfolioData | null;
-
+  
   // Actions
   loadAllPortfoliosData: () => Promise<void>;
   refreshAllPortfoliosData: () => Promise<void>;
   refreshTagsOnly: () => Promise<void>;
   updateCustomCharts: (charts: any[]) => void;
   clearAllPortfoliosData: () => void;
-  forceRefresh: () => Promise<void>;  // Manual refresh trigger
   
   // Utilities
   getAccountByName: (name: string, portfolioId?: string) => AccountData | undefined;
@@ -312,17 +301,12 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   };
   const FRONTEND_CALC = resolveFrontendCalc();
   
-  // Get authenticated user for cache isolation
-  const { user } = useAuth();
-
   // State for ALL portfolios data
   const [allPortfoliosData, setAllPortfoliosData] = useState<AllPortfoliosData | null>(null);
   const [autocompleteData, setAutocompleteData] = useState<AutocompleteSymbol[]>([]);
   const [chartMarkers, setChartMarkers] = useState<ChartMarker[]>([]);  // Cached chart markers
   const [isLoading, setIsLoading] = useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);  // Background refresh indicator
-  const [cacheAge, setCacheAge] = useState<number | null>(null);  // Cache age in seconds
   const [error, setError] = useState<string | null>(null);
   
   // Portfolio selection state
@@ -356,61 +340,9 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
       return;
     }
 
-    console.log('🌍 [PORTFOLIO CONTEXT] Loading ALL portfolios data with IndexedDB cache check');
-
-    // PHASE 1: Check IndexedDB cache for instant load
-    let cacheHit = false;
-    if (user?.uid) {
-      const cachedData = await getCachedPortfolios(user.uid);
-
-      if (cachedData && isCacheFresh(cachedData.timestamp)) {
-        // Cache is fresh! Render immediately (instant load)
-        console.log('⚡ [PORTFOLIO CONTEXT] Cache HIT - rendering cached data instantly');
-        setAllPortfoliosData(cachedData.data);
-        setCacheAge(getCacheAge(cachedData.timestamp));
-
-        // Don't show loading screen - we have data to show
-        setIsLoading(false);
-        setIsAutocompleteLoading(false);
-        setError(null);
-        cacheHit = true;
-
-        // Set isRefreshing to show optional subtle indicator
-        setIsRefreshing(true);
-
-        // Auto-select portfolio from cached data (for immediate render)
-        if (cachedData.data.portfolios && Object.keys(cachedData.data.portfolios).length > 0) {
-          const portfolioIds = Object.keys(cachedData.data.portfolios);
-          const defaultId = cachedData.data.user_preferences?.default_portfolio_id;
-          const portfolioToSelect = (defaultId && portfolioIds.includes(defaultId)) ? defaultId : portfolioIds[0];
-
-          console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting portfolio from cache:', portfolioToSelect);
-          setSelectedPortfolioId(portfolioToSelect);
-
-          setTimeout(() => {
-            const portfolio = cachedData.data.portfolios[portfolioToSelect];
-            if (portfolio?.accounts) {
-              const accountNames = portfolio.accounts.map((acc: any) => acc.account_name);
-              console.log('🎯 [PORTFOLIO CONTEXT] Auto-selecting accounts from cache:', accountNames);
-              setSelectedAccountNames(accountNames);
-            }
-          }, 50);
-        }
-
-        // Continue to PHASE 2 - fetch fresh data in background
-        console.log('🔄 [PORTFOLIO CONTEXT] Starting background refresh...');
-      } else if (cachedData && !isCacheFresh(cachedData.timestamp)) {
-        console.log('⏰ [PORTFOLIO CONTEXT] Cache STALE - showing loading screen');
-      } else {
-        console.log('❌ [PORTFOLIO CONTEXT] Cache MISS - showing loading screen');
-      }
-    }
-
-    // PHASE 2: Fetch fresh data (either in background if cache hit, or normally if cache miss)
-    if (!cacheHit) {
-      setIsLoading(true);
-      setIsAutocompleteLoading(true);
-    }
+    console.log('🌍 [PORTFOLIO CONTEXT] Loading ALL portfolios data and autocomplete data in parallel');
+    setIsLoading(true);
+    setIsAutocompleteLoading(true);
     setError(null);
 
     try {
@@ -516,15 +448,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
 
         // Set base data first
         setAllPortfoliosData(portfolioData);
-
-        // Cache the data in IndexedDB for next visit (FRONTEND_CALC path)
-        if (user?.uid) {
-          setCachedPortfolios(user.uid, portfolioData).catch(err =>
-            console.warn('⚠️ [PORTFOLIO CONTEXT] Failed to cache data (frontend calc):', err)
-          );
-          setCacheAge(0);
-        }
-
         // Await autocomplete and chart markers now (doesn't block pricing)
         try {
           const [autocompleteResponse, chartMarkersResponse] = await Promise.all([autocompleteReq, chartMarkersReq]);
@@ -642,14 +565,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
         setAutocompleteData(autocompleteDataResponse.autocomplete_data);
         setChartMarkers(fetchedChartMarkers);
 
-        // Cache the data in IndexedDB for next visit (normal backend path)
-        if (user?.uid) {
-          setCachedPortfolios(user.uid, portfolioData).catch(err =>
-            console.warn('⚠️ [PORTFOLIO CONTEXT] Failed to cache data:', err)
-          );
-          setCacheAge(0);
-        }
-
         // Poll for any pending historical prices (new holdings not yet fetched)
         if (portfolioData.pending_historical_symbols?.length) {
           pollPendingHistorical(portfolioData.pending_historical_symbols);
@@ -675,28 +590,19 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
           }, 50);
         }
       }
-
+      
     } catch (err: any) {
       console.error('❌ [PORTFOLIO CONTEXT] Error loading data:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to load portfolios data');
     } finally {
       setIsLoading(false);
       setIsAutocompleteLoading(false);
-      setIsRefreshing(false);  // Background refresh complete
     }
-  }, [isLoading, user]);
+  }, [isLoading]);
 
   // Refresh all portfolios data
   const refreshAllPortfoliosData = useCallback(async () => {
     console.log('🔄 [PORTFOLIO CONTEXT] Refreshing all portfolios and autocomplete data');
-    await loadAllPortfoliosData();
-  }, [loadAllPortfoliosData]);
-
-  // Force refresh - invalidate cache and reload from API
-  const forceRefresh = useCallback(async () => {
-    console.log('🔄 [PORTFOLIO CONTEXT] Force refresh - invalidating cache and reloading');
-    await invalidateCache();
-    setCacheAge(null);
     await loadAllPortfoliosData();
   }, [loadAllPortfoliosData]);
 
@@ -1656,8 +1562,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     setSelectedAccountNames([]);
     setError(null);
     setIsLoading(false);
-    setIsRefreshing(false);
-    setCacheAge(null);
   }, []);
 
   const value: PortfolioDataContextType = {
@@ -1666,8 +1570,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     chartMarkers,
     isLoading,
     isAutocompleteLoading,
-    isRefreshing,
-    cacheAge,
     error,
     selectedPortfolioId,
     setSelectedPortfolioId: setSelectedPortfolioIdWithLogging,
@@ -1680,7 +1582,6 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     refreshTagsOnly,
     updateCustomCharts,
     clearAllPortfoliosData,
-    forceRefresh,
     getAccountByName,
     getSecurityBySymbol,
     getPriceBySymbol,

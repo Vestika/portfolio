@@ -88,7 +88,6 @@ const App: React.FC = () => {
   // Use the new ALL portfolios data context
   const {
     isLoading: portfolioLoading,
-    isRefreshing,
     error: portfolioError,
     selectedPortfolioId,
     setSelectedPortfolioId,
@@ -432,8 +431,7 @@ const App: React.FC = () => {
   }
   
   // Show generic loading screen during initial portfolio check
-  // Only show loading screen if NO cached data exists (instant load when cache hit)
-  if (isLoading && !hasCheckedPortfolios && !portfolioError && !allPortfoliosData) {
+  if (isLoading && !hasCheckedPortfolios && !portfolioError) {
     return <LoadingScreen />;
   }
   
@@ -485,23 +483,12 @@ const App: React.FC = () => {
         <PopupManager />
         <div className="flex flex-col min-h-screen bg-gray-900 text-white relative">
         {/* Top Bar Navigation */}
-        <TopBar
-          activeView={activeView}
+        <TopBar 
+          activeView={activeView} 
           onViewChange={handleViewChange}
           onProfileClick={handleProfileClick}
         />
-
-        {/* Background Refresh Indicator */}
-        {isRefreshing && (
-          <div className="fixed top-12 right-4 bg-blue-500 text-white px-3 py-1 rounded-full text-xs shadow-lg z-50 flex items-center gap-2 animate-pulse">
-            <svg className="w-3 h-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Refreshing...
-          </div>
-        )}
-
+      
             {/* Sticky Header Section - only show for portfolios view */}
       {location.pathname === '/portfolio' && (
         <div
