@@ -12,7 +12,7 @@
  */
 
 import { get, set, del, clear } from 'idb-keyval';
-import { AllPortfoliosData } from '@/types/portfolio-types';
+import { AllPortfoliosData } from '../contexts/PortfolioDataContext';
 
 // Cache keys
 const CACHE_KEYS = {

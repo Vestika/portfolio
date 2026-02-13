@@ -89,7 +89,6 @@ const App: React.FC = () => {
   const {
     isLoading: portfolioLoading,
     isRefreshing,
-    cacheAge,
     error: portfolioError,
     selectedPortfolioId,
     setSelectedPortfolioId,
