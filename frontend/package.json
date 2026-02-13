@@ -31,7 +31,6 @@
     "highcharts": "^12.4.0",
     "highcharts-react-official": "^3.2.3",
     "highlight.js": "^11.11.1",
-    "idb-keyval": "^6.2.2",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.468.0",
     "mixpanel-browser": "^2.73.0",
