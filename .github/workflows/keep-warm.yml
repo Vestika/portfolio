@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Cloud Run
-        run: curl -sf -o /dev/null -w "%{http_code}\n" https://api.vestika.io/docs
+        run: curl -sf -o /dev/null -w "%{http_code}\n" https://api.vestika.io/health
