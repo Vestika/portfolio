@@ -2,6 +2,7 @@
 Main FastAPI application with endpoints organized in separate modules
 """
 import logging
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -59,9 +60,15 @@ app.add_middleware(
         "/redoc",
         "/cache/status",
         "/cache/historical",
-        "/cache/scheduler/status"
+        "/cache/scheduler/status",
+        "/health"
     ]
 )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 
 # Global error handler for tracking errors in Userjam
 @app.exception_handler(Exception)
