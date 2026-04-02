@@ -705,6 +705,65 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
     };
   }, []);
 
+  // ── Live price polling ─────────────────────────────────────────────
+  const LIVE_PRICE_POLL_MS = 60_000; // 60 seconds
+
+  React.useEffect(() => {
+    if (!allPortfoliosData) return;
+
+    const symbols = Object.keys(allPortfoliosData.global_current_prices || {});
+    if (symbols.length === 0) return;
+
+    const poll = async () => {
+      try {
+        const resp = await api.get(`/prices/live?symbols=${symbols.join(',')}`);
+        const liveData = resp.data?.prices as Record<string, {
+          original_price: number;
+          currency: string;
+          last_updated: string;
+          change_percent?: number;
+        }> | undefined;
+        if (!liveData || Object.keys(liveData).length === 0) return;
+
+        setAllPortfoliosData(prev => {
+          if (!prev) return prev;
+          const currentPrices = { ...prev.global_current_prices };
+          let changed = false;
+
+          for (const [sym, live] of Object.entries(liveData)) {
+            const existing = currentPrices[sym];
+            if (!existing) continue;
+
+            const oldOriginal = existing.original_price ?? existing.price;
+            const newOriginal = live.original_price;
+            if (oldOriginal === newOriginal) continue;
+
+            // Scale the base-currency price by the same ratio to preserve the FX rate
+            const ratio = oldOriginal !== 0 ? newOriginal / oldOriginal : 1;
+            currentPrices[sym] = {
+              ...existing,
+              original_price: newOriginal,
+              price: existing.price * ratio,
+              last_updated: live.last_updated,
+            };
+            changed = true;
+          }
+
+          if (!changed) return prev;
+          console.log(`📡 [LIVE PRICES] Updated ${Object.keys(liveData).length} prices`);
+          return { ...prev, global_current_prices: currentPrices };
+        });
+      } catch (err) {
+        console.warn('[LIVE PRICES] Poll failed:', err);
+      }
+    };
+
+    const id = setInterval(poll, LIVE_PRICE_POLL_MS);
+    // Run the first poll immediately (initial load may already have stale prices)
+    poll();
+    return () => clearInterval(id);
+  }, [allPortfoliosData?.computation_timestamp]); // restart when full data reloads
+
   // Current portfolio data in legacy format (bulletproof version)
   const currentPortfolioData = useMemo((): CompletePortfolioData | null => {
     if (!allPortfoliosData || !selectedPortfolioId) return null;
