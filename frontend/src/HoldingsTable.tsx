@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { motion } from 'motion/react';
+import { usePriceFlash } from './hooks/usePriceFlash';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 import { SecurityHolding, HoldingsTableData, TagDefinition, TagLibrary, TagType, TagValue, HistoricalPrice } from './types';
@@ -597,6 +599,48 @@ const GroupHeader: React.FC<{
         </div>
       </td>
     </tr>
+  );
+};
+
+/** Wrapper for <tr> that flashes green/red when a holding's price changes. */
+const FlashRow: React.FC<{
+  value: number | undefined;
+  className: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ value, className, onClick, children }) => {
+  const { rowFlashClass } = usePriceFlash(value);
+  return (
+    <tr className={`${className} ${rowFlashClass}`} onClick={onClick}>
+      {children}
+    </tr>
+  );
+};
+
+/** Spring-animated number that smoothly counts from old → new value. */
+const AnimatedNumber: React.FC<{
+  value: number | undefined;
+  format?: (n: number) => string;
+}> = ({ value, format }) => {
+  const { springValue } = usePriceFlash(value, format);
+  return <motion.span>{springValue}</motion.span>;
+};
+
+/** Spring-animated percent change with scale pulse on change. */
+const AnimatedPercent: React.FC<{
+  value: number | undefined;
+  className: string;
+  children: React.ReactNode;
+}> = ({ value, className, children }) => {
+  const { direction } = usePriceFlash(value);
+  return (
+    <motion.span
+      className={`inline-block font-medium ${className}`}
+      animate={direction !== 'none' ? { scale: [1, 1.08, 1] } : {}}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
+      {children}
+    </motion.span>
   );
 };
 
@@ -1435,7 +1479,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                     />
                     {expandedGroups.has(groupName) && groupHoldings.map((holding) => (
                       <React.Fragment key={holding.symbol}>
-                        <tr
+                        <FlashRow
+                          value={holding.original_price}
                           className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
                           onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                         >
@@ -1498,7 +1543,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                             {renderTags(holding, true)}
                           </td>
                           <td className="px-2 md:px-4 text-right text-sm text-gray-200">
-                            {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                            <AnimatedNumber
+                              value={holding.original_price}
+                              format={(n) => (Math.round(n * 100) / 100).toLocaleString()}
+                            />
                             <span className="text-xs text-gray-400 ml-1">
                               {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
                             </span>
@@ -1508,14 +1556,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               const percentChange = getPercentChange(holding.symbol);
                               const isPositive = percentChange > 0;
                               const isNeutral = percentChange === 0;
-                              
+
                               return (
-                                <span className={`font-medium ${
-                                  isNeutral ? 'text-gray-400' : 
-                                  isPositive ? 'text-green-400' : 'text-red-400'
-                                }`}>
+                                <AnimatedPercent
+                                  value={holding.original_price}
+                                  className={isNeutral ? 'text-gray-400' : isPositive ? 'text-green-400' : 'text-red-400'}
+                                >
                                   {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
-                                </span>
+                                </AnimatedPercent>
                               );
                             })()}
                           </td>
@@ -1525,7 +1573,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                                 {formatUnits(holding.total_units, holding.security_type)}
                               </td>
                               <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
-                                {Math.round(holding.total_value).toLocaleString()}
+                                <AnimatedNumber value={holding.total_value} />
                                 <span className="text-xs text-gray-400 ml-1 hidden md:inline">
                                   ({calculatePercentage(holding)}%)
                                 </span>
@@ -1647,7 +1695,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                               ) : null;
                             })()}
                           </td>
-                        </tr>
+                        </FlashRow>
                         {expandedRow === holding.symbol && holding.property_metadata && (
                           <tr>
                             <td colSpan={isValueVisible ? 11 : 9} className="p-0">
@@ -1801,7 +1849,8 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                 // Render ungrouped view (normal list)
                 filteredAndSortedHoldings.map((holding) => (
                 <React.Fragment key={holding.symbol}>
-                  <tr
+                  <FlashRow
+                    value={holding.original_price}
                     className="h-16 border-b border-blue-400/30 hover:bg-blue-500/5 transition-colors cursor-pointer"
                     onClick={() => setExpandedRow(expandedRow === holding.symbol ? null : holding.symbol)}
                   >
@@ -1864,7 +1913,10 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                       {renderTags(holding, true)} {/* Show all functionality: filter on click, remove buttons, add dropdown */}
                     </td>
                     <td className="px-2 md:px-4 text-right text-sm text-gray-200">
-                      {(Math.round(holding.original_price * 100) / 100).toLocaleString()}
+                      <AnimatedNumber
+                        value={holding.original_price}
+                        format={(n) => (Math.round(n * 100) / 100).toLocaleString()}
+                      />
                       <span className="text-xs text-gray-400 ml-1">
                         {holding.symbol.startsWith('FX:') ? dataWithRealEarnings.base_currency : holding.original_currency}
                       </span>
@@ -1874,14 +1926,14 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         const percentChange = getPercentChange(holding.symbol);
                         const isPositive = percentChange > 0;
                         const isNeutral = percentChange === 0;
-                        
+
                         return (
-                          <span className={`font-medium ${
-                            isNeutral ? 'text-gray-400' : 
-                            isPositive ? 'text-green-400' : 'text-red-400'
-                          }`}>
+                          <AnimatedPercent
+                            value={holding.original_price}
+                            className={isNeutral ? 'text-gray-400' : isPositive ? 'text-green-400' : 'text-red-400'}
+                          >
                             {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
-                          </span>
+                          </AnimatedPercent>
                         );
                       })()}
                     </td>
@@ -1891,7 +1943,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                           {formatUnits(holding.total_units, holding.security_type)}
                         </td>
                         <td className="px-2 md:px-4 text-right text-sm whitespace-nowrap text-gray-200">
-                          {Math.round(holding.total_value).toLocaleString()}
+                          <AnimatedNumber value={holding.total_value} />
                           <span className="text-xs text-gray-400 ml-1 hidden md:inline">
                             ({calculatePercentage(holding)}%)
                           </span>
@@ -2017,7 +2069,7 @@ const HoldingsTable: React.FC<HoldingsTableProps> = ({ data, isValueVisible, isL
                         ) : null;
                       })()}
                     </td>
-                  </tr>
+                  </FlashRow>
                   {expandedRow === holding.symbol && holding.property_metadata && (
                     <tr>
                       <td colSpan={isValueVisible ? 11 : 9} className="p-0">
