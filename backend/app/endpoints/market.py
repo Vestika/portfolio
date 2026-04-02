@@ -152,6 +152,38 @@ async def get_cache_status(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to get cache status: {str(e)}")
 
 
+@router.get("/prices/live")
+async def get_live_prices(
+    request: Request,
+    symbols: str = Query(..., description="Comma-separated list of symbols"),
+    user=Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Return the latest live prices from the in-memory cache.
+
+    Accepts a comma-separated ``symbols`` query param.  Returns a dict keyed
+    by symbol with ``{original_price, currency, last_updated}`` for every
+    symbol that has a cached value.  Symbols without cached data are omitted.
+    """
+    cache = get_live_price_cache()
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    result: dict[str, dict[str, Any]] = {}
+    for symbol in symbol_list:
+        entry = cache.get(symbol)
+        if entry and entry.get("price") is not None:
+            from datetime import datetime
+            last_update = entry.get("last_update")
+            result[symbol] = {
+                "original_price": entry["price"],
+                "currency": entry.get("currency", "USD"),
+                "last_updated": last_update.isoformat() if isinstance(last_update, datetime) else datetime.utcnow().isoformat(),
+                "change_percent": entry.get("change_percent"),
+            }
+
+    return {"prices": result, "count": len(result)}
+
+
 @router.post("/cache/refresh-live")
 async def refresh_live_prices(user=Depends(get_current_user)) -> dict[str, Any]:
     """
