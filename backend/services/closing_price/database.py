@@ -5,8 +5,6 @@ from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import OperationFailure
 from typing import Optional
-import redis.asyncio as redis
-import fakeredis.aioredis as fakeredis
 from config import settings
 
 
@@ -17,13 +15,7 @@ class Database:
     indexes_created: bool = False  # Track if indexes have been created
 
 
-class Cache:
-    redis_client: Optional[redis.Redis] = None
-    loop: Optional[asyncio.AbstractEventLoop] = None
-
-
 db = Database()
-cache = Cache()
 
 async def create_index_safe(
     collection: AsyncCollection,
@@ -48,57 +40,6 @@ async def create_index_safe(
             logger.error(f"[INDEX] Error creating index '{name}': {e}")
     except Exception as e:
         logger.error(f"[INDEX] Unexpected error creating index '{name}': {e}")
-
-
-async def setup_historical_prices_collection() -> None:
-    """
-    Create the time-series collection for historical prices.
-    This should be called once during initial setup.
-    """
-    try:
-        if db.database is None:
-            logger.error("Database not connected. Cannot create time-series collection.")
-            return
-        
-        # Check if collection already exists
-        existing_collections = await db.database.list_collection_names()
-        if "historical_prices" in existing_collections:
-            logger.info("[TIME-SERIES] historical_prices collection already exists")
-            return
-        
-        logger.info("[TIME-SERIES] Creating historical_prices time-series collection...")
-        
-        # Create time-series collection with MongoDB time-series features
-        await db.database.create_collection(
-            "historical_prices",
-            timeseries={
-                "timeField": "timestamp",     # The field that contains the date
-                "metaField": "symbol",        # The field that identifies the stock
-                "granularity": "hours"        # "hours" is appropriate for daily data
-            },
-            expireAfterSeconds=31536000  # Automatically delete data older than 1 year (365 days)
-        )
-        
-        logger.info("[TIME-SERIES] Created historical_prices collection with 1-year TTL")
-        
-        # Create index on symbol for fast queries
-        await create_index_safe(
-            collection=db.database.historical_prices,
-            keys=[("symbol", 1)],
-            name="symbol_index"
-        )
-        
-        logger.info("[TIME-SERIES] historical_prices collection setup completed")
-        
-    except OperationFailure as e:
-        if "already exists" in str(e).lower():
-            logger.info("[TIME-SERIES] historical_prices collection already exists")
-        else:
-            logger.error(f"[TIME-SERIES] Error creating time-series collection: {e}")
-            raise
-    except Exception as e:
-        logger.error(f"[TIME-SERIES] Unexpected error creating time-series collection: {e}")
-        raise
 
 
 async def ensure_benchmark_symbols() -> None:
@@ -226,36 +167,6 @@ async def close_mongo_connection() -> None:
         logger.info("Disconnected from MongoDB")
 
 
-async def connect_to_redis() -> None:
-    """Create Redis or FakeRedis connection depending on config"""
-    try:
-        if settings.use_fake_redis:
-            cache.redis_client = fakeredis.FakeRedis(decode_responses=True)
-            logger.info("Using FakeRedis for in-memory caching")
-        else:
-            cache.redis_client = redis.from_url(
-                settings.redis_url,
-                db=settings.redis_db,
-                decode_responses=True
-            )
-            logger.info(f"Connected to Redis at {settings.redis_url}")
-
-        # Test the connection
-        await cache.redis_client.ping()
-        cache.loop = asyncio.get_running_loop()
-
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        raise
-
-
-async def close_redis_connection() -> None:
-    """Close Redis connection"""
-    if cache.redis_client:
-        await cache.redis_client.close()
-        logger.info("Disconnected from Redis") 
-
-
 async def ensure_mongo_connection() -> None:
     """Ensure MongoDB client is bound to the current event loop."""
     try:
@@ -273,23 +184,6 @@ async def ensure_mongo_connection() -> None:
         pass
 
 
-async def ensure_redis_connection() -> None:
-    """Ensure Redis client is bound to the current event loop."""
-    try:
-        current_loop = asyncio.get_running_loop()
-        if cache.redis_client is None or cache.loop is not current_loop:
-            if cache.redis_client:
-                try:
-                    await cache.redis_client.close()
-                except Exception:
-                    pass
-            await connect_to_redis()
-    except RuntimeError:
-        # No running loop; ignore here
-        pass
-
-
 async def ensure_connections() -> None:
-    """Ensure both Mongo and Redis are connected in the current event loop."""
+    """Ensure MongoDB is connected in the current event loop."""
     await ensure_mongo_connection()
-    await ensure_redis_connection()

@@ -1,4 +1,3 @@
-import json
 import httpx
 from datetime import datetime, timedelta
 from loguru import logger
@@ -6,9 +5,10 @@ from typing import Optional, Any, Dict
 
 from config import settings
 from .stock_fetcher import create_stock_fetcher, detect_symbol_type
-from .database import db, cache, ensure_connections
+from .database import db, ensure_connections
 from .models import StockPrice, TrackedSymbol, PriceResponse
 from .currency_service import currency_service
+from .live_price_cache import get_live_price_cache
 
 
 class PriceManager:
@@ -17,38 +17,49 @@ class PriceManager:
     async def get_price(self, symbol: str, *, fresh: bool = False) -> Optional[PriceResponse]:
         """Get the latest price for a symbol, with lazy fetching and caching.
 
+        Resolution order: LivePriceCache → MongoDB → API.
+
         Args:
             symbol: The symbol to fetch.
             fresh: If True, bypass cache/DB freshness checks and fetch from source.
         """
         try:
-            # Ensure DB/cache connections are valid for this loop
+            # Ensure DB connection is valid for this loop
             await ensure_connections()
             if not fresh:
-                # First check Redis cache
-                cached_price = await self._get_cached_price(symbol)
-                if cached_price:
-                    logger.info(f"Retrieved cached price for {symbol}")
+                # First check in-memory live price cache (updated every ~15 min)
+                live = get_live_price_cache().get(symbol)
+                if live and live.get("price") is not None:
+                    logger.info(f"Retrieved live-cache price for {symbol}: {live['price']}")
                     await self._update_tracking(symbol)
-                    return cached_price
-                
+                    return PriceResponse(
+                        symbol=symbol,
+                        price=live["price"],
+                        currency=live.get("currency", "USD"),
+                        market=live.get("market", "US"),
+                        date=live.get("last_update", datetime.utcnow()).strftime("%Y-%m-%d")
+                            if isinstance(live.get("last_update"), datetime)
+                            else datetime.utcnow().strftime("%Y-%m-%d"),
+                        fetched_at=live.get("last_update", datetime.utcnow()),
+                        change_percent=live.get("change_percent"),
+                    )
+
                 # Check MongoDB for recent price
                 db_price = await self._get_db_price(symbol)
                 if db_price and self._is_price_fresh(db_price.fetched_at):
                     logger.info(f"Retrieved fresh price from DB for {symbol}")
-                    await self._cache_price(db_price)
                     await self._update_tracking(symbol)
                     return self._to_price_response(db_price)
-            
+
             # Fetch fresh price (either because fresh=True or no fresh cached/DB price)
             logger.info(f"Fetching fresh price for {symbol} (fresh={fresh})")
             fresh_price = await self._fetch_and_store_price(symbol)
             if fresh_price:
                 await self._update_tracking(symbol)
                 return fresh_price
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting price for {symbol}: {e}")
             return None
@@ -205,38 +216,6 @@ class PriceManager:
         # Combine both statuses
         return {**us_status, **tase_status}
     
-    async def _get_cached_price(self, symbol: str) -> Optional[PriceResponse]:
-        """Get price from Redis cache"""
-        try:
-            if not cache.redis_client:
-                return None
-                
-            cached_data = await cache.redis_client.get(f"price:{symbol}")
-            if cached_data:
-                data = json.loads(cached_data)
-                return PriceResponse(**data)
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error getting cached price for {symbol}: {e}")
-            return None
-    
-    async def _cache_price(self, price: StockPrice) -> None:
-        """Cache price in Redis"""
-        try:
-            if not cache.redis_client:
-                return
-                
-            price_response = self._to_price_response(price)
-            await cache.redis_client.setex(
-                f"price:{price.symbol}",
-                settings.cache_ttl_seconds,
-                json.dumps(price_response.dict(), default=str)
-            )
-            
-        except Exception as e:
-            logger.error(f"Error caching price for {price.symbol}: {e}")
-    
     async def _get_db_price(self, symbol: str) -> Optional[StockPrice]:
         """Get latest price from MongoDB"""
         try:
@@ -284,9 +263,16 @@ class PriceManager:
                 upsert=True
             )
             
-            # Cache in Redis
-            await self._cache_price(stock_price)
-            
+            # Update in-memory live cache so subsequent reads are instant
+            live_cache = get_live_price_cache()
+            live_cache.set(
+                symbol=symbol,
+                price=stock_price.price,
+                currency=stock_price.currency,
+                market=stock_price.market,
+                change_percent=stock_price.change_percent,
+            )
+
             return self._to_price_response(stock_price)
             
         except Exception as e:
@@ -453,65 +439,3 @@ class PriceManager:
             change_percent=stock_price.change_percent
         )
     
-    async def get_historical_prices(
-        self, 
-        symbols: list[str], 
-        days: int = 7
-    ) -> Dict[str, list[Dict[str, Any]]]:
-        """
-        Get historical prices for multiple symbols from MongoDB (FAST!).
-        
-        This retrieves pre-cached historical data from the time-series collection,
-        which is much faster than fetching from yfinance on every request.
-        
-        Args:
-            symbols: List of symbols to fetch
-            days: Number of days of history (default: 7)
-        
-        Returns:
-            Dictionary mapping symbol to list of historical price points
-            Format: {"AAPL": [{"date": "2025-11-14", "price": 150.50}, ...]}
-        """
-        try:
-            await ensure_connections()
-            
-            # Calculate date range
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=days)
-            
-            logger.info(f"[GET HISTORICAL] Fetching {days}-day history for {len(symbols)} symbols from MongoDB")
-            
-            # Query time-series collection (optimized for this!)
-            cursor = db.database.historical_prices.find({
-                "symbol": {"$in": symbols},
-                "timestamp": {"$gte": start_date}
-            }).sort("timestamp", 1)
-            
-            # Fetch all data
-            all_data = await cursor.to_list(length=None)
-            
-            # Group by symbol
-            result: Dict[str, list[Dict[str, Any]]] = {symbol: [] for symbol in symbols}
-            
-            for doc in all_data:
-                symbol = doc["symbol"]
-                if symbol in result:
-                    result[symbol].append({
-                        "date": doc["timestamp"].strftime("%Y-%m-%d"),
-                        "price": doc["close"]
-                    })
-            
-            # Log statistics
-            total_records = sum(len(prices) for prices in result.values())
-            symbols_with_data = sum(1 for prices in result.values() if prices)
-            
-            logger.info(
-                f"[GET HISTORICAL] Retrieved {total_records} records for "
-                f"{symbols_with_data}/{len(symbols)} symbols"
-            )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"[GET HISTORICAL] Error fetching historical prices: {e}")
-            return {symbol: [] for symbol in symbols} 

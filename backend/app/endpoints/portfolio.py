@@ -624,8 +624,8 @@ async def collect_global_prices_cached(all_symbols: set, portfolio_docs: list, r
         if market_reader:
             cached_historical = await market_reader.get_historical_prices(all_symbols_for_historical, days=365)
         else:
-            manager = PriceManager()
-            cached_historical = await manager.get_historical_prices(all_symbols_for_historical, days=365)  # fallback
+            logger.warning("[COLLECT PRICES CACHED] market_reader not available, no historical data")
+            cached_historical = {s: [] for s in all_symbols_for_historical}
         
         # Use cached data for symbols that have it
         # Ensure symbol keys match exactly what was requested (defensive normalization)
@@ -1820,12 +1820,9 @@ async def get_batch_prices(request: Request, req: BatchPricesRequest, user=Depen
                     market_reader = getattr(request.app.state, 'market_reader', None)
                     if market_reader:
                         cached_data = await market_reader.get_historical_prices(stock_symbols, days=days)
-                    else:
-                        cached_data = await PriceManager().get_historical_prices(stock_symbols, days=days)
-
-                    for sym, series in cached_data.items():
-                        if series:  # Only use if we got data
-                            historical[sym] = series
+                        for sym, series in cached_data.items():
+                            if series:  # Only use if we got data
+                                historical[sym] = series
                 except Exception:
                     pass
 
@@ -1953,14 +1950,10 @@ async def get_historical_series(request: Request, req: HistoricalPricesRequest, 
             market_reader = getattr(request.app.state, 'market_reader', None)
             if market_reader:
                 cached_data = await market_reader.get_historical_prices(stock_symbols, days=days)
-            else:
-                from services.closing_price.price_manager import PriceManager
-                cached_data = await PriceManager().get_historical_prices(stock_symbols, days=days)
-
-            for sym, series in cached_data.items():
-                if series:
-                    historical[sym] = series
-                    logger.info(f"[HISTORICAL] {sym}: {len(series)} points from cache")
+                for sym, series in cached_data.items():
+                    if series:
+                        historical[sym] = series
+                        logger.info(f"[HISTORICAL] {sym}: {len(series)} points from cache")
 
             logger.info(f"[HISTORICAL ENDPOINT] Cache hit for {len(historical)}/{len(stock_symbols)} symbols")
         except Exception as e:

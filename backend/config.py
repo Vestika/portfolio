@@ -25,20 +25,6 @@ class Settings(BaseSettings):
         description="MongoDB database name"
     )
     
-    # Redis Configuration
-    use_fake_redis: bool = Field(
-        default=True,
-        description="Whether to use fake Redis for testing"
-    )
-    redis_url: str = Field(
-        default="redis://localhost:6379",
-        description="Redis connection URL"
-    )
-    redis_db: int = Field(
-        default=0,
-        description="Redis database number"
-    )
-    
     # Finnhub Configuration
     finnhub_api_key: str = Field(
         default="",
