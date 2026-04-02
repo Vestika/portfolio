@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { Wallet, Coins } from 'lucide-react';
 import {AccountInfo} from "./types.ts";
 import api from './utils/api';
 import { SubtitleBar, MetricChip, SubtitleBarSpacer } from './components/subtitle-bar/SubtitleBar.tsx';
+import { usePriceFlash } from './hooks/usePriceFlash';
 interface CashHoldings {
   [currency: string]: number;
 }
@@ -89,6 +91,11 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
 
   // No network calls needed for IBIT→BTC; purely derived from static ratio
 
+  const { rowFlashClass: totalFlashClass, springValue: totalSpring } = usePriceFlash(
+    totalValue,
+    (n) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n),
+  );
+
   const hiddenValue = (
     <span className="flex items-center space-x-1">
       <span className="inline-block w-1.5 h-1.5 rounded-full bg-current"></span>
@@ -104,10 +111,11 @@ const PortfolioSummary: React.FC<PortfolioSummaryProps> = ({
         icon={<Wallet size={14} />}
         iconColor="text-green-400"
         label="Total:"
+        className={totalFlashClass}
         value={
           isValueVisible ? (
             <>
-              {new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(totalValue)}{' '}
+              <motion.span>{totalSpring}</motion.span>{' '}
               {baseCurrency}
             </>
           ) : (
