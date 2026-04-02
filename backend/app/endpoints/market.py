@@ -270,10 +270,7 @@ async def get_symbol_historical(
         if market_reader:
             result = await market_reader.get_historical_prices([symbol], days)
         else:
-            # Fallback to old service
-            from services.closing_price.service import get_global_service
-            service = get_global_service()
-            result = await service.get_historical_prices([symbol], days)
+            result = {symbol: []}
 
         if result and symbol in result and result[symbol]:
             return {

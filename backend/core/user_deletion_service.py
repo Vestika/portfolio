@@ -39,7 +39,6 @@ from models.deletion_models import (
     CollectionDeletionResult,
     DeletionPartialFailureException
 )
-from services.closing_price.database import cache
 from core.analytics import get_analytics_service
 from services.telegram.service import get_telegram_service
 
@@ -358,37 +357,8 @@ class UserDeletionService:
         user: User,
         audit_record: Dict[str, Any]
     ) -> None:
-        """
-        Phase 2: Delete user-specific keys from Redis cache.
-
-        Current Redis usage is mostly symbol-based (not user-specific), but
-        we pattern-match for any keys containing user_id just in case.
-        """
-        logger.info(f"🗄️ [DELETION] Phase 2: Cleaning Redis cache for user {user.id}")
-
-        try:
-            if cache.redis_client:
-                # Pattern-match user-specific keys
-                # Note: In production Redis, KEYS command can be slow - consider SCAN
-                pattern = f"*{user.id}*"
-                user_keys = await cache.redis_client.keys(pattern)
-
-                if user_keys:
-                    await cache.redis_client.delete(*user_keys)
-                    logger.info(f"  ✓ Deleted {len(user_keys)} Redis keys for user")
-                else:
-                    logger.debug(f"  ⊘ No Redis keys found for user")
-
-                audit_record["redis_cleaned"] = True
-            else:
-                logger.debug(f"  ⊘ Redis client not available, skipping")
-                audit_record["redis_cleaned"] = False
-
-        except Exception as e:
-            logger.warning(f"  ⚠️ Failed to delete Redis keys: {e}")
-            audit_record["redis_cleaned"] = False
-            audit_record["errors"].append(f"Redis cleanup: {str(e)}")
-            # Don't block deletion if Redis fails
+        """Phase 2: No-op — Redis is no longer used for price caching."""
+        audit_record["redis_cleaned"] = True
 
     async def _delete_firebase_auth(
         self,

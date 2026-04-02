@@ -5,7 +5,7 @@ from loguru import logger
 
 from .price_manager import PriceManager
 from .currency_service import currency_service
-from .database import connect_to_mongo, connect_to_redis, close_mongo_connection, close_redis_connection
+from .database import connect_to_mongo, close_mongo_connection
 
 
 class ClosingPriceService:
@@ -30,9 +30,8 @@ class ClosingPriceService:
             try:
                 logger.info("Initializing closing price service...")
                 
-                # Connect to databases
+                # Connect to database
                 await connect_to_mongo()
-                await connect_to_redis()
                 
                 # Initialize price manager
                 self.price_manager = PriceManager()
@@ -259,37 +258,11 @@ class ClosingPriceService:
         result = self._run_async_operation(self.health_check())
         return result if result is not None else False
     
-    async def get_historical_prices(
-        self, 
-        symbols: list[str], 
-        days: int = 7
-    ) -> Optional[Dict[str, list[Dict[str, Any]]]]:
-        """
-        Get historical prices for multiple symbols from MongoDB (FAST!).
-        
-        Args:
-            symbols: List of symbols to fetch
-            days: Number of days of history (default: 7)
-            
-        Returns:
-            Dictionary mapping symbol to list of historical price points
-        """
-        try:
-            await self._ensure_initialized()
-            
-            result = await self.price_manager.get_historical_prices(symbols, days)
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error getting historical prices: {e}")
-            return None
-    
     async def cleanup(self):
         """Clean up resources when shutting down"""
         try:
             if self._initialized:
                 logger.debug("Cleaning up closing price service...")
-                await close_redis_connection()
                 await close_mongo_connection()
                 self._initialized = False
                 logger.debug("Closing price service cleaned up successfully")
