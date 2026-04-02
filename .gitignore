@@ -4,3 +4,4 @@
 backend/michael.yaml
 **.env
 **/firebase_credentials.json
+frontend/dev-dist/
