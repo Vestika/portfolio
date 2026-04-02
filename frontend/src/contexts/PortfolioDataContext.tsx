@@ -706,7 +706,7 @@ export const PortfolioDataProvider: React.FC<PortfolioDataProviderProps> = ({ ch
   }, []);
 
   // ── Live price polling ─────────────────────────────────────────────
-  const LIVE_PRICE_POLL_MS = 60_000; // 60 seconds
+  const LIVE_PRICE_POLL_MS = 300_000; // 5 minutes
 
   React.useEffect(() => {
     if (!allPortfoliosData) return;
