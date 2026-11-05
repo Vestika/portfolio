@@ -102,6 +102,24 @@ class TestRTRedirectCase:
         assert entry["case"] == "rt"
         assert entry["redirect_to"] == "http://169.254.169.254/latest/meta-data/"
 
+    def test_diag_prefix_redirects_to_private(self, client):
+        """'diag-' is an innocuous alias for the same private target."""
+        resp = client.get("/probe/rt/diag-check-001.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/"
+
+    def test_diagiam_prefix_redirects_to_credentials(self, client):
+        """'diagiam-' is an innocuous alias for the IAM credentials path."""
+        resp = client.get("/probe/rt/diagiam-check.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+
+    def test_render_prefix_redirects_to_private(self, client):
+        """'render-' is an innocuous alias."""
+        resp = client.get("/probe/rt/render-check-001.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/"
+
     def test_self_control_produces_second_hit(self, client):
         """Full self-control chain: rt hit + redirected gif hit both logged."""
         client.get("/probe/rt/self-chain-test.gif", follow_redirects=True)
