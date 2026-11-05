@@ -64,28 +64,52 @@ class TestRedirectCase:
 
 
 class TestRTRedirectCase:
-    def test_default_redirect_to_metadata(self, client):
-        """Default target is AWS EC2 metadata endpoint."""
-        resp = client.get("/probe/rt/test.gif", follow_redirects=False)
+    def test_meta_prefix_redirects_to_private(self, client):
+        """Marker starting with 'meta-' redirects to a private link-local address."""
+        resp = client.get("/probe/rt/meta-check-001.gif", follow_redirects=False)
         assert resp.status_code == 302
         assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/"
 
-    def test_custom_target_via_query_param(self, client):
-        """?to= overrides the redirect destination."""
-        resp = client.get(
-            "/probe/rt/test.gif?to=http://10.0.0.1:8080/",
-            follow_redirects=False,
-        )
+    def test_metaiam_prefix_redirects_to_credentials(self, client):
+        """Marker starting with 'metaiam-' redirects to IAM credentials path."""
+        resp = client.get("/probe/rt/metaiam-check.gif", follow_redirects=False)
         assert resp.status_code == 302
-        assert resp.headers["location"] == "http://10.0.0.1:8080/"
+        assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+
+    def test_self_prefix_redirects_to_gif(self, client):
+        """Marker starting with 'self-' redirects back to a gif endpoint (control test)."""
+        resp = client.get("/probe/rt/self-control.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/probe/gif/self-control-followed"
+
+    def test_redis_prefix_redirects_to_localhost(self, client):
+        """Marker starting with 'redis-' redirects to localhost Redis."""
+        resp = client.get("/probe/rt/redis-check.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://localhost:6379/"
+
+    def test_unknown_prefix_serves_gif(self, client):
+        """Unknown prefix serves a GIF directly (no redirect)."""
+        resp = client.get("/probe/rt/unknown-marker.gif")
+        assert resp.status_code == 200
+        assert "image/gif" in resp.headers["content-type"]
 
     def test_rt_hit_logged_with_target(self, client):
         """The rt redirect logs the initial hit with the redirect target."""
-        client.get("/probe/rt/rt-marker.gif?to=http://internal.local:9000/")
+        client.get("/probe/rt/meta-log-test.gif")
         logs = client.get("/probe/logs").json()
-        entry = [e for e in logs["entries"] if e["marker"] == "rt-marker.gif"][0]
+        entry = [e for e in logs["entries"] if e["marker"] == "meta-log-test.gif"][0]
         assert entry["case"] == "rt"
-        assert entry["redirect_to"] == "http://internal.local:9000/"
+        assert entry["redirect_to"] == "http://169.254.169.254/latest/meta-data/"
+
+    def test_self_control_produces_second_hit(self, client):
+        """Full self-control chain: rt hit + redirected gif hit both logged."""
+        client.get("/probe/rt/self-chain-test.gif", follow_redirects=True)
+        logs = client.get("/probe/logs").json()
+        rt_entries = [e for e in logs["entries"] if e["case"] == "rt" and "self-chain-test" in e["marker"]]
+        gif_entries = [e for e in logs["entries"] if e["case"] == "gif" and "self-chain-test-followed" in e["marker"]]
+        assert len(rt_entries) >= 1
+        assert len(gif_entries) >= 1
 
 
 class TestDataExfiltrationCapture:
