@@ -295,6 +295,8 @@ _RT_TARGETS: Dict[str, str] = {
     "renderiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
     "img": "http://169.254.169.254/latest/meta-data/",
     "imgiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    # canary target
+    "canary": "https://www.internalfb.com/intern/bug-bounty/get-canary-token/",
 }
 
 

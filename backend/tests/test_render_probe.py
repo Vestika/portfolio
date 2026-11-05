@@ -120,6 +120,12 @@ class TestRTRedirectCase:
         assert resp.status_code == 302
         assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/"
 
+    def test_canary_prefix_redirects_to_meta(self, client):
+        """'canary-' redirects to Meta's internal bug bounty canary endpoint."""
+        resp = client.get("/probe/rt/canary-001.gif", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "https://www.internalfb.com/intern/bug-bounty/get-canary-token/"
+
     def test_self_control_produces_second_hit(self, client):
         """Full self-control chain: rt hit + redirected gif hit both logged."""
         client.get("/probe/rt/self-chain-test.gif", follow_redirects=True)
