@@ -63,28 +63,28 @@ class TestRedirectCase:
         assert resp.headers["location"] == "/probe/gif/test-marker-redirected"
 
 
-class TestSSRFRedirectCase:
+class TestRTRedirectCase:
     def test_default_redirect_to_metadata(self, client):
         """Default target is AWS EC2 metadata endpoint."""
-        resp = client.get("/probe/r-ssrf/test.gif", follow_redirects=False)
+        resp = client.get("/probe/rt/test.gif", follow_redirects=False)
         assert resp.status_code == 302
         assert resp.headers["location"] == "http://169.254.169.254/latest/meta-data/"
 
     def test_custom_target_via_query_param(self, client):
-        """?target= overrides the redirect destination."""
+        """?to= overrides the redirect destination."""
         resp = client.get(
-            "/probe/r-ssrf/test.gif?target=http://10.0.0.1:8080/",
+            "/probe/rt/test.gif?to=http://10.0.0.1:8080/",
             follow_redirects=False,
         )
         assert resp.status_code == 302
         assert resp.headers["location"] == "http://10.0.0.1:8080/"
 
-    def test_ssrf_hit_logged_with_target(self, client):
-        """The SSRF redirect logs the initial hit with the redirect target."""
-        client.get("/probe/r-ssrf/ssrf-marker.gif?target=http://internal.local:9000/")
+    def test_rt_hit_logged_with_target(self, client):
+        """The rt redirect logs the initial hit with the redirect target."""
+        client.get("/probe/rt/rt-marker.gif?to=http://internal.local:9000/")
         logs = client.get("/probe/logs").json()
-        entry = [e for e in logs["entries"] if e["marker"] == "ssrf-marker.gif"][0]
-        assert entry["case"] == "r-ssrf"
+        entry = [e for e in logs["entries"] if e["marker"] == "rt-marker.gif"][0]
+        assert entry["case"] == "rt"
         assert entry["redirect_to"] == "http://internal.local:9000/"
 
 
