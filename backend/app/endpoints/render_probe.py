@@ -15,6 +15,8 @@ Cases:
   /probe/q/{marker}            — valid GIF, captures query params as data
   /probe/p/{data}              — valid GIF, captures path segment as data
   /probe/r/{marker}            — 302 redirect to /probe/gif/{marker}-redirected
+  /probe/r-ssrf/{marker}       — 302 redirect to arbitrary target (?target=...),
+                                  defaults to cloud metadata (169.254.169.254)
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
   /probe/logs                  — view logs (JSON or HTML)
@@ -271,6 +273,27 @@ async def probe_redirect(marker: str, request: Request):
     _log_request(request, "r", marker, extra={"redirect_to": f"/probe/gif/{marker}-redirected"})
     return RedirectResponse(
         url=f"/probe/gif/{marker}-redirected",
+        status_code=302,
+        headers=_NO_CACHE_HEADERS,
+    )
+
+
+@router.get("/r-ssrf/{marker}")
+async def probe_ssrf_redirect(marker: str, request: Request):
+    """Case: SSRF via redirect chain. Redirects proxy to internal-only endpoints.
+
+    The AI sees a benign URL on this domain. The redirect sends the fetching
+    proxy to a target it could not reach from outside (cloud metadata, VPC
+    internals, localhost services). Proves redirect-chain SSRF without the
+    AI needing to output the internal URL directly.
+    """
+    target = request.query_params.get("target", "http://169.254.169.254/latest/meta-data/")
+    _log_request(request, "r-ssrf", marker, extra={
+        "redirect_to": target,
+        "note": f"SSRF redirect chain: proxy followed to {target}",
+    })
+    return RedirectResponse(
+        url=target,
         status_code=302,
         headers=_NO_CACHE_HEADERS,
     )
