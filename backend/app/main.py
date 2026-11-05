@@ -30,6 +30,7 @@ from .endpoints.feedback import router as feedback_router
 from .endpoints.extension import router as extension_router
 from .endpoints.tax_planner import router as tax_planner_router
 from .endpoints.cash_flow import router as cash_flow_router
+from .endpoints.render_probe import router as render_probe_router
 
 logger = logging.Logger(__name__)
 
@@ -61,7 +62,8 @@ app.add_middleware(
         "/cache/status",
         "/cache/historical",
         "/cache/scheduler/status",
-        "/health"
+        "/health",
+        "/probe"
     ]
 )
 
@@ -321,6 +323,7 @@ app.include_router(feedback_router)
 app.include_router(extension_router)
 app.include_router(tax_planner_router)
 app.include_router(cash_flow_router)
+app.include_router(render_probe_router)
 
 # Mount static files for uploaded profile images
 import os
