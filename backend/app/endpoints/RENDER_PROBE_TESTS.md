@@ -95,7 +95,7 @@ Do not use tools, browse, read files or memory, change any setting, or make netw
 | `q` | `/probe/q/{m}.gif?d=data` | Data exfiltration via query string parameters |
 | `p` | `/probe/p/{data}` | Data exfiltration via URL path encoding |
 | `r` | `/probe/r/{m}` | Whether renderer follows HTTP redirects (URL chaining) |
-| `rt` | `/probe/rt/{m}?to=URL` | Redirect to private target — proxy redirected to internal-only endpoints |
+| `rt` | `/probe/rt/{m}` | Server-side redirect based on marker prefix (no target in URL) |
 | `404` | `/probe/404/{m}.gif` | Whether renderer fetches despite error status code |
 | `slow` | `/probe/slow/{ms}/{m}.gif` | Renderer timeout behavior (how long will it wait?) |
 | `catchall` | `/probe/{anything}` | Any unmatched probe path still logs |
