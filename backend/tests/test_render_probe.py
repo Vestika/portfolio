@@ -56,6 +56,38 @@ class TestImageCases:
         assert "image/gif" in resp.headers["content-type"]
 
 
+class TestSVGScriptComparison:
+    @pytest.mark.parametrize("case,script_count", [("svg-control", 0), ("svg-script", 1)])
+    def test_svg_fixture_response_and_log(self, client, case, script_count):
+        from xml.etree import ElementTree as ET
+
+        marker = f"fixture-{case}.svg"
+        response = client.get(f"/probe/{case}/{marker}")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/svg+xml")
+        assert "no-store" in response.headers["cache-control"]
+        assert response.headers["x-content-type-options"] == "nosniff"
+        root = ET.fromstring(response.content)
+        ns = {"s": "http://www.w3.org/2000/svg"}
+        assert root.attrib["width"] == "480"
+        assert root.attrib["height"] == "120"
+        assert root.find("s:text", ns).text == "NOT_EXECUTED"
+        assert len(root.findall("s:script", ns)) == script_count
+        assert marker not in response.text
+        logs = client.get("/probe/logs", params={"marker": marker}).json()
+        assert logs["entries"][0]["case"] == case
+
+    def test_script_is_only_difference_and_markers_do_not_change_body(self, client):
+        import re
+
+        control = client.get("/probe/svg-control/comparison.svg")
+        scripted = client.get("/probe/svg-script/comparison.svg")
+        assert control.status_code == scripted.status_code == 200
+        without_script = re.sub(r"  <script\b.*?</script>\n", "", scripted.text, count=1, flags=re.S)
+        assert without_script == control.text
+        assert client.get("/probe/svg-script/another-marker.svg").content == scripted.content
+
+
 class TestRedirectCase:
     def test_redirect_returns_302(self, client):
         resp = client.get("/probe/r/test-marker", follow_redirects=False)

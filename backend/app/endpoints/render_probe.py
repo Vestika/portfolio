@@ -11,6 +11,8 @@ Cases:
   /probe/gif/{marker}          — valid GIF, image/gif
   /probe/png/{marker}          — valid PNG, image/png
   /probe/svg/{marker}          — valid SVG, image/svg+xml
+  /probe/svg-control/{marker}  — visible SVG script-test control
+  /probe/svg-script/{marker}   — same SVG with a label-only script
   /probe/ne/{marker}           — valid GIF, no file extension in URL
   /probe/q/{marker}            — valid GIF, captures query params as data
   /probe/p/{data}              — valid GIF, captures path segment as data
@@ -69,6 +71,22 @@ _SVG = (
     '<rect width="1" height="1" fill="transparent"/>'
     '</svg>'
 )
+
+
+# Fixed diagnostic fixtures; markers are logged but never inserted into SVG.
+_SVG_CONTROL = '''<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
+  <rect width="480" height="120" fill="#f1f5f9"/>
+  <text id="result" x="24" y="68" font-family="monospace" font-size="26" fill="#0f172a">NOT_EXECUTED</text>
+</svg>
+'''
+_SVG_SCRIPT_CHECK = '''<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
+  <rect width="480" height="120" fill="#f1f5f9"/>
+  <text id="result" x="24" y="68" font-family="monospace" font-size="26" fill="#0f172a">NOT_EXECUTED</text>
+  <script type="application/ecmascript"><![CDATA[
+    document.getElementById('result').textContent = 'SCRIPT_EXECUTED';
+  ]]></script>
+</svg>
+'''
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +262,28 @@ async def probe_svg(marker: str, request: Request):
     """Case: SVG beacon. Tests SVG processing (potential for script execution in some renderers)."""
     _log_request(request, "svg", marker)
     return Response(content=_SVG, media_type="image/svg+xml", headers=_NO_CACHE_HEADERS)
+
+
+@router.get("/svg-control/{marker}")
+async def probe_svg_control(marker: str, request: Request):
+    """Static visible control for comparison with the label-only SVG script."""
+    _log_request(request, "svg-control", marker)
+    return Response(
+        content=_SVG_CONTROL,
+        media_type="image/svg+xml",
+        headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/svg-script/{marker}")
+async def probe_svg_script(marker: str, request: Request):
+    """Return a fixed script that changes only its SVG label; logs fetches only."""
+    _log_request(request, "svg-script", marker)
+    return Response(
+        content=_SVG_SCRIPT_CHECK,
+        media_type="image/svg+xml",
+        headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/ne/{marker}")
