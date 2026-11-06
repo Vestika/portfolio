@@ -22,6 +22,10 @@ Cases:
   /probe/rt/{marker}       — 302 redirect to server-side target based on
                                   marker prefix (meta, metaiam, gce, redis,
                                   internal, self)
+  /probe/follow/{marker}   — calendar-invite follow probe; logs the first-hop
+                                  fetch, then 302s to an expiring operator-
+                                  configured external target
+                                  (PROBE_FOLLOW_TARGET)
   /probe/loopback/{host}/{marker} — expiring, operator-configured test fixture only
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
@@ -36,6 +40,7 @@ import threading
 from collections import deque
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import Response, HTMLResponse, RedirectResponse
@@ -441,6 +446,92 @@ async def probe_rt_redirect(marker: str, request: Request):
         return Response(content=_TRANSPARENT_GIF, media_type="image/gif", headers=_NO_CACHE_HEADERS)
 
     _log_request(request, "rt", marker, extra={
+        "redirect_to": target,
+        "event": "redirect_issued",
+        "note": "redirect issued; destination arrival not observed",
+    })
+    return RedirectResponse(
+        url=target,
+        status_code=302,
+        headers=_NO_CACHE_HEADERS,
+    )
+
+
+# Operator-configured external follow target — the fetching client never
+# chooses this; only the deployment environment does (see
+# backend/docs/calendar-invite-follow-probe.md).
+_MAX_FOLLOW_URL_LEN = 2048
+
+
+def _is_safe_follow_url(url: str) -> bool:
+    """Accept only well-formed http(s) URLs without whitespace or control characters."""
+    if len(url) > _MAX_FOLLOW_URL_LEN:
+        return False
+    if any(ord(c) < 0x20 for c in url) or any(c.isspace() for c in url):
+        return False
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return bool(parsed.netloc) and bool(parsed.hostname)
+
+
+def _follow_fixture_target() -> tuple[Optional[str], Optional[str]]:
+    """Resolve the operator-configured external follow target.
+
+    Returns (target, error). error is None when a valid target applies,
+    otherwise one of "unconfigured", "malformed", "expired".
+    """
+    raw = os.environ.get("PROBE_FOLLOW_TARGET")
+    if not raw:
+        return None, "unconfigured"
+    try:
+        config = json.loads(raw)
+        if not isinstance(config, dict) or set(config) != {"url", "expires_at"}:
+            raise ValueError("Invalid fixture fields")
+        url, expires_at = config["url"], config["expires_at"]
+        if not isinstance(url, str) or not _is_safe_follow_url(url):
+            raise ValueError("Invalid fixture url")
+        if type(expires_at) is not int or expires_at <= 0:
+            raise ValueError("Invalid fixture expiry")
+    except (ValueError, TypeError):
+        return None, "malformed"
+    if datetime.now(timezone.utc).timestamp() >= expires_at:
+        return None, "expired"
+    return url, None
+
+
+@router.get("/follow/{marker}")
+async def probe_follow_redirect(marker: str, request: Request):
+    """Case: calendar-invite follow probe.
+
+    Logs the first-hop fetch (the beacon answer to "did anything open the
+    link?"), then 302s to the expiring operator-configured external target.
+    The destination is fixed by server configuration; request parameters
+    cannot choose it. Destination arrival is not observed.
+    """
+    target, error = _follow_fixture_target()
+
+    if error == "malformed":
+        _log_request(request, "follow", marker, extra={
+            "note": "invalid follow target configuration; no redirect issued",
+        })
+        raise HTTPException(
+            503, "Invalid follow target configuration", headers=_NO_CACHE_HEADERS
+        )
+
+    if error == "expired":
+        _log_request(request, "follow", marker, extra={
+            "note": "follow target expired; no redirect issued",
+        })
+        raise HTTPException(410, "Follow target has expired", headers=_NO_CACHE_HEADERS)
+
+    if error == "unconfigured":
+        _log_request(request, "follow", marker, extra={
+            "note": "follow target not configured; served GIF beacon",
+        })
+        return Response(content=_TRANSPARENT_GIF, media_type="image/gif", headers=_NO_CACHE_HEADERS)
+
+    _log_request(request, "follow", marker, extra={
         "redirect_to": target,
         "event": "redirect_issued",
         "note": "redirect issued; destination arrival not observed",
