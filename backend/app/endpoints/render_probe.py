@@ -10,6 +10,7 @@ Unauthenticated by design: this is a diagnostic instrument.
 Cases:
   /probe/gif/{marker}          — valid GIF, image/gif
   /probe/png/{marker}          — valid PNG, image/png
+  /probe/jpeg/{marker}         — fixed 96x64 baseline RGB JPEG, image/jpeg
   /probe/svg/{marker}          — valid SVG, image/svg+xml
   /probe/svg-control/{marker}  — visible SVG script-test control
   /probe/svg-script/{marker}   — same SVG with a label-only script
@@ -76,6 +77,23 @@ _PNG_CONTROL = bytes.fromhex(
     "142248902041820409122428627c44902041824204091224489020418204458c8f081224"
     "485088204182040912244890a088f111418204090a1124e89f0f37b8ce1d04288f410000"
     "000049454e44ae426082"
+)
+
+# Fixed 96x64 baseline RGB JPEG for external PDF image streams (DCTDecode).
+_JPEG_CONTROL = bytes.fromhex(
+    "ffd8ffe000104a46494600010100000100010000ffdb004300030202030202030303"
+    "0304030304050805050404050a070706080c0a0c0c0b0a0b0b0d0e12100d0e110e0b"
+    "0b1016101113141515150c0f171816141812141514ffdb0043010304040504050905"
+    "0509140d0b0d14141414141414141414141414141414141414141414141414141414"
+    "14141414141414141414141414141414141414141414ffc000110800400060030111"
+    "00021101031101ffc400160001010100000000000000000000000000000807ffc400"
+    "14100100000000000000000000000000000000ffc400170101010101000000000000"
+    "00000000000000090708ffc40014110100000000000000000000000000000000ffda"
+    "000c03010002110311003f00ca9da0c3c00000005008eea70000000027f5884c7000"
+    "000014023ba9c000000009fd62131c00000005008eea70000000027f5884c7000000"
+    "014023ba9c000000009fd62131c00000005008eea70000000027f5884c7000000014"
+    "023ba9c000000009fd62131c00000005008eea70000000027f5884c7000000014023"
+    "ba9c00000000ffd9"
 )
 
 # Simple SVG (1x1 pixel, no scripts)
@@ -269,6 +287,17 @@ async def probe_png(marker: str, request: Request):
     """Case: PNG beacon. Tests alternative image format acceptance."""
     _log_request(request, "png", marker)
     return Response(content=_TRANSPARENT_PNG, media_type="image/png", headers=_NO_CACHE_HEADERS)
+
+
+@router.get("/jpeg/{marker}")
+async def probe_jpeg(marker: str, request: Request):
+    """Serve a fixed baseline RGB JPEG suitable for a PDF DCTDecode stream."""
+    _log_request(request, "jpeg", marker)
+    return Response(
+        content=_JPEG_CONTROL,
+        media_type="image/jpeg",
+        headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/svg/{marker}")
