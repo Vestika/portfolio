@@ -4,6 +4,9 @@ Tests for render_probe endpoint — Markdown image render beacon.
 Verifies each probe case returns the correct image payload and that
 the logging captures request metadata (IP, UA, query/path data).
 """
+import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -242,3 +245,81 @@ class TestSlowCase:
     def test_slow_caps_at_30s(self, client):
         resp = client.get("/probe/slow/999999/test-slow.gif")
         assert resp.status_code == 200
+
+
+class TestControlledLoopback:
+    @pytest.fixture
+    def fixture_config(self, monkeypatch):
+        config = {
+            "port": 35397,
+            "path": "/probe-daaeea2253fc7e049892e350bd45c7c1",
+            "expires_at": int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp()),
+        }
+        monkeypatch.setenv("PROBE_LOOPBACK_FIXTURE", json.dumps(config))
+        return config
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+    def test_redirect_is_pinned_and_does_not_claim_arrival(self, client, fixture_config, host):
+        marker = f"controlled-{host}.gif"
+        response = client.get(
+            f"/probe/loopback/{host}/{marker}",
+            params={"port": 6379, "target": "http://example.com/", "path": "/etc/passwd"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == (
+            f"http://{host}:35397/probe-daaeea2253fc7e049892e350bd45c7c1"
+        )
+        assert "no-store" in response.headers["cache-control"]
+        entry = client.get("/probe/logs", params={"marker": marker}).json()["entries"][0]
+        assert entry["event"] == "redirect_issued"
+        assert entry["redirect_to"] == response.headers["location"]
+        assert "proxy followed" not in entry.get("note", "")
+
+    def test_disabled_without_configuration(self, client, monkeypatch):
+        monkeypatch.delenv("PROBE_LOOPBACK_FIXTURE", raising=False)
+        response = client.get("/probe/loopback/127.0.0.1/disabled.gif", follow_redirects=False)
+        assert response.status_code == 404
+        assert "location" not in response.headers
+
+    @pytest.mark.parametrize("host", ["169.254.169.254", "example.com", "localhost.evil.test", "[::1]"])
+    def test_unconfigured_hosts_rejected(self, client, fixture_config, host):
+        response = client.get(f"/probe/loopback/{host}/bad-host.gif", follow_redirects=False)
+        assert response.status_code == 422
+        assert "location" not in response.headers
+
+    @pytest.mark.parametrize("change", [
+        {"port": 80}, {"port": 65536}, {"port": "35397"}, {"port": True},
+        {"path": "/etc/passwd"}, {"path": "//example.com/"},
+        {"path": "/probe-daaeea2253fc7e049892e350bd45c7c1?x=1"},
+        {"expires_at": "tomorrow"}, {"expires_at": True},
+        {"host": "example.com"},
+    ])
+    def test_invalid_configuration_fails_closed(self, client, monkeypatch, fixture_config, change):
+        fixture_config.update(change)
+        monkeypatch.setenv("PROBE_LOOPBACK_FIXTURE", json.dumps(fixture_config))
+        response = client.get("/probe/loopback/localhost/invalid.gif", follow_redirects=False)
+        assert response.status_code == 503
+        assert "location" not in response.headers
+
+    @pytest.mark.parametrize("raw", ["{", "[]", "null", "{}"])
+    def test_malformed_configuration_fails_closed(self, client, monkeypatch, raw):
+        monkeypatch.setenv("PROBE_LOOPBACK_FIXTURE", raw)
+        response = client.get("/probe/loopback/localhost/malformed.gif", follow_redirects=False)
+        assert response.status_code == 503
+        assert "location" not in response.headers
+
+    def test_expired_fixture_never_redirects(self, client, monkeypatch, fixture_config):
+        fixture_config["expires_at"] = int(datetime.now(timezone.utc).timestamp()) - 1
+        monkeypatch.setenv("PROBE_LOOPBACK_FIXTURE", json.dumps(fixture_config))
+        response = client.get("/probe/loopback/127.0.0.1/expired.gif", follow_redirects=False)
+        assert response.status_code == 410
+        assert "location" not in response.headers
+
+    def test_existing_rt_log_does_not_claim_a_followed_redirect(self, client):
+        marker = "self-nofollow-regression.gif"
+        response = client.get(f"/probe/rt/{marker}", follow_redirects=False)
+        assert response.status_code == 302
+        entry = client.get("/probe/logs", params={"marker": marker}).json()["entries"][0]
+        assert entry["event"] == "redirect_issued"
+        assert "proxy followed" not in entry["note"]
