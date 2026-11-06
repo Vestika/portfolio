@@ -20,18 +20,22 @@ Cases:
   /probe/rt/{marker}       — 302 redirect to server-side target based on
                                   marker prefix (meta, metaiam, gce, redis,
                                   internal, self)
+  /probe/loopback/{host}/{marker} — expiring, operator-configured test fixture only
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
   /probe/logs                  — view logs (JSON or HTML)
   /probe/summary               — aggregated stats
 """
 import asyncio
+import json
+import os
+import re
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import Response, HTMLResponse, RedirectResponse
 
 router = APIRouter(prefix="/probe", tags=["render-probe"])
@@ -374,13 +378,53 @@ async def probe_rt_redirect(marker: str, request: Request):
 
     _log_request(request, "rt", marker, extra={
         "redirect_to": target,
-        "note": f"redirect-to chain: proxy followed to {target}",
+        "event": "redirect_issued",
+        "note": "redirect issued; destination arrival not observed",
     })
     return RedirectResponse(
         url=target,
         status_code=302,
         headers=_NO_CACHE_HEADERS,
     )
+
+
+def _loopback_fixture_target(host: str) -> str:
+    """Resolve only an operator-configured, expiring synthetic test fixture."""
+    raw = os.environ.get("PROBE_LOOPBACK_FIXTURE")
+    if not raw:
+        raise HTTPException(404, "Loopback fixture is disabled", headers=_NO_CACHE_HEADERS)
+    try:
+        config = json.loads(raw)
+        if not isinstance(config, dict) or set(config) != {"port", "path", "expires_at"}:
+            raise ValueError("Invalid fixture fields")
+        port, path, expires_at = config["port"], config["path"], config["expires_at"]
+        if type(port) is not int or not 1024 <= port <= 65535:
+            raise ValueError("Invalid fixture port")
+        if not isinstance(path, str) or not re.fullmatch(r"/probe-[0-9a-f]{32}", path):
+            raise ValueError("Invalid fixture path")
+        if type(expires_at) is not int or expires_at <= 0:
+            raise ValueError("Invalid fixture expiry")
+    except (ValueError, TypeError):
+        raise HTTPException(
+            503, "Invalid loopback fixture configuration", headers=_NO_CACHE_HEADERS
+        ) from None
+    if datetime.now(timezone.utc).timestamp() >= expires_at:
+        raise HTTPException(410, "Loopback fixture has expired", headers=_NO_CACHE_HEADERS)
+    return f"http://{host}:{port}{path}"
+
+
+@router.get("/loopback/{host}/{marker}")
+async def probe_loopback_redirect(
+    host: Literal["127.0.0.1", "localhost"], marker: str, request: Request
+):
+    """Issue a redirect to a controlled fixture; never fetch its response."""
+    target = _loopback_fixture_target(host)
+    _log_request(request, "loopback", marker, extra={
+        "redirect_to": target,
+        "event": "redirect_issued",
+        "note": "redirect issued; destination arrival not observed",
+    })
+    return RedirectResponse(url=target, status_code=302, headers=_NO_CACHE_HEADERS)
 
 
 @router.get("/404/{marker}")
