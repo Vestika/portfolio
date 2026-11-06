@@ -13,6 +13,7 @@ Cases:
   /probe/svg/{marker}          — valid SVG, image/svg+xml
   /probe/svg-control/{marker}  — visible SVG script-test control
   /probe/svg-script/{marker}   — same SVG with a label-only script
+  /probe/mime/{payload}/{declared}/{marker} — fixed PNG/SVG with a declared MIME type
   /probe/ne/{marker}           — valid GIF, no file extension in URL
   /probe/q/{marker}            — valid GIF, captures query params as data
   /probe/p/{data}              — valid GIF, captures path segment as data
@@ -61,11 +62,20 @@ _TRANSPARENT_GIF = (
     b"\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x00;"
 )
 
-# 1x1 transparent PNG (67 bytes, base64 of minimal PNG)
+# Valid 1x1 transparent RGBA PNG; checksums and scanlines are tested.
 _TRANSPARENT_PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d494844520000000100000001"
-    "08060000001f15c4890000000d49444154789c6260000002"
-    "0001ffffffa3de0000000049454e44ae426082"
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489000000"
+    "0b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082"
+)
+
+# Fixed 96x64 blue/orange PNG for a visible, same-host decoding control.
+_PNG_CONTROL = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000600000004008020000006a56e559000000"
+    "8549444154789cedd0311180301440b1eee840597dd520333b2218fe1b72170559f77e52"
+    "de73a5acf111418204090a191f11244890a0104182040912244890204111e32382040912"
+    "142248902041820409122428627c44902041824204091224489020418204458c8f081224"
+    "485088204182040912244890a088f111418204090a1124e89f0f37b8ce1d04288f410000"
+    "000049454e44ae426082"
 )
 
 # Simple SVG (1x1 pixel, no scripts)
@@ -286,6 +296,31 @@ async def probe_svg_script(marker: str, request: Request):
     return Response(
         content=_SVG_SCRIPT_CHECK,
         media_type="image/svg+xml",
+        headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/mime/{payload}/{declared}/{marker}")
+async def probe_mime(
+    payload: Literal["png", "svg"],
+    declared: Literal["png", "svg", "binary"],
+    marker: str,
+    request: Request,
+):
+    """Compare MIME handling with fixed, script-free bodies; no target fetching."""
+    content_type = {
+        "png": "image/png",
+        "svg": "image/svg+xml",
+        "binary": "application/octet-stream",
+    }[declared]
+    content = _PNG_CONTROL if payload == "png" else _SVG_CONTROL
+    _log_request(request, "mime", marker, extra={
+        "payload_kind": payload,
+        "declared_content_type": content_type,
+    })
+    return Response(
+        content=content,
+        media_type=content_type,
         headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
     )
 
