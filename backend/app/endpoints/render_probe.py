@@ -559,10 +559,16 @@ _TOOL_REPORT_MAIN_TEXT = (
 )
 _TOOL_REPORT_FINAL_URL = "https://example.com/"
 
+# RFC 4122: a URL name under NAMESPACE_URL derives the namespace; the marker
+# is then the name under that namespace.
+_TOOL_TASK_NAMESPACE = uuid.uuid5(
+    uuid.NAMESPACE_URL, "https://api.vestika.io/probe/browser-task"
+)
+
 
 def _browser_task_id(marker: str) -> str:
     """Deterministic version-5 task id derived from the marker."""
-    return f"browser-task:{uuid.uuid5(uuid.NAMESPACE_URL, f'probe-browser-task:{marker}')}"
+    return f"browser-task:{uuid.uuid5(_TOOL_TASK_NAMESPACE, marker)}"
 
 
 def _eastern_ran_range() -> str:
@@ -606,7 +612,7 @@ async def probe_browser_task(marker: str, request: Request):
                 "data_entered": False,
             },
         },
-        headers=_NO_CACHE_HEADERS,
+        headers={**_NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff"},
     )
 
 

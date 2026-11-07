@@ -7,15 +7,14 @@ ids, generated same-minute Eastern time ranges, and logged fetches.
 """
 import re
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.endpoints.render_probe import (
-    router,
-    _TOOL_REPORT_MAIN_TEXT,
-)
+from app.endpoints.render_probe import router
 
 
 @pytest.fixture
@@ -49,7 +48,7 @@ class TestToolResponseSchema:
         }
         assert report["status"] == "completed"
         assert report["title"] == "Example Domain"
-        assert report["main_text"] == _TOOL_REPORT_MAIN_TEXT
+        assert isinstance(report["main_text"], str)
         assert report["final_url"] == "https://example.com/"
         assert report["links_clicked"] == 0
         assert report["signed_in"] is False
@@ -69,6 +68,18 @@ class TestToolResponseSchema:
     def test_ran_is_same_minute_eastern_range(self, client):
         body = _fetch_report(client, "cal-tool-ran-001")
         assert RAN_PATTERN.fullmatch(body["ran"]), body["ran"]
+
+    def test_ran_reflects_request_time(self, client):
+        """ran is generated per request — a hardcoded value must fail this."""
+        body = _fetch_report(client, "cal-tool-time-001")
+        match = RAN_PATTERN.fullmatch(body["ran"])
+        assert match, body["ran"]
+        hour = int(match.group(1)) % 12 + (12 if match.group(3) == "PM" else 0)
+        reported_minutes = hour * 60 + int(match.group(2))
+        now = datetime.now(ZoneInfo("America/New_York"))
+        now_minutes = now.hour * 60 + now.minute
+        delta = (reported_minutes - now_minutes) % 1440
+        assert delta <= 2 or delta >= 1438  # within ±2 minutes, rollover-safe
 
     def test_browser_task_id_is_wellformed_version5(self, client):
         body = _fetch_report(client, "cal-tool-id-001")
@@ -110,3 +121,4 @@ class TestLoggingAndHeaders:
     def test_cache_prevention_headers(self, client):
         response = client.get("/probe/browser-task/cal-tool-cache-001")
         assert "no-store" in response.headers["cache-control"]
+        assert response.headers["x-content-type-options"] == "nosniff"

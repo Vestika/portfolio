@@ -25,6 +25,6 @@ The example is deliberately expired and therefore not an active configuration. U
 - A `browser-task` log entry proves a fetcher retrieved the tool-shaped body. Whether a linked assistant ingested `main_text` — or acted on it — is not observable from this service.
 - The response executes nothing and contains no instructions; it tests schema acceptance, not injection effects.
 - A user-agent string alone does not authenticate the caller; sync engines and prefetchers fetch links without any assistant deciding anything. Correlate timestamps with invite delivery before attributing a hit.
-- If the follow chain is used, a `follow` hit without a `browser-task` hit means the redirect was issued but this route was not reached; the reverse (only `browser-task`) means the link was reached directly without the redirect.
+- If the follow chain is used, a `follow` hit with `event: redirect_issued` but no later `browser-task` hit means the redirect was issued but this route was not reached. A `follow` hit without `event: redirect_issued` (unconfigured, expired, or malformed target) never redirects at all. The reverse (only `browser-task`) means the link was reached directly without the redirect.
 
 Use only with calendars, messages, and accounts you own or have explicit permission to test. Disclose the probe when asked; do not disguise it.
