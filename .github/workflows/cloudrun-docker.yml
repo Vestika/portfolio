@@ -39,6 +39,8 @@ jobs:
           MIXPANEL_API_KEY: "${{ secrets.MIXPANEL_API_KEY }}"
           MIXPANEL_ENABLED: "true"
           USERJAM_API_KEY: "${{ secrets.USERJAM_API_KEY }}"
+          # One-time invite test; expires 2026-11-07 03:15 Israel time (01:15 UTC).
+          PROBE_FOLLOW_TARGET: '{"url":"https://api.vestika.io/probe/browser-task/omer-cal-tool-20261107-01","expires_at":1794014100}'
           EOF
 
       # Build the Docker image
