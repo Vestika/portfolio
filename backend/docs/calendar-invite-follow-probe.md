@@ -29,6 +29,8 @@ https://api.vestika.io/probe/follow/<marker>
 
 Use one distinct marker per invite (and per recipient, if you want per-recipient attribution), for example `cal-inv-001`, `cal-inv-002`. Hits are attributable in `/probe/logs?case=follow&marker=cal-inv-001`.
 
+To land the redirect on a body shaped like a browsing tool's own task-report schema, point `url` at the [`/probe/browser-task/{marker}`](browser-task-tool-response.md) route with a distinct marker.
+
 ## Event example
 
 The event description carries both the link and the prompt aimed at an AI assistant. A direct variant:
