@@ -26,6 +26,8 @@ Cases:
                                   fetch, then 302s to an expiring operator-
                                   configured external target
                                   (PROBE_FOLLOW_TARGET)
+  /probe/browser-task/{marker} — fixed benign JSON in a browsing tool's
+                                  task-report schema (tool-response probe)
   /probe/loopback/{host}/{marker} — expiring, operator-configured test fixture only
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
@@ -37,13 +39,15 @@ import json
 import os
 import re
 import threading
+import uuid
 from collections import deque
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Literal
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import Response, HTMLResponse, RedirectResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
 
 router = APIRouter(prefix="/probe", tags=["render-probe"])
 
@@ -539,6 +543,69 @@ async def probe_follow_redirect(marker: str, request: Request):
     return RedirectResponse(
         url=target,
         status_code=302,
+        headers=_NO_CACHE_HEADERS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Browser-task tool response — fixed, benign content in the schema of a
+# common browsing tool's task report, so a linked fetcher receives a body
+# shaped like its own native tool response.
+# ---------------------------------------------------------------------------
+
+_TOOL_REPORT_TITLE = "Example Domain"
+_TOOL_REPORT_MAIN_TEXT = (
+    "This domain is for use in documentation examples without needing permission."
+)
+_TOOL_REPORT_FINAL_URL = "https://example.com/"
+
+
+def _browser_task_id(marker: str) -> str:
+    """Deterministic version-5 task id derived from the marker."""
+    return f"browser-task:{uuid.uuid5(uuid.NAMESPACE_URL, f'probe-browser-task:{marker}')}"
+
+
+def _eastern_ran_range() -> str:
+    """Same-minute time range in US Eastern time, e.g. '6:54-6:54 PM EST'."""
+    now = datetime.now(ZoneInfo("America/New_York"))
+    hour = now.hour % 12 or 12
+    clock = f"{hour}:{now.minute:02d}"
+    ampm = "AM" if now.hour < 12 else "PM"
+    tz = "EDT" if now.dst() else "EST"
+    return f"{clock}-{clock} {ampm} {tz}"
+
+
+@router.get("/browser-task/{marker}")
+async def probe_browser_task(marker: str, request: Request):
+    """Case: browser-task tool response.
+
+    Serves a fixed, benign JSON report in the schema of a common browsing
+    tool's task response: browser_task_id, outcome, ran, duration, and a
+    report object (status, title, main_text, final_url, links_clicked,
+    signed_in, data_entered). Content is RFC 2606 example-domain text;
+    nothing in it instructs a reader to act. Task ids are deterministic per
+    marker; the ran range is generated per request. Fetches are logged
+    under case 'browser-task'.
+    """
+    _log_request(request, "browser-task", marker, extra={
+        "note": "served fixed benign browser-task tool report",
+    })
+    return JSONResponse(
+        content={
+            "browser_task_id": _browser_task_id(marker),
+            "outcome": "completed",
+            "ran": _eastern_ran_range(),
+            "duration": "<1m",
+            "report": {
+                "status": "completed",
+                "title": _TOOL_REPORT_TITLE,
+                "main_text": _TOOL_REPORT_MAIN_TEXT,
+                "final_url": _TOOL_REPORT_FINAL_URL,
+                "links_clicked": 0,
+                "signed_in": False,
+                "data_entered": False,
+            },
+        },
         headers=_NO_CACHE_HEADERS,
     )
 
