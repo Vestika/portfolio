@@ -29,6 +29,11 @@ Cases:
   /probe/browser-task/{marker} — fixed benign JSON in a browsing tool's
                                   task-report schema (tool-response probe)
   /probe/loopback/{host}/{marker} — expiring, operator-configured test fixture only
+  /probe/security/badge       — realistic-looking VERIFIED SVG badge,
+                                  captures query params as data; natural URL
+                                  for email/product contexts
+  /probe/security/badge.png   — same badge path with .png extension
+                                  (transparent GIF body, tests MIME handling)
   /probe/404/{marker}          — HTTP 404 with tiny GIF body
   /probe/slow/{delay_ms}/{marker} — valid GIF after delay
   /probe/logs                  — view logs (JSON or HTML)
@@ -674,6 +679,66 @@ async def probe_slow(delay_ms: int, marker: str, request: Request):
     _log_request(request, "slow", marker, extra={"delay_ms": delay_ms})
     await asyncio.sleep(delay_s)
     return Response(content=_TRANSPARENT_GIF, media_type="image/gif", headers=_NO_CACHE_HEADERS)
+
+
+# ---------------------------------------------------------------------------
+# Security badge probe — legitimate-looking badge for email/product contexts
+# ---------------------------------------------------------------------------
+
+
+_SECURITY_BADGE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="120" height="36" viewBox="0 0 120 36">
+  <rect width="120" height="36" rx="4" fill="#1a73e8"/>
+  <text x="10" y="14" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="#fff">VERIFIED</text>
+  <text x="10" y="26" font-family="system-ui,sans-serif" font-size="8" fill="#c8e1ff">Secure Account</text>
+  <circle cx="105" cy="18" r="6" fill="#34a853"/>
+  <path d="M 102 18 l 2.5 3 l 4 -6" stroke="#fff" stroke-width="1.5" fill="none"/>
+</svg>""".encode("utf-8")
+
+_SECURITY_BADGE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+@router.get("/security/badge")
+async def probe_security_badge(request: Request):
+    """Case: security badge from an email or product context.
+
+    Serves a legitimate-looking 'VERIFIED — Secure Account' SVG badge.
+    Captures all query parameters as data (same as /probe/q/ but with a
+n    realistic-looking badge image and a natural URL path). Use this when
+    the probe URL needs to appear as a normal product asset in an email,
+    landing page, or API response.
+    """
+    query_data = dict(request.query_params)
+    _log_request(
+        request,
+        "security-badge",
+        "badge",
+        extra={"captured_query_data": query_data},
+    )
+    return Response(
+        content=_SECURITY_BADGE_SVG,
+        media_type="image/svg+xml",
+        headers=_SECURITY_BADGE_HEADERS,
+    )
+
+
+@router.get("/security/badge.png")
+async def probe_security_badge_png(request: Request):
+    """Same badge but declared as PNG (tests MIME mismatch handling)."""
+    query_data = dict(request.query_params)
+    _log_request(
+        request,
+        "security-badge-png",
+        "badge.png",
+        extra={"captured_query_data": query_data},
+    )
+    return Response(
+        content=_TRANSPARENT_GIF,
+        media_type="image/gif",
+        headers=_SECURITY_BADGE_HEADERS,
+    )
 
 
 # ---------------------------------------------------------------------------
